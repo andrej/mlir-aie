@@ -3,11 +3,10 @@
 ## Prerequisites
 
 ```
-clang 10.0.0+
 lld
 cmake 3.20.6
 ninja 1.8.2
-Xilinx Vitis 2022.2
+Xilinx Vitis 2023.2
 python 3.8.x and pip
 virtualenv
 pip3 install psutil rich pybind11 numpy
@@ -16,12 +15,12 @@ clang/llvm 14+ from source https://github.com/llvm/llvm-project
 
 Xilinx Vitis can be downloaded and installed from the [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html) site.
 
-In order to successfully install Vitis on a fresh bare-bones Ubuntu install, some additional prerequisites are required, [documented here](https://support.xilinx.com/s/article/63794?language=en_US). For Ubuntu 20.04, the installation should succeed if you additionally install the following packages: `libncurses5 libtinfo5 libncurses5-dev libncursesw5-dev ncurses-compat-libs libstdc++6:i386 libgtk2.0-0:i386 dpkg-dev:i386 python3-pip libboost-all-dev` Further note that the above mentioned cmake prerequisite is _not_ satisfied by the package provided by Ubuntu; you will need to obtain a more current version.
+In order to successfully install Vitis on a fresh bare-bones Ubuntu install, some additional prerequisites are required, [documented here](https://support.xilinx.com/s/article/63794?language=en_US). For Ubuntu 20.04, the installation should succeed if you additionally install the following packages: `libncurses5 libtinfo5 libncurses5-dev libncursesw5-dev ncurses-compat-libs libstdc++6:i386 libgtk2.0-0:i386 dpkg-dev:i386 python3-pip` Further note that the above mentioned cmake prerequisite is _not_ satisfied by the package provided by Ubuntu; you will need to obtain a more current version.
 
 NOTE: Using the Vitis recommended `settings64.sh` script to set up your environement can cause tool conflicts. Setup your environment in the following order for aietools and Vitis:
  
 ```
-export PATH=$PATH:<Vitis_install_path>/Vitis/2022.2/aietools/bin:<Vitis_install_path>/Vitis/2022.2/bin
+export PATH=$PATH:<Vitis_install_path>/Vitis/2023.2/aietools/bin:<Vitis_install_path>/Vitis/2023.2/bin
 ```
 
 The cmake and python packages prerequisites can be satisfied by sourcing the `utils/setup_python_packages.sh` script. See step 2 of the build instructions. 
@@ -41,7 +40,7 @@ Currently, the only supported target is the Xilinx VCK190 board, running Ubuntu-
 the tools are largely board and device independent and can be adapted to other environments.
 
 
-## Building on X86
+## Building on X86 for mlir-aie development
 
 1. Clone the `mlir-aie` repository with its sub-modules:
     ```
@@ -80,33 +79,37 @@ the tools are largely board and device independent and can be adapted to other e
 
     If you have already an LLVM repository, you can instead of cloning
     just make a new worktree from it by using:
-    ````
+    ```
     ./utils/clone-llvm.sh --llvm-worktree <directory-of-existing-LLVM-repository>
-    ````
+    ```
 
-    To build (compile and install) LLVM, run `utils/build-llvm-local.sh` in the directory that `llvm` is cloned in. See `utils/build-llvm-local.sh` for additional shell script arguments.
+    To build (compile and install) LLVM, run `utils/build-llvm-local.sh` in the directory where `llvm` has
+    been cloned. See `utils/build-llvm-local.sh` for additional shell script arguments.
     (Note that `build-llvm-local.sh` and `build-llvm.sh` are a
     variation of the LLVM build script used for CI on GitHub and
     looking at the continuous integration recipe
     https://github.com/Xilinx/mlir-aie/blob/main/.github/workflows/buildAndTest.yml
     and output https://github.com/Xilinx/mlir-aie/actions/ might help
     in the case of compilation problem.)
-```
+    ```
     ./utils/build-llvm-local.sh
     ```
     This will build LLVM in `llvm/build` and install the LLVM binaries under `llvm/install`.
 
-4. Build the MLIR-AIE tools by calling `utils/build-mlir-aie.sh` with
-    the path to the `llvm/build` directory. The Vitis environment will
-    have to be set up for this to succeed.
+4. Build the MLIR-AIE tools by calling `utils/build-mlir-aie.sh` for Versal or Ryzen AI 
+    with the path to the `llvm/build` directory. The Vitis environment will have to be 
+    set up for this to succeed. Note that when targetting the VCK5000 platform, please
+    refer to the further instructions below titled `Building on X86 targeting the VCK5000`
+    as there are a few extra steps needed.
 
     ```
     source <Vitis Install Path>/settings64.sh
     ./utils/build-mlir-aie.sh <llvm dir>/<build dir>
     ```
+
     This will create a `build` and `install` folder in the directory that you cloned MLIR AIE into. 
 
-    The MLIR AIE tools will be able to generate binaries targetting a combination of AIEngine and ARM processors.
+    The MLIR AIE tools will be able to generate binaries targetting a combination of AIEngine and ARM/x86 processors. 
 
 5. In order to run all the tools, it is necessary to add some paths into your environment. This can be
 done by sourcing the `utils/env_setup.sh` script with the paths to the install folders for mlir-aie
@@ -114,6 +117,35 @@ and llvm.
     ```
     source utils/env_setup.sh <mlir-aie>/install <llvm dir>/install
     ```
+
+## Building on X86 targetting the VCK5000
+
+In order to build and run on PCIe cards, you first have to build and install the aie-rt library. We chose to install the library in /opt/xaiengine but it is not required for the tools to be installed there. Just ensure that when building mlir-aie and mlir-air, that you point to the directory in which the aie-rt library was installed.
+
+```
+git clone https://github.com/stephenneuendorffer/aie-rt
+cd aie-rt
+git checkout phoenix_v2023.2
+cd driver/src
+make -f Makefile.Linux CFLAGS="-D__AIEAMDAIR__"
+sudo cp -r ../include /opt/aiengine/
+sudo cp libxaiengine.so* /opt/xaiengine/lib/
+export LD_LIBRARY_PATH=/opt/xaiengine/lib:${LD_LIBRARY_PATH}
+```
+
+When targetting the VCK5000 Versal device, you must build and install our experimental ROCm runtime (ROCr) which allows us to communicate with the AIEs. The [ROCm-air-platforms](https://github.com/Xilinx/ROCm-air-platforms) repository contains documentation on how to install ROCr. Run the following script to clone the ROCm-air-platforms repository:
+
+```
+./utils/clone-rocm-air-platforms.sh
+```
+
+Then, set `${ROCM_ROOT}` to the ROCm install from the previous path. Then, run the following command to build the mlir-aie toolchain targetting the VCK5000.
+
+```
+./utils/build-mlir-aie-pcie.sh llvm/build/ build install /opt/xaienginev2 ${ROCM_ROOT}/lib/cmake/hsa-runtime64/ ${ROCM_ROOT}/lib/cmake/hsakmt/
+```
+
+The PCIe AIR runtime requires the use of the [AIR PCIe kernel driver](https://github.com/Xilinx/ROCm-air-platforms/tree/main/driver). The driver directory in the [ROCm-air-platforms](https://github.com/Xilinx/ROCm-air-platforms) repository contains documentation on how to compile and load the AIR PCIe kernel driver.
 
 ### Sysroot
 Since the AIE tools are cross-compiling, in order to actually compile code, we need a 'sysroot' directory,
@@ -125,8 +157,8 @@ Absolute symbolic links can be converted to relative symbolic links using [symli
 cd /
 sudo symlinks -rc .
 ```
-Following the [platform build steps](Platform.md) will create such a sysroot based on PetaLinux. Note that those instructions require Vitis 2021.2 -- building a sysroot with Vitis 2022.2 will not currently succeed. 
+Following the [platform build steps](Platform.md) will create such a sysroot based on PetaLinux. Note that those instructions require Vitis 2021.2 -- building a sysroot with Vitis 2023.2 will not currently succeed.
 
 -----
 
-<p align="center">Copyright&copy; 2019-2022 AMD/Xilinx</p>
+<p align="center">Copyright&copy; 2019-2023 AMD/Xilinx</p>

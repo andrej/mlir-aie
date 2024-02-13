@@ -59,11 +59,11 @@ Define the locks and buffers
 Start the Memory Map to Stream DMA from the source:
 ```
 %mem71 = AIE.mem(%tile71) {
-	%dma0 = AIE.dmaStart("MM2S", 0, ^bd0, ^end)
+	%dma0 = AIE.dma_start("MM2S", 0, ^bd0, ^end)
 	^bd0:
-		AIE.useLock(%lock71, "Acquire", 0) // Acquire in State 0
-		AIE.dmaBd(<%buf71 : memref<512xi32>, 0, 512>, 0)
-		AIE.useLock(%lock71, "Release", 1) // Release in State 1
+		AIE.use_lock(%lock71, "Acquire", 0) // Acquire in State 0
+		AIE.dma_bd(%buf71 : memref<512xi32>, 0, 512)
+		AIE.use_lock(%lock71, "Release", 1) // Release in State 1
 		br ^end 
 	^end:
 	AIE.end
@@ -73,11 +73,11 @@ Start the Stream to Memory Map DMA from the destination:
 
 ```
 %mem72 = AIE.mem(%tile72) {
-	%dma0 = AIE.dmaStart("S2MM", 0, ^bd0, ^end)
+	%dma0 = AIE.dma_start("S2MM", 0, ^bd0, ^end)
 	^bd0:
-		AIE.useLock(%lock72, "Acquire", 0)
-		AIE.dmaBd(<%buf72 : memref<512xi32>, 0, 512>, 0)
-		AIE.useLock(%lock72, "Release", 1)
+		AIE.use_lock(%lock72, "Acquire", 0)
+		AIE.dma_bd(%buf72 : memref<512xi32>, 0, 512)
+		AIE.use_lock(%lock72, "Release", 1)
 		br ^end 
 	^end:
 	AIE.end
@@ -93,9 +93,9 @@ We can also perform some operations in the AIE core using the same locks. When t
 	%idx1 = constant 3 : index
 	%2 = addi %val1, %val1 : i32
 	
-	AIE.useLock(%lock72, "Acquire", 1) // acquire for consume in the core
+	AIE.use_lock(%lock72, "Acquire", 1) // acquire for consume in the core
 	memref.store %2, %buf72[%idx1] : memref<512xi32> //Store operation
-	AIE.useLock(%lock72, "Release", 0) // release back to the memory
+	AIE.use_lock(%lock72, "Release", 0) // release back to the memory
 }
 ```
 At the end, we release the lock back in state 0. This allows for the memory to re-acquire the lock in state 0.
@@ -115,16 +115,16 @@ This example uses the same setup as the previous. For Tile (7,2) we can define a
 Then we can write the Stream to Memory Map DMA transfer with 2 buffer descriptors:
 ```
 %mem72 = AIE.mem(%t72) {
-	%dma0 = AIE.dmaStart("S2MM", 0, ^bd0, ^end)
+	%dma0 = AIE.dma_start("S2MM", 0, ^bd0, ^end)
 	^bd0:
-		AIE.useLock(%lock72_0, "Acquire", 0)
-		AIE.dmaBd(<%buf72_0: memref<256xi32>, 0, 256>, 0)
-		AIE.useLock(%lock72_0, "Release", 1)
+		AIE.use_lock(%lock72_0, "Acquire", 0)
+		AIE.dma_bd(%buf72_0: memref<256xi32>, 0, 256)
+		AIE.use_lock(%lock72_0, "Release", 1)
 		br ^bd1 // point to the next BD, or termination
 	^bd1:
-		AIE.useLock(%lock72_1, "Acquire", 0)
-		AIE.dmaBd(<%buf72_1: memref<256xi32>, 0, 256>, 0)
-		AIE.useLock(%lock72_1, "Release", 1)
+		AIE.use_lock(%lock72_1, "Acquire", 0)
+		AIE.dma_bd(%buf72_1: memref<256xi32>, 0, 256)
+		AIE.use_lock(%lock72_1, "Release", 1)
 		br ^bd0 // point to the next BD, or termination
 	^end:
 
@@ -142,13 +142,13 @@ We can use the core in a similar fashion, using the two locks to perform operati
 
 	%2 = addi %val1, %val1 : i32
 	
-	AIE.useLock(%lock72_0, "Acquire", 1) // acquire for consume in the core
+	AIE.use_lock(%lock72_0, "Acquire", 1) // acquire for consume in the core
 	memref.store %2, %buf72[%idx1] : memref<512xi32> // store operation
-	AIE.useLock(%lock72_0, "Release", 0) // release back to the memory
+	AIE.use_lock(%lock72_0, "Release", 0) // release back to the memory
 	
-	AIE.useLock(%lock72_1, "Acquire", 1) // acquire for consume in the core
+	AIE.use_lock(%lock72_1, "Acquire", 1) // acquire for consume in the core
 	memref.store %2, %buf72[%idx2] : memref<512xi32> // store operation
-	AIE.useLock(%lock72_1, "Release", 0) // release back to the memory
+	AIE.use_lock(%lock72_1, "Release", 0) // release back to the memory
 }
 ```
 
@@ -172,11 +172,11 @@ We use a similar example to the single buffered communication:
 Start the Memory Map to Stream DMA from the source:
 ```
 %mem71 = AIE.mem(%tile71) {
-	%dma0 = AIE.dmaStart("MM2S", 0, ^bd0, ^end)
+	%dma0 = AIE.dma_start("MM2S", 0, ^bd0, ^end)
 	^bd0:
-		AIE.useLock(%lock71, "Acquire", 1) // Acquire in State 0
-		AIE.dmaBd(<%buf71 : memref<512xi32>, 0, 512>, 0)
-		AIE.useLock(%lock71, "Release", 1) // Release in State 1
+		AIE.use_lock(%lock71, "Acquire", 1) // Acquire in State 0
+		AIE.dma_bd(%buf71 : memref<512xi32>, 0, 512)
+		AIE.use_lock(%lock71, "Release", 1) // Release in State 1
 		br ^end 
 	^end:
 	AIE.end
@@ -186,11 +186,11 @@ Start the Stream to Memory Map DMA from the destination:
 
 ```
 %mem72 = AIE.mem(%tile72) {
-	%dma0 = AIE.dmaStart("S2MM", 0, ^bd0, ^end)
+	%dma0 = AIE.dma_start("S2MM", 0, ^bd0, ^end)
 	^bd0:
-		AIE.useLock(%lock72, "Acquire", 0)
-		AIE.dmaBd(<%buf72 : memref<512xi32>, 0, 512>, 0)
-		AIE.useLock(%lock72, "Release", 1)
+		AIE.use_lock(%lock72, "Acquire", 0)
+		AIE.dma_bd(%buf72 : memref<512xi32>, 0, 512)
+		AIE.use_lock(%lock72, "Release", 1)
 		br ^end 
 	^end:
 	AIE.end
@@ -223,17 +223,17 @@ To read/write from DDR, we declare an external buffer with a location and size
 %ext_buffer = AIE.external_buffer 0x02010004000 : memref<512 x i32>
 ```
 
-We can then use the shimDMA to read/write from that location:
+We can then use the shim_dma to read/write from that location:
 
 ```
 %lock70 = AIE.lock(%t70, 1)
 
 %mem70 = AIE.mem(%tile70) {
-	%dma0 = AIE.dmaStart("MM2S", 0, ^bd0, ^end) \\Read
+	%dma0 = AIE.dma_start("MM2S", 0, ^bd0, ^end) \\Read
 	^bd0:
-		AIE.useLock(%lock70 , "Acquire", 0)
-		AIE.dmaBd(<%ext_buffer : memref<512xi32>, 0, 512>, 0)
-		AIE.useLock(%lolock70 k72, "Release", 1)
+		AIE.use_lock(%lock70 , "Acquire", 0)
+		AIE.dma_bd(%ext_buffer : memref<512xi32>, 0, 512)
+		AIE.use_lock(%lolock70 k72, "Release", 1)
 		br ^end 
 	^end:
 	AIE.end
@@ -275,16 +275,16 @@ module {
 
 %m72 = AIE.mem(%t72) {
 
-	%srcDma = AIE.dmaStart("MM2S", 0, ^bd0, ^end)
+	%srcDma = AIE.dma_start("MM2S", 0, ^bd0, ^end)
 	^bd0:
-		AIE.useLock(%l72_0, "Acquire", 1)
-		AIE.dmaBd(<%buf72_0 : memref<256xi32>, 0, 256>, 0)
-		AIE.useLock(%l72_0, "Release", 0)
+		AIE.use_lock(%l72_0, "Acquire", 1)
+		AIE.dma_bd(%buf72_0 : memref<256xi32>, 0, 256)
+		AIE.use_lock(%l72_0, "Release", 0)
 	br ^bd1
 	^bd1:
-		AIE.useLock(%l72_1, "Acquire", 1)
-		AIE.dmaBd(<%buf72_1 : memref<256xi32>, 0, 256>, 0)
-		AIE.useLock(%l72_1, "Release", 0)
+		AIE.use_lock(%l72_1, "Acquire", 1)
+		AIE.dma_bd(%buf72_1 : memref<256xi32>, 0, 256)
+		AIE.use_lock(%l72_1, "Release", 0)
 	br ^bd0
 	^end:
 
@@ -351,16 +351,16 @@ Unlike a typical FIFO, elements are not pushed to nor popped from the objectFIFO
 
 Processes can then write to and read from these memory elements after acquiring them.
 
-Define two tiles and create an AIE.objectFifo named @of0 of depth two between them, with the two elements being of type <memref<16xi32>>:
+Define two tiles and create an AIE.objectfifo named @of0 of depth two between them, with the two elements being of type <memref<16xi32>>:
 ```
 %tile12 = AIE.tile(1, 2)
 %tile33 = AIE.tile(3, 3)
-AIE.objectFifo @of0 (%tile12, {tile33}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+AIE.objectfifo @of0 (%tile12, {tile33}, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
 ```
 After subsequent conversion passes, each of the objectFifo elements is instantiated as an AIE.buffer with an AIE.lock.
 
 objectFIFO operations have a 'port' attribute which indicates whether a tile is a 'producer' or a 'consumer' of that objectFIFO.
-Operations can be performed on the objectFIFO in the cores: elements can be acquired from the objectFIFO and accessed via an AIE.objectFifoSubview type, then released: 
+Operations can be performed on the objectFIFO in the cores: elements can be acquired from the objectFIFO and accessed via an AIE.objectfifosubview type, then released: 
 ```
 %core12 = AIE.core(%tile12) {
 	%c0 = arith.constant 0 : index
@@ -368,10 +368,10 @@ Operations can be performed on the objectFIFO in the cores: elements can be acqu
 	%height = arith.constant 12 : index
 
 	scf.for %indexInHeight = %c0 to %height step %c1 {
-		%subview = AIE.objectFifo.acquire @of0 (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-		%elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+		%subview = AIE.objectfifo.acquire @of0 (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
+		%elem0 = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 		call @some_work(%elem0) : (memref<16xi32>) -> ()
-		AIE.objectFifo.release @of0 (Produce, 1)
+		AIE.objectfifo.release @of0 (Produce, 1)
 	}
 	
 	AIE.end
@@ -383,10 +383,10 @@ Operations can be performed on the objectFIFO in the cores: elements can be acqu
 	%height = arith.constant 12 : index
 
 	scf.for %indexInHeight = %c0 to %height step %c1 { 
-		%subview = AIE.objectFifo.acquire @of0 (Consume, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-		%elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+		%subview = AIE.objectfifo.acquire @of0 (Consume, 1) : !AIE.objectfifosubview<memref<16xi32>>
+		%elem0 = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 		call @some_work(%elem0) : (memref<16xi32>) -> ()
-		AIE.objectFifo.release @of0 (Consume, 1)
+		AIE.objectfifo.release @of0 (Consume, 1)
 	}
 	
 	AIE.end
@@ -401,15 +401,15 @@ For correct execution, loops that contain objectFIFO operations must be unrolled
 	%height = arith.constant 12 : index
 
 	scf.for %indexInHeight = %c0 to %height step %c2 {
-		%subview0 = AIE.objectFifo.acquire @of0 (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-		%elem00 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+		%subview0 = AIE.objectfifo.acquire @of0 (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
+		%elem00 = AIE.objectfifo.subview.access %subview0[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 		call @some_work(%elem00) : (memref<16xi32>) -> ()
-		AIE.objectFifo.release @of0 (Produce, 1)
+		AIE.objectfifo.release @of0 (Produce, 1)
 
-		%subview1 = AIE.objectFifo.acquire @of0 (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-		%elem10 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+		%subview1 = AIE.objectfifo.acquire @of0 (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
+		%elem10 = AIE.objectfifo.subview.access %subview1[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 		call @some_work(%elem10) : (memref<16xi32>) -> ()
-		AIE.objectFifo.release @of0 (Produce, 1)
+		AIE.objectfifo.release @of0 (Produce, 1)
 	}
 	
 	AIE.end
@@ -422,11 +422,11 @@ module @objectFIFO  {
     %tile10 = AIE.tile(1, 0)
     %tile33 = AIE.tile(3, 3)
 
-    AIE.objectFifo @of1 (%tile10, {tile33}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+    AIE.objectfifo @of1 (%tile10, {tile33}, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
 
     %ext_buffer_in_0 = AIE.external_buffer {sym_name = "ext_buffer_in_0"}: memref<64xi32>
     %ext_buffer_in_1 = AIE.external_buffer {sym_name = "ext_buffer_in_1"}: memref<64xi32>
-    AIE.objectFifo.registerExternalBuffers @of1 (%tile10, {%ext_buffer_in_0, %ext_buffer_in_1}) : (memref<64xi32>, memref<64xi32>)
+    AIE.objectfifo.register_external_buffers @of1 (%tile10, { %ext_buffer_in_0, %ext_buffer_in_1 }) : (memref<64xi32>, memref<64xi32>)
 }
 ```
 
@@ -437,10 +437,10 @@ module @objectFIFO  {
     %tile22 = AIE.tile(2, 2)
     %tile24 = AIE.tile(2, 4)
 
-    AIE.objectFifo @of1 (%tile20, {%tile22}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
-	AIE.objectFifo @of2 (%tile22, {%tile24}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+    AIE.objectfifo @of1 (%tile20, { %tile22 }, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
+	AIE.objectfifo @of2 (%tile22, { %tile24 }, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
 
-	AIE.objectFifo.link [@of1] -> [@of2] ()
+	AIE.objectfifo.link [@of1] -> [@of2] ()
 }
 ```
 
@@ -450,7 +450,7 @@ module @objectFIFO  {
     %tile12 = AIE.tile(1, 2)
     %tile33 = AIE.tile(3, 3)
 
-    AIE.objectFifo @of1 (%tile12, {tile33}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+    AIE.objectfifo @of1 (%tile12, {tile33}, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
 
     %prodAcqPattern = arith.constant dense<[1]> : tensor<1xi32>
     %prodRelPattern = arith.constant dense<[1]> : tensor<1xi32>
@@ -459,7 +459,7 @@ module @objectFIFO  {
         return
     }
 
-    AIE.objectFifo.registerProcess @of1 (Produce, %prodAcqPattern : tensor<1xi32>, %prodRelPattern : tensor<1xi32>, @producer_work, %prodLength)
+    AIE.objectfifo.register_process @of1 (Produce, %prodAcqPattern : tensor<1xi32>, %prodRelPattern : tensor<1xi32>, @producer_work, %prodLength)
 }
 ```
 

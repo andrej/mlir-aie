@@ -9,11 +9,46 @@ the C++ syntactic level.
 
 [TOC]
 
-## Operation definition
+## Operations
+
+### `ADF.graph` (::xilinx::ADF::GraphOp)
+
+_An ADF graph operation_
+
+
+Syntax:
+
+```
+operation ::= `ADF.graph` `(` $name `)` regions attr-dict
+```
+
+An operation that represents an ADF graph.  This operation determines
+the name of the graph and contains a single region containing ADF
+dialect operations. For example, 
+
+```mlir
+ADF.graph("name") {
+  your_graph_operations
+}
+```
+
+Traits: `AlwaysSpeculatableImplTrait`, `NoTerminator`, `SingleBlock`
+
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
+
+Effects: `MemoryEffects::Effect{}`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+</table>
+
 
 ### `ADF.inout_port` (::xilinx::ADF::GraphInOutOp)
 
-Graph input/output port operation
+_Graph input/output port operation_
 
 
 Syntax:
@@ -29,17 +64,18 @@ This is usually used to represent inout parameter val=ues
   %2 = ADF.inout_port("name") %3 : (!ADF.interface<!ADF.int32>) -> !ADF.interface<!ADF.int32>                                           
 ```
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `name` | ::mlir::StringAttr | string attribute
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+</table>
 
 #### Operands:
 
@@ -53,9 +89,10 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 &laquo;unnamed&raquo; | 
 
+
 ### `ADF.input_port` (::xilinx::ADF::GraphInputOp)
 
-Graph input port operation
+_Graph input port operation_
 
 
 Syntax:
@@ -84,18 +121,19 @@ interface values defined by the argument array attributes.
   %1 = ADF.input_port("name")  [0:i1, 128:i32] -> !ADF.interface<!ADF.int32> // for ADF window access mechanism 
 ```
 
-Traits: AlwaysSpeculatableImplTrait, ConstantLike
+Traits: `AlwaysSpeculatableImplTrait`, `ConstantLike`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `value` | ::mlir::ArrayAttr | array attribute
-| `name` | ::mlir::StringAttr | string attribute
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>value</code></td><td>::mlir::ArrayAttr</td><td>array attribute</td></tr>
+<tr><td><code>name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+</table>
 
 #### Results:
 
@@ -103,85 +141,10 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `output` | 
 
-### `ADF.graph` (::xilinx::ADF::GraphOp)
-
-An ADF graph operation
-
-
-Syntax:
-
-```
-operation ::= `ADF.graph` `(` $name `)` regions attr-dict
-```
-
-An operation that represents an ADF graph.  This operation determines
-the name of the graph and contains a single region containing ADF
-dialect operations. For example, 
-
-```mlir
-ADF.graph("name") {
-  your_graph_operations
-}
-```
-
-Traits: AlwaysSpeculatableImplTrait, NoTerminator, SingleBlock
-
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
-
-Effects: MemoryEffects::Effect{}
-
-#### Attributes:
-
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `name` | ::mlir::StringAttr | string attribute
-
-### `ADF.output_port` (::xilinx::ADF::GraphOutputOp)
-
-Graph output port operation
-
-
-Syntax:
-
-```
-operation ::= `ADF.output_port` `(` $name `)` $inp attr-dict `:` `(`type($inp) `)` `->` type(results)
-```
-
-An operation representing a primary input of an ADF graph. 
-The operation takes an argument with "window" type and also returns an
-"window" type output for final type checking. 
-
-```mlir
-  %2 = ADF.output_port("name") %3 : (!ADF.interface<!ADF.int32>) -> !ADF.interface<!ADF.int32>                                           
-```
-
-Traits: AlwaysSpeculatableImplTrait
-
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
-
-Effects: MemoryEffects::Effect{}
-
-#### Attributes:
-
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `name` | ::mlir::StringAttr | string attribute
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `inp` | 
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-&laquo;unnamed&raquo; | 
 
 ### `ADF.kernel` (::xilinx::ADF::KernelOp)
 
-call and instantiate a kernel node with proper connections
+_Call and instantiate a kernel node with proper connections_
 
 
 Syntax:
@@ -200,23 +163,24 @@ window size through entire ADF graph.
           (!ADF.interface<!ADF.int32>, !ADF.interface<!ADF.int32>) -> !ADF.interface<!ADF.int32>
 ```
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `callee` | ::mlir::FlatSymbolRefAttr | flat symbol reference attribute
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>callee</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+</table>
 
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-| `kernel_inputs` | 
+| `kernel_inputs` | variadic of 
 
 #### Results:
 
@@ -224,7 +188,53 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 &laquo;unnamed&raquo; | 
 
-## Type definition
+
+### `ADF.output_port` (::xilinx::ADF::GraphOutputOp)
+
+_Graph output port operation_
+
+
+Syntax:
+
+```
+operation ::= `ADF.output_port` `(` $name `)` $inp attr-dict `:` `(`type($inp) `)` `->` type(results)
+```
+
+An operation representing a primary input of an ADF graph. 
+The operation takes an argument with "window" type and also returns an
+"window" type output for final type checking. 
+
+```mlir
+  %2 = ADF.output_port("name") %3 : (!ADF.interface<!ADF.int32>) -> !ADF.interface<!ADF.int32>                                           
+```
+
+Traits: `AlwaysSpeculatableImplTrait`
+
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
+
+Effects: `MemoryEffects::Effect{}`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `inp` | 
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+&laquo;unnamed&raquo; | 
+
+
+## Types
 
 ### InterfaceType
 
@@ -234,7 +244,7 @@ Syntax:
 
 ```
 !ADF.interface<
-  Type   # type
+  mlir::Type   # type
 >
 ```
 
@@ -243,7 +253,7 @@ Syntax:
 
 | Parameter | C++ type | Description |
 | :-------: | :-------: | ----------- |
-| type | `Type` |  |
+| type | `mlir::Type` |  |
 
 ### ParameterType
 
@@ -253,7 +263,7 @@ Syntax:
 
 ```
 !ADF.parameter<
-  Type   # type
+  mlir::Type   # type
 >
 ```
 
@@ -262,7 +272,7 @@ Syntax:
 
 | Parameter | C++ type | Description |
 | :-------: | :-------: | ----------- |
-| type | `Type` |  |
+| type | `mlir::Type` |  |
 
 ### StreamType
 
@@ -272,7 +282,7 @@ Syntax:
 
 ```
 !ADF.stream<
-  Type   # type
+  mlir::Type   # type
 >
 ```
 
@@ -281,7 +291,7 @@ Syntax:
 
 | Parameter | C++ type | Description |
 | :-------: | :-------: | ----------- |
-| type | `Type` |  |
+| type | `mlir::Type` |  |
 
 ### WindowType
 
@@ -291,7 +301,7 @@ Syntax:
 
 ```
 !ADF.window<
-  Type,   # type
+  mlir::Type,   # type
   int,   # size
   int   # overlap
 >
@@ -302,7 +312,7 @@ Syntax:
 
 | Parameter | C++ type | Description |
 | :-------: | :-------: | ----------- |
-| type | `Type` |  |
+| type | `mlir::Type` |  |
 | size | `int` |  |
 | overlap | `int` |  |
 
@@ -376,6 +386,13 @@ Syntax: `!ADF.cint32`
 Syntax: `!ADF.float`
 
 
+### int8Type
+
+
+
+Syntax: `!ADF.int8`
+
+
 ### int16Type
 
 
@@ -397,11 +414,11 @@ Syntax: `!ADF.int32`
 Syntax: `!ADF.int64`
 
 
-### int8Type
+### uint8Type
 
 
 
-Syntax: `!ADF.int8`
+Syntax: `!ADF.uint8`
 
 
 ### uint16Type
@@ -423,12 +440,5 @@ Syntax: `!ADF.uint32`
 
 
 Syntax: `!ADF.uint64`
-
-
-### uint8Type
-
-
-
-Syntax: `!ADF.uint8`
 
 
