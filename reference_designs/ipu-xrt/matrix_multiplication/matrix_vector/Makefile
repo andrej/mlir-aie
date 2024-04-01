@@ -10,10 +10,16 @@ subdir=matrix_vector
 targetname=matrixVectorMultiplication
 kernels=mv
 
-# Currently does not accept reconfiguring size via these variables; must change
-# in source at aie2.py as well as here
-M=288
-K=288
+M?=288
+K?=288
 N=1
+
+cores?=1
+
+aieargs=-M ${M} -K ${K} -N ${N} --cores ${cores}
+
+mlir_target?=build/aie_${M}x${K}_${cores}c.mlir
+xclbin_target?=build/final_${M}x${K}_${cores}c.xclbin
+insts_target?=build/insts_${M}x${K}_${cores}.txt
 
 include ../makefile-common

@@ -5,6 +5,8 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
+import argparse
+
 from aie.extras.context import mlir_mod_ctx
 
 from aie.dialects.aie import *
@@ -12,15 +14,22 @@ from aie.dialects.aiex import *
 from aie.dialects.scf import *
 
 
-def my_matmul():
-    M = 288
-    K = 288
+def main():
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument("-M", type=int, default=288)
+    argparser.add_argument("-K", type=int, default=288)
+    argparser.add_argument("-N", type=int, default=1)
+    argparser.add_argument("--cores", type=int, default=1)
+    args = argparser.parse_args()
+    assert(args.N == 1)  # matrix-VECTOR multiplication
+    my_matmul(args.M, args.K, args.cores)
+
+
+def my_matmul(M, K, n_cores):
     m = 32
     k = 32
     word_size_in = 2
     word_size_out = 4
-
-    n_cores = 1
 
     A_sz_in_i32s = M * K * word_size_in // 4
     B_sz_in_i32s = K * word_size_in // 4
@@ -208,5 +217,5 @@ def my_matmul():
 
     print(ctx.module)
 
-
-my_matmul()
+if __name__ == "__main__":
+    main()
