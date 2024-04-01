@@ -31,21 +31,9 @@ def my_matmul(M, K, n_cores):
     word_size_in = 2
     word_size_out = 4
 
-    A_sz_in_i32s = M * K * word_size_in // 4
-    B_sz_in_i32s = K * word_size_in // 4
-    C_sz_in_bytes = M * word_size_out
-    C_sz_in_i32s = C_sz_in_bytes // 4
-    C_sz_div_n_cores_in_i32s = C_sz_in_i32s // n_cores
-
-    M_div_m = M // m
-    M_div_m_div_n_cores = M // (m * n_cores)
-    K_div_k = K // k
-
-    K_in_i32s = K * word_size_in // 4
-    k_in_i32s = k * word_size_in // 4
-    m_in_i32s = m * word_size_in // 4
-    m_x_k_in_i32s = m * k * word_size_in // 4
-    m_x_K_in_i32s = m * K * word_size_in // 4
+    A_sz = M * K * word_size_in
+    B_sz = K * word_size_in
+    C_sz = M * word_size_out
 
     vectorized = True
 
@@ -151,7 +139,7 @@ def my_matmul(M, K, n_cores):
                         )
                         call(zero, [elem_out])
 
-                        for _ in for_(K_div_k):
+                        for _ in for_(K // k):
                             elem_in_a = inA_fifos[inA_fifo_names[i]].acquire(
                                 ObjectFifoPort.Consume,
                                 1,
@@ -180,35 +168,35 @@ def my_matmul(M, K, n_cores):
             # To/from AIE-array data movement
 
             @FuncOp.from_py_func(
-                T.memref(A_sz_in_i32s, T.i32()),
-                T.memref(B_sz_in_i32s, T.i32()),
-                T.memref(C_sz_in_i32s, T.i32()),
+                T.memref(A_sz // 4, T.i32()),
+                T.memref(B_sz // 4, T.i32()),
+                T.memref(C_sz // 4, T.i32()),
             )
             def sequence(A, B, C):
                 ipu_dma_memcpy_nd(
                     metadata=inB_fifo_names[0],
                     bd_id=2,
                     mem=B,
-                    sizes=[M_div_m_div_n_cores, 1, 1, K_in_i32s],
+                    sizes=[M // m // n_cores, 1, 1, K * word_size_in // 4],
                     strides=[0, 0, 0],
                 )
                 for i in range(n_cores):
-                    A_offset = i * M_div_m_div_n_cores * m * K * word_size_in // 4
-                    C_offset = i * M_div_m_div_n_cores * m * word_size_out // 4
+                    A_offset = i * (M // m // n_cores) * m * K * word_size_in // 4
+                    C_offset = i * (M // m // n_cores) * m * word_size_out // 4
                     ipu_dma_memcpy_nd(
                         metadata=memA_fifo_names[i],
                         bd_id=1,
                         mem=A,
                         offsets=[0, 0, 0, A_offset],
-                        sizes=[M_div_m_div_n_cores, K_div_k, m, k_in_i32s],
-                        strides=[m_x_K_in_i32s, k_in_i32s, K_in_i32s],
+                        sizes=[M // m // n_cores, K // k, m, k * word_size_in // 4],
+                        strides=[m * K * word_size_in // 4, k * word_size_in // 4, K * word_size_in // 4],
                     )
                     ipu_dma_memcpy_nd(
                         metadata=outC_fifo_names[i],
                         bd_id=0,
                         mem=C,
                         offsets=[0, 0, 0, C_offset],
-                        sizes=[1, 1, 1, C_sz_div_n_cores_in_i32s],
+                        sizes=[1, 1, 1, C_sz // n_cores // 4],
                         strides=[0, 0, 0],
                     )
 
