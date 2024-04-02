@@ -10,11 +10,4 @@ subdir=single_core
 targetname=matrixMultiplication
 kernels=mm
 
-# Currently does not accept reconfiguring size via these variables; must change
-# in source at aie2.py as well as here
-M=256
-K=256
-N=256
-
 include ../makefile-common
-

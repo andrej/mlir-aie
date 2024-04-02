@@ -14,16 +14,21 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.dialects.scf import *
 
+# tracing, common need to be imported after the above because they may emit
+# instructions and need the context
+import sys
+from os.path import dirname, abspath
+
+sys.path.append(dirname(dirname(abspath(__file__))))
+import tracing, common
+
 
 def main():
-    argparser = argparse.ArgumentParser(
-        prog="AIE Matrix Multiplication MLIR Design (Whole Array)",
-        description="Emits MLIR code for a matrix multiplication design of the given input size",
-    )
-    argparser.add_argument("-M", type=int, default=512)
-    argparser.add_argument("-K", type=int, default=512)
-    argparser.add_argument("-N", type=int, default=512)
+    argparser = common.get_default_argparser(512, 512, 512)
     args = argparser.parse_args()
+    assert (
+        args.trace == 0
+    )  # No circuit-switched routing available for trace in this design
     my_matmul(args.M, args.K, args.N)
 
 
