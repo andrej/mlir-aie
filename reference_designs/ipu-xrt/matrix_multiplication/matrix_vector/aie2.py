@@ -173,35 +173,43 @@ def my_matmul(M, K, n_cores):
                 T.memref(C_sz // 4, T.i32()),
             )
             def sequence(A, B, C):
-                ipu_dma_memcpy_nd(
-                    metadata=inB_fifo_names[0],
-                    bd_id=2,
-                    mem=B,
-                    sizes=[M // m // n_cores, 1, 1, K * word_size_in // 4],
-                    strides=[0, 0, 0],
-                )
-                for i in range(n_cores):
-                    A_offset = i * (M // m // n_cores) * m * K * word_size_in // 4
-                    C_offset = i * (M // m // n_cores) * m * word_size_out // 4
+                # Repeat entire B vector M // m // n_cores times.
+                # If M // m // n_cores > 64, we need to split it up into separate transfers.
+                transfer_sz = 64
+                for transfer_i in range((M // m // n_cores + transfer_sz - 1) // transfer_sz):
+                    B_repeats = min(transfer_sz, M // m // n_cores - transfer_i*transfer_sz)
+                    transfer_offset = transfer_i * transfer_sz 
                     ipu_dma_memcpy_nd(
-                        metadata=memA_fifo_names[i],
-                        bd_id=1,
-                        mem=A,
-                        offsets=[0, 0, 0, A_offset],
-                        sizes=[M // m // n_cores, K // k, m, k * word_size_in // 4],
-                        strides=[m * K * word_size_in // 4, k * word_size_in // 4, K * word_size_in // 4],
-                    )
-                    ipu_dma_memcpy_nd(
-                        metadata=outC_fifo_names[i],
-                        bd_id=0,
-                        mem=C,
-                        offsets=[0, 0, 0, C_offset],
-                        sizes=[1, 1, 1, C_sz // n_cores // 4],
+                        metadata=inB_fifo_names[0],
+                        bd_id=2,
+                        mem=B,
+                        sizes=[B_repeats, 1, 1, K * word_size_in // 4],
                         strides=[0, 0, 0],
                     )
-
-                for i in range(n_cores):
-                    ipu_sync(column=i, row=0, direction=0, channel=0)
+                    # Each core is responsible for M // n_cores rows of the output C.
+                    for i in range(n_cores):
+                        A_offset = (transfer_offset * K * word_size_in // 4 
+                                    + i * (M // n_cores) * K * word_size_in // 4)
+                        C_offset = (transfer_offset * m * word_size_out // 4
+                                    + i * (M // n_cores) * word_size_out // 4)
+                        ipu_dma_memcpy_nd(
+                            metadata=memA_fifo_names[i],
+                            bd_id=1,
+                            mem=A,
+                            offsets=[0, 0, 0, A_offset],
+                            sizes=[B_repeats, K // k, m, k * word_size_in // 4],
+                            strides=[m * K * word_size_in // 4, k * word_size_in // 4, K * word_size_in // 4],
+                        )
+                        ipu_dma_memcpy_nd(
+                            metadata=outC_fifo_names[i],
+                            bd_id=0,
+                            mem=C,
+                            offsets=[0, 0, 0, C_offset],
+                            sizes=[1, 1, 1, B_repeats * m * word_size_out // 4],
+                            strides=[0, 0, 0],
+                        )
+                    for i in range(n_cores):
+                        ipu_sync(column=i, row=0, direction=0, channel=0)
 
     print(ctx.module)
 
