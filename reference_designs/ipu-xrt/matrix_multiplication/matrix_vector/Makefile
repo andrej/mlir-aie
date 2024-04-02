@@ -15,11 +15,9 @@ K?=288
 N=1
 
 cores?=1
+trace?=0
 
-aieargs=-M ${M} -K ${K} -N ${N} --cores ${cores}
-
-mlir_target?=build/aie_${M}x${K}_${cores}c.mlir
-xclbin_target?=build/final_${M}x${K}_${cores}c.xclbin
-insts_target?=build/insts_${M}x${K}_${cores}.txt
+target_suffix?=_${M}x${K}_c${cores}_t${trace}
 
 include ../makefile-common
+aieargs+= --cores ${cores}

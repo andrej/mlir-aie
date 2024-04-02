@@ -5,27 +5,31 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
-import argparse
-
 from aie.extras.context import mlir_mod_ctx
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.dialects.scf import *
 
+# tracing, common need to be imported after the above because they may emit
+# instructions and need the context
+import sys
+from os.path import dirname, abspath
+
+sys.path.append(dirname(dirname(abspath(__file__))))
+import tracing, common
+
 
 def main():
-    argparser = argparse.ArgumentParser()
-    argparser.add_argument("-M", type=int, default=288)
-    argparser.add_argument("-K", type=int, default=288)
-    argparser.add_argument("-N", type=int, default=1)
+    argparser = common.get_default_argparser(288, 288, 1)
     argparser.add_argument("--cores", type=int, default=1)
     args = argparser.parse_args()
-    assert(args.N == 1)  # matrix-VECTOR multiplication
-    my_matmul(args.M, args.K, args.cores)
+    assert args.N == 1  # matrix-VECTOR multiplication
+    assert 0 < args.cores <= 4
+    my_matmul(args.M, args.K, args.cores, args.trace)
 
 
-def my_matmul(M, K, n_cores):
+def my_matmul(M, K, n_cores, trace_sz):
     m = 32
     k = 32
     word_size_in = 2
@@ -127,6 +131,10 @@ def my_matmul(M, K, n_cores):
                     memRef_outC_ty,
                 )
 
+            # Set up a circuit-switched flow from core to shim for tracing information
+            if trace_sz > 0:
+                tracing.trace_flow(ComputeTile0, ShimTile0)
+
             # Set up compute tiles
             for i in range(n_cores):
                 # Compute tile i
@@ -173,12 +181,22 @@ def my_matmul(M, K, n_cores):
                 T.memref(C_sz // 4, T.i32()),
             )
             def sequence(A, B, C):
+                # Tracing config
+                if trace_sz > 0:
+                    tracing.trace_setup(
+                        ComputeTile0, ShimTile0, trace_sz, C_sz, 13, common.trace_events
+                    )
+
                 # Repeat entire B vector M // m // n_cores times.
                 # If M // m // n_cores > 64, we need to split it up into separate transfers.
                 transfer_sz = 64
-                for transfer_i in range((M // m // n_cores + transfer_sz - 1) // transfer_sz):
-                    B_repeats = min(transfer_sz, M // m // n_cores - transfer_i*transfer_sz)
-                    transfer_offset = transfer_i * transfer_sz 
+                for transfer_i in range(
+                    (M // m // n_cores + transfer_sz - 1) // transfer_sz
+                ):
+                    B_repeats = min(
+                        transfer_sz, M // m // n_cores - transfer_i * transfer_sz
+                    )
+                    transfer_offset = transfer_i * transfer_sz
                     ipu_dma_memcpy_nd(
                         metadata=inB_fifo_names[0],
                         bd_id=2,
@@ -188,17 +206,25 @@ def my_matmul(M, K, n_cores):
                     )
                     # Each core is responsible for M // n_cores rows of the output C.
                     for i in range(n_cores):
-                        A_offset = (transfer_offset * K * word_size_in // 4 
-                                    + i * (M // n_cores) * K * word_size_in // 4)
-                        C_offset = (transfer_offset * m * word_size_out // 4
-                                    + i * (M // n_cores) * word_size_out // 4)
+                        A_offset = (
+                            transfer_offset * K * word_size_in // 4
+                            + i * (M // n_cores) * K * word_size_in // 4
+                        )
+                        C_offset = (
+                            transfer_offset * m * word_size_out // 4
+                            + i * (M // n_cores) * word_size_out // 4
+                        )
                         ipu_dma_memcpy_nd(
                             metadata=memA_fifo_names[i],
                             bd_id=1,
                             mem=A,
                             offsets=[0, 0, 0, A_offset],
                             sizes=[B_repeats, K // k, m, k * word_size_in // 4],
-                            strides=[m * K * word_size_in // 4, k * word_size_in // 4, K * word_size_in // 4],
+                            strides=[
+                                m * K * word_size_in // 4,
+                                k * word_size_in // 4,
+                                K * word_size_in // 4,
+                            ],
                         )
                         ipu_dma_memcpy_nd(
                             metadata=outC_fifo_names[i],
@@ -212,6 +238,7 @@ def my_matmul(M, K, n_cores):
                         ipu_sync(column=i, row=0, direction=0, channel=0)
 
     print(ctx.module)
+
 
 if __name__ == "__main__":
     main()
