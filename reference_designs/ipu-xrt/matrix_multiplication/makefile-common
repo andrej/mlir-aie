@@ -33,13 +33,16 @@ include ../../makefile-common
 M?=512   
 K?=512
 N?=512
+trace?=0
 
-mlir_target?=build/aie_${M}x${K}x${N}.mlir
-xclbin_target?=build/final_${M}x${K}x${N}.xclbin
-insts_target?=build/insts_${M}x${K}x${N}.txt
+target_suffix?=_${M}x${K}x${N}_t${trace}
 
-runargs?=-v 1 --warmup 10 --iters 10
-aieargs?=-M ${M} -K ${K} -N ${N}
+mlir_target?=build/aie${target_suffix}.mlir
+xclbin_target?=build/final${target_suffix}.xclbin
+insts_target?=build/insts${target_suffix}.txt
+
+runargs?=--trace_sz ${trace}
+aieargs?=-M ${M} -K ${K} -N ${N} --trace ${trace}
 
 kernels_dir=../../../../aie_kernels/iron
 
@@ -86,7 +89,7 @@ clean:
 
 .PHONY: parse_trace
 parse_trace:
-	../../../utils/parse_eventIR.py --filename trace.txt --mlir ./build/aie.mlir --colshift 1 > trace_eventIR.json
+	../../../utils/parse_eventIR.py --filename trace.txt --mlir ${mlir_target} --colshift 1 > trace_eventIR.json
 
 .PHONY: clean_trace
 clean_trace:
