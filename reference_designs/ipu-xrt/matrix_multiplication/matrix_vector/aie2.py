@@ -5,6 +5,8 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
+from collections import OrderedDict
+
 from aie.extras.context import mlir_mod_ctx
 
 from aie.dialects.aie import *
@@ -21,7 +23,7 @@ import tracing, common
 
 
 def main():
-    argparser = common.get_default_argparser(288, 288, 1)
+    argparser = common.get_default_argparser(1024, 1024, 1)
     argparser.add_argument("--cores", type=int, default=1)
     args = argparser.parse_args()
     assert args.N == 1  # matrix-VECTOR multiplication
@@ -40,12 +42,27 @@ def my_matmul(M, K, n_cores, trace_sz):
     C_sz = M * word_size_out
 
     vectorized = True
+    n_parallel_transfers = 2
+
+    assert(n_cores == 1 or
+           n_cores > 1 and n_parallel_transfers == 1)
+    
+    # The trace we set up is on the left-most column and goes out the left-
+    # most shim tile. When doing parallel transfers, the pathfinder routes
+    # multiple channels in the leftmost column as well, and as a result
+    # we run out of channels. To fix this, we move the memory tile that
+    # moves the data one column to the right.
+    trace_fix_offset = 0
+    if trace_sz > 0 and n_parallel_transfers > 1:
+        trace_fix_offset = 1
+    assert(n_cores*n_parallel_transfers + trace_fix_offset < 4)
 
     with mlir_mod_ctx() as ctx:
 
         @device(AIEDevice.ipu)
         def device_body():
-            memRef_inA_ty = T.memref(m * k, T.bf16())
+            #memRef_inA_ty = T.memref(m * k, T.bf16())
+            memRef_inA_partial_ty = T.memref(m * k // n_parallel_transfers, T.bf16())
             memRef_inB_ty = T.memref(k, T.bf16())
             memRef_outC_ty = T.memref(m, T.f32())
             memRef_A_ty = T.memref(m, k, T.bf16())
@@ -78,10 +95,8 @@ def my_matmul(M, K, n_cores, trace_sz):
             ComputeTile2 = tile(2, 2)
             ComputeTile3 = tile(3, 2)
             cores = [ComputeTile0, ComputeTile1, ComputeTile2, ComputeTile3]
-            memA_fifo_names = ["memA0", "memA1", "memA2", "memA3"]
-            memA_fifos = {}
-            inA_fifo_names = ["inA0", "inA1", "inA2", "inA3"]
-            inA_fifos = {}
+            memA_fifos = OrderedDict()
+            inA_fifos = OrderedDict()
             inB_fifo_names = ["inB"]
             inB_fifos = {}
             outC_fifo_names = ["outC0", "outC1", "outC2", "outC3"]
@@ -90,16 +105,10 @@ def my_matmul(M, K, n_cores, trace_sz):
             # AIE-array data movement with object fifos
             # Input A
             for i in range(n_cores):
-                memA_fifos[memA_fifo_names[i]] = object_fifo(
-                    memA_fifo_names[i],
-                    ShimTiles[i],
-                    MemTiles[i],
-                    2,
-                    memRef_inA_ty,
-                )
-                inA_fifos[inA_fifo_names[i]] = object_fifo(
-                    inA_fifo_names[i],
-                    MemTiles[i],
+                core_fifo = f"inA_{i}"
+                inA_fifos[core_fifo] = object_fifo(
+                    core_fifo,
+                    MemTiles[i+trace_fix_offset],
                     cores[i],
                     2,
                     memRef_A_ty,
@@ -108,8 +117,18 @@ def my_matmul(M, K, n_cores, trace_sz):
                         (k, 1),
                     ],
                 )
+                for j in range(n_parallel_transfers):
+                    mem_fifo = f"memA_{i}_{j}"
+                    memA_fifos[mem_fifo] = object_fifo(
+                        mem_fifo,
+                        ShimTiles[i*n_parallel_transfers + j],
+                        MemTiles[i+trace_fix_offset],
+                        2,
+                        memRef_inA_partial_ty,
+                    )
                 object_fifo_link(
-                    memA_fifos[memA_fifo_names[i]], inA_fifos[inA_fifo_names[i]]
+                    [memA_fifos[f"memA_{i}_{j}"] for j in range(n_parallel_transfers)], 
+                    inA_fifos[core_fifo]
                 )
 
             # Input B
@@ -148,7 +167,8 @@ def my_matmul(M, K, n_cores, trace_sz):
                         call(zero, [elem_out])
 
                         for _ in for_(K // k):
-                            elem_in_a = inA_fifos[inA_fifo_names[i]].acquire(
+                            core_A_fifo = f"inA_{i}"
+                            elem_in_a = inA_fifos[core_A_fifo].acquire(
                                 ObjectFifoPort.Consume,
                                 1,
                             )
@@ -157,7 +177,7 @@ def my_matmul(M, K, n_cores, trace_sz):
                                 1,
                             )
                             call(matvec, [elem_in_a, elem_in_b, elem_out])
-                            inA_fifos[inA_fifo_names[i]].release(
+                            inA_fifos[core_A_fifo].release(
                                 ObjectFifoPort.Consume,
                                 1,
                             )
@@ -184,7 +204,7 @@ def my_matmul(M, K, n_cores, trace_sz):
                 # Tracing config
                 if trace_sz > 0:
                     tracing.trace_setup(
-                        ComputeTile0, ShimTile0, trace_sz, C_sz, 13, common.trace_events
+                        ComputeTile0, ShimTile0, trace_sz, C_sz, 2, common.trace_events
                     )
 
                 # Repeat entire B vector M // m // n_cores times.
@@ -197,34 +217,22 @@ def my_matmul(M, K, n_cores, trace_sz):
                         transfer_sz, M // m // n_cores - transfer_i * transfer_sz
                     )
                     transfer_offset = transfer_i * transfer_sz
+
+                    # B
                     ipu_dma_memcpy_nd(
                         metadata=inB_fifo_names[0],
-                        bd_id=2,
+                        bd_id=1,
                         mem=B,
                         sizes=[B_repeats, 1, 1, K * word_size_in // 4],
                         strides=[0, 0, 0],
                     )
+
                     # Each core is responsible for M // n_cores rows of the output C.
                     for i in range(n_cores):
-                        A_offset = (
-                            transfer_offset * K * word_size_in // 4
-                            + i * (M // n_cores) * K * word_size_in // 4
-                        )
+                        # C
                         C_offset = (
                             transfer_offset * m * word_size_out // 4
                             + i * (M // n_cores) * word_size_out // 4
-                        )
-                        ipu_dma_memcpy_nd(
-                            metadata=memA_fifo_names[i],
-                            bd_id=1,
-                            mem=A,
-                            offsets=[0, 0, 0, A_offset],
-                            sizes=[B_repeats, K // k, m, k * word_size_in // 4],
-                            strides=[
-                                m * K * word_size_in // 4,
-                                k * word_size_in // 4,
-                                K * word_size_in // 4,
-                            ],
                         )
                         ipu_dma_memcpy_nd(
                             metadata=outC_fifo_names[i],
@@ -234,6 +242,27 @@ def my_matmul(M, K, n_cores, trace_sz):
                             sizes=[1, 1, 1, B_repeats * m * word_size_out // 4],
                             strides=[0, 0, 0],
                         )
+
+                        # A
+                        for j in range(n_parallel_transfers):
+                            A_offset = (
+                                transfer_offset * K * word_size_in // 4
+                                + i * (M // n_cores) * K * word_size_in // 4
+                                + j * (m // n_parallel_transfers) * K * word_size_in // 4
+                            )
+                            ipu_dma_memcpy_nd(
+                                metadata=f"memA_{i}_{j}",
+                                bd_id=3+j,
+                                mem=A,
+                                offsets=[0, 0, 0, A_offset],
+                                sizes=[B_repeats, K // k, m // n_parallel_transfers, k * word_size_in // 4],
+                                strides=[
+                                    m * K * word_size_in // 4,
+                                    k * word_size_in // 4,
+                                    K * word_size_in // 4,
+                                ],
+                            )
+
                     for i in range(n_cores):
                         ipu_sync(column=i, row=0, direction=0, channel=0)
 
