@@ -17,9 +17,6 @@
 #include <stdlib.h>
 #include <type_traits>
 
-#define REL_WRITE 0
-#define REL_READ 1
-
 #include <aie_api/aie.hpp>
 
 #include "zero.cc"
@@ -39,7 +36,7 @@ void matvec_scalar(T_in *a, T_in *b, T_out *c) {
 
 template <typename T_in, typename T_out, typename T_acc, unsigned m, unsigned k,
           unsigned r, unsigned s>
-void matvec_vectorized(T_in *__restrict a, T_in *__restrict b,
+void matvec_vectorized(T_in *__restrict a_1, T_in *__restrict a_2, T_in *__restrict b,
                        T_out *__restrict c) {
   static_assert(m % r == 0 && k % 2 == 0);
   static_assert(s == 8); // s is fixed to 8 because that is the number of
@@ -67,7 +64,7 @@ void matvec_vectorized(T_in *__restrict a, T_in *__restrict b,
   // acquired b vector from the outer loop.
 
   event0();
-  T_in *__restrict a_ptr = a;
+  T_in *__restrict a_ptr = a_1;
   T_in *__restrict b_ptr = b;
 
   for (int col = 0; col < k; col += 8) {
@@ -126,6 +123,9 @@ void matvec_vectorized(T_in *__restrict a, T_in *__restrict b,
       }
 
     a_ptr += 6 * m; // Move to next 8 columns of A.
+    if(a_ptr - a_1 >  k / 2) {
+      a_ptr = a_2;
+    }
     b_ptr += s;     // Move to next s (==8) rows of b.
   }
   event1();
@@ -135,7 +135,7 @@ extern "C" {
 
 #define combos(X)                                                              \
   X(bfloat16, bf16, float, f32, accfloat)                                      \
-//    X(int16,         i16, int16,    i16, acc32)                                  \
+//X(int16,         i16, int16,    i16, acc32)                                  \
 
 #define matvec_scalar_c_func(ctype_in, mlir_type_in, ctype_out, mlir_type_out, \
                              ctype_acc)                                        \
@@ -147,9 +147,9 @@ extern "C" {
 #define matvec_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,            \
                                  mlir_type_out, ctype_acc)                     \
   void matvec_vectorized_##mlir_type_in##_##mlir_type_out(                     \
-      ctype_in *a_in, ctype_in *b_in, ctype_out *c_out) {                      \
+      ctype_in *a_in_1, ctype_in *a_in_2, ctype_in *b_in, ctype_out *c_out) {                      \
     matvec_vectorized<ctype_in, ctype_out, ctype_acc, 32, 32, 16, 8>(          \
-        a_in, b_in, c_out);                                                    \
+        a_in_1, a_in_2, b_in, c_out);                                                    \
   }
 
 #define zero_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,              \
@@ -164,7 +164,9 @@ extern "C" {
     zero_scalar<ctype_out, 32, 1>(c_out);                                      \
   }
 
-combos(matvec_scalar_c_func) combos(matvec_vectorized_c_func)
-    combos(zero_vectorized_c_func) combos(zero_scalar_c_func)
+//combos(matvec_scalar_c_func)
+combos(matvec_vectorized_c_func)
+//combos(zero_scalar_c_func)
+combos(zero_vectorized_c_func)
 
 } // extern "C"
