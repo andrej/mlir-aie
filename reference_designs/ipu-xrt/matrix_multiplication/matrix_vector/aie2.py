@@ -42,7 +42,7 @@ def my_matmul(M, K, n_cores, trace_sz):
     C_sz = M * word_size_out
 
     vectorized = True
-    n_parallel_transfers = 1
+    n_parallel_transfers = 2
 
     use_A_dummy = False  # Replace object fifo A on core with a constant buffer on core (remove transfer cost)
     use_A_shim_dummy = False  # Re-route object fifo A: instead of going from shim -> mem -> core, make another core put nonsense data in it core -> core (eliminate shim cost)
@@ -102,7 +102,8 @@ def my_matmul(M, K, n_cores, trace_sz):
             ComputeTile3 = tile(3, 2)
             cores = [ComputeTile0, ComputeTile1, ComputeTile2, ComputeTile3]
             if use_A_shim_dummy:
-                dummy_core = ComputeTile1
+                dummy_link_core = MemTile1
+                dummy_cores = [ComputeTile2, ComputeTile3]
             memA_fifos = OrderedDict()
             inA_fifos = OrderedDict()
             inB_fifo_names = ["inB"]
@@ -124,7 +125,7 @@ def my_matmul(M, K, n_cores, trace_sz):
                     core_fifo = f"inA_{i}"
                     inA_fifos[core_fifo] = object_fifo(
                         core_fifo,
-                        MemTiles[i] if not use_A_dummy else dummy_core,
+                        MemTiles[i+trace_fix_offset] if not use_A_shim_dummy else dummy_link_core,
                         cores[i],
                         2,
                         memRef_A_ty,
@@ -133,20 +134,19 @@ def my_matmul(M, K, n_cores, trace_sz):
                             (k, 1),
                         ],
                     )
-                    if not use_A_shim_dummy:
-                        for j in range(n_parallel_transfers):
-                            mem_fifo = f"memA_{i}_{j}"
-                            memA_fifos[mem_fifo] = object_fifo(
-                                mem_fifo,
-                                ShimTiles[i*n_parallel_transfers + j],
-                                MemTiles[i+trace_fix_offset],
-                                2,
-                                memRef_inA_partial_ty,
-                            )
-                        object_fifo_link(
-                            [memA_fifos[f"memA_{i}_{j}"] for j in range(n_parallel_transfers)], 
-                            inA_fifos[core_fifo]
+                    for j in range(n_parallel_transfers):
+                        mem_fifo = f"memA_{i}_{j}"
+                        memA_fifos[mem_fifo] = object_fifo(
+                            mem_fifo,
+                            ShimTiles[i*n_parallel_transfers + j] if not use_A_shim_dummy else dummy_cores[j],
+                            MemTiles[i+trace_fix_offset] if not use_A_shim_dummy else dummy_link_core,
+                            2,
+                            memRef_inA_partial_ty,
                         )
+                    object_fifo_link(
+                        [memA_fifos[f"memA_{i}_{j}"] for j in range(n_parallel_transfers)], 
+                        inA_fifos[core_fifo]
+                    )
 
             # Input B
             if not use_B_dummy:
@@ -216,18 +216,19 @@ def my_matmul(M, K, n_cores, trace_sz):
                         yield_([])
 
             if use_A_shim_dummy:
-                @core(dummy_core)
-                def dummy_A_queue_core():
-                    for _ in for_(0xFFFFFFFF):
-                        elem_out = inA_fifos["inA_0"].acquire(
-                            ObjectFifoPort.Produce,
-                            1,
-                        )
-                        inA_fifos["inA_0"].release(
-                            ObjectFifoPort.Produce,
-                            1,
-                        )
-                        yield_([])
+                for j in range(n_parallel_transfers):
+                    @core(dummy_cores[j])
+                    def dummy_A_queue_core():
+                        for _ in for_(0xFFFFFFFF):
+                            elem_out = memA_fifos[f"memA_0_{j}"].acquire(
+                                ObjectFifoPort.Produce,
+                                1,
+                            )
+                            memA_fifos[f"memA_0_{j}"].release(
+                                ObjectFifoPort.Produce,
+                                1,
+                            )
+                            yield_([])
 
             # To/from AIE-array data movement
 
