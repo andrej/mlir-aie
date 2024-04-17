@@ -42,7 +42,7 @@ def my_matmul(M, K, n_cores, trace_sz):
     C_sz = M * word_size_out
 
     use_A_dummy = False  # Replace object fifo A on core with a constant buffer on core (remove transfer cost)
-    use_B_dummy = True
+    use_B_dummy = False
     
     # The trace we set up is on the left-most column and goes out the left-
     # most shim tile. When doing parallel transfers, the pathfinder routes
@@ -58,8 +58,7 @@ def my_matmul(M, K, n_cores, trace_sz):
 
         @device(AIEDevice.ipu)
         def device_body():
-            #memRef_inA_ty = T.memref(m * k, T.bf16())
-            memRef_inA_partial_ty = T.memref(m * k // 2, T.bf16())
+            memRef_inA_ty = T.memref(m * k, T.bf16())
             memRef_inB_ty = T.memref(k, T.bf16())
             memRef_outC_ty = T.memref(m, T.f32())
 
@@ -68,7 +67,7 @@ def my_matmul(M, K, n_cores, trace_sz):
             zero = external_func("zero_vectorized_f32", inputs=[memRef_outC_ty])
             matvec = external_func(
                 "matvec_vectorized_bf16_f32",
-                inputs=[memRef_inA_partial_ty, memRef_inA_partial_ty, memRef_inB_ty, memRef_outC_ty],
+                inputs=[memRef_inA_ty, memRef_inB_ty, memRef_outC_ty],
             )
 
             # Tile declarations
@@ -105,18 +104,19 @@ def my_matmul(M, K, n_cores, trace_sz):
             # Input A
             if not use_A_dummy:
                 for i in range(n_cores):
-                    for j in range(2):
+                    for j in range(1):
                         core_fifo = f"inA_{i}_{j}"
                         mem_fifo = f"memA_{i}_{j}"
+
                         inA_fifos[core_fifo] = object_fifo(
                             core_fifo,
                             MemTiles[i*2+trace_fix_offset + j],
                             cores[i],
                             2,
-                            memRef_inA_partial_ty,
+                            memRef_inA_ty,
                             [
-                                (m, k//2),
-                                (k//2, 1),
+                                (m, k),
+                                (k, 1),
                             ],
                         )
                         memA_fifos[mem_fifo] = object_fifo(
@@ -124,7 +124,7 @@ def my_matmul(M, K, n_cores, trace_sz):
                             ShimTiles[i*2 + j],
                             MemTiles[i*2+trace_fix_offset + j],
                             2,
-                            memRef_inA_partial_ty,
+                            memRef_inA_ty,
                         )
                         object_fifo_link(
                             [memA_fifos[mem_fifo]], 
@@ -169,13 +169,8 @@ def my_matmul(M, K, n_cores, trace_sz):
                         call(zero, [elem_out])
 
                         for _ in for_(K // k):
-                            core_A_1_fifo = f"inA_{i}_0"
-                            core_A_2_fifo = f"inA_{i}_1"
-                            elem_in_a_1 = inA_fifos[core_A_1_fifo].acquire(
-                                ObjectFifoPort.Consume,
-                                1,
-                            ) if not use_A_dummy else A_dummies[i]
-                            elem_in_a_2 = inA_fifos[core_A_2_fifo].acquire(
+                            core_A_fifo = f"inA_{i}_0"
+                            elem_in_a = inA_fifos[core_A_fifo].acquire(
                                 ObjectFifoPort.Consume,
                                 1,
                             ) if not use_A_dummy else A_dummies[i]
@@ -183,15 +178,11 @@ def my_matmul(M, K, n_cores, trace_sz):
                                 ObjectFifoPort.Consume,
                                 1,
                             ) if not use_B_dummy else B_dummies[i]
-                            call(matvec, [elem_in_a_1, elem_in_a_2, elem_in_b, elem_out])
+                            call(matvec, [elem_in_a, elem_in_b, elem_out])
                             if not use_A_dummy:
-                                inA_fifos[core_A_1_fifo].release(
+                                inA_fifos[core_A_fifo].release(
                                     ObjectFifoPort.Consume,
                                     1,
-                                )
-                                inA_fifos[core_A_2_fifo].release(
-                                    ObjectFifoPort.Consume,
-                                    1
                                 )
                             if not use_B_dummy:
                                 inB_fifos[inB_fifo_names[0]].release(
@@ -260,18 +251,18 @@ def my_matmul(M, K, n_cores, trace_sz):
 
                         # A
                         if not use_A_dummy:
-                            for j in range(2):
+                            for j in range(1):
                                 A_offset = (
                                     transfer_offset * K * word_size_in // 4
                                     + i * (M // n_cores) * K * word_size_in // 4
-                                    + j * (m // 2) * K * word_size_in // 4
+                                    + j * (m) * K * word_size_in // 4
                                 )
                                 ipu_dma_memcpy_nd(
                                     metadata=f"memA_{i}_{j}",
                                     bd_id=3+j,
                                     mem=A,
                                     offsets=[0, 0, 0, A_offset],
-                                    sizes=[B_repeats, K // k, m // 2, k * word_size_in // 4],
+                                    sizes=[B_repeats, K // k, m, k * word_size_in // 4],
                                     strides=[
                                         m * K * word_size_in // 4,
                                         k * word_size_in // 4,
