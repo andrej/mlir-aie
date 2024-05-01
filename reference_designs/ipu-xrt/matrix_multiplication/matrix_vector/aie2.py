@@ -250,6 +250,7 @@ def my_matmul(M, K, n_cores, trace_sz):
             # ########################################
 
             A_B_L3L2 : list[Stream] = [None] * n_cores
+            mem_dummy_locks : list[LockOp] = [None] * n_cores
             A_B_L2L1 : list[Stream] = [None] * n_cores
             dummy_locks : list[LockOp] = [None] * n_cores
             C_L1L3 : List[Stream] = [None] * n_cores
@@ -273,6 +274,7 @@ def my_matmul(M, K, n_cores, trace_sz):
                 C_L1L3[i] = Stream(f"C_L1L3_{i}", (CoreTile, 0), (ShimTile, 0), memref=memRef_outC_ty, n_buffers=n_buffers_per_stream)
                 C_L1L3[i].generate()
                 dummy_locks[i] = lock(CoreTile, init=10)
+                mem_dummy_locks[i] = lock(MemTile, init=10)
 
             # DMA blocks must be defined after locks and buffers, since they
             # will refer to them.
@@ -307,15 +309,21 @@ def my_matmul(M, K, n_cores, trace_sz):
                         NextBDOp(blocks[j+2] if j<n_buffers_per_stream-1 else blocks[1])
 
                 # L2 (MemTile) memory --> stream towards L1 
-                blocks = MemTileDMAChain.append_blocks(n_dma_blocks_per_stream)
+                blocks = MemTileDMAChain.append_blocks(n_dma_blocks_per_stream + n_buffers_per_stream)
                 with InsertionPoint(blocks[0]), Location.unknown():
                     MemTileDMAChain.append_start_op(DMAStartOp(DMAChannelDir.MM2S, channel_index=A_B_L3L2[i].dstDMAChannel, dest=blocks[1]))
                 for j in range(0, n_buffers_per_stream):
-                    with InsertionPoint(blocks[j+1]), Location.unknown():
+                    with InsertionPoint(blocks[2*j+1]), Location.unknown():
                         use_lock(A_B_L3L2[i].dstConsLock, LockAction.AcquireGreaterEqual, value=1)
-                        dma_bd(A_B_L3L2[i].dstBuffers[j], offset=0, len=get_memref_size(A_B_L3L2[i].dstMemref))
+                        dma_bd(A_B_L3L2[i].dstBuffers[j], offset=0, len=get_memref_size(memRef_inA_ty),
+                               dimensions=[(m, k), (k, 1)])
+                        use_lock(mem_dummy_locks[i], LockAction.Release, value=1)
+                        NextBDOp(blocks[2*j+2])
+                    with InsertionPoint(blocks[2*j+2]), Location.unknown():
+                        use_lock(mem_dummy_locks[i], LockAction.AcquireGreaterEqual, value=1)
+                        dma_bd(A_B_L3L2[i].dstBuffers[j], offset=0, len=get_memref_size(memRef_inB_ty))
                         use_lock(A_B_L3L2[i].dstProdLock, LockAction.Release, value=1)
-                        NextBDOp(blocks[j+2] if j<n_buffers_per_stream-1 else blocks[1])
+                        NextBDOp(blocks[2*j+3] if 2*j+3<len(blocks) else blocks[1])
                 
                 # L2 (MemTile) stream --> L1 (CoreTile) memory
                 blocks = CoreTileDMAChain.append_blocks(n_dma_blocks_per_stream + n_buffers_per_stream)
