@@ -351,7 +351,7 @@ def my_matmul(M, K, n_cores, trace_sz):
                     with InsertionPoint(blocks[2*j+1]), Location.unknown():
                         use_lock(A_L3L2[i].dstConsLock, LockAction.AcquireGreaterEqual, value=1)
                         dma_bd(A_L3L2[i].dstBuffers[j], offset=0, len=get_memref_size(A_L3L2[i].dstMemref),
-                               #dimensions=[(m, k), (k, 1)]
+                               dimensions=[(k//2, 2), (m, k), (2, 1)] # transpose at 4-byte (2xbf16) granularity
                                )
                         use_lock(A_L3L2[i].dstProdLock, LockAction.Release, value=1)
                         NextBDOp(blocks[2*j+2])
@@ -426,8 +426,8 @@ def my_matmul(M, K, n_cores, trace_sz):
                                     use_lock(B_L2L1[i].dstConsLock, LockAction.AcquireGreaterEqual, value=1)
                                     elem_in_a = A_L2L1[i].dstBuffers[j]
                                     elem_in_b = B_L2L1[i].dstBuffers[j]
-                                    call(matvec_scalar, [elem_in_a, elem_in_b, elem_out])
-                                    #call(passthrough_b, [elem_in_a, elem_in_b, elem_out])
+                                    call(matvec, [elem_in_a, elem_in_b, elem_out])
+                                    #call(passthrough_a, [elem_in_a, elem_in_b, elem_out])
                                     use_lock(A_L2L1[i].dstProdLock, LockAction.Release, value=1)
                                     use_lock(B_L2L1[i].dstProdLock, LockAction.Release, value=1)
                                 yield_([])
@@ -497,6 +497,7 @@ def my_matmul(M, K, n_cores, trace_sz):
                                 m * K * word_size_in // 4,
                                 k * word_size_in // 4,
                                 K * word_size_in // 4,
+                                # implicitly 1
                             ],
                         )
 
