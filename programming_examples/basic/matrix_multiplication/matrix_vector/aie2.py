@@ -197,7 +197,7 @@ def my_matmul(M, K, n_cores, trace_sz):
 
     use_B_dummy = False
 
-    n_buffers_per_stream = 1  # ping-pong
+    n_buffers_per_stream = 2  # ping-pong
     n_dma_blocks_per_stream = (n_buffers_per_stream  # mm2s and s2mm for each buffer
                                + 1)   # a start block
 
