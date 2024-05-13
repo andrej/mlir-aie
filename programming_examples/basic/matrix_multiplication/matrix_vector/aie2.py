@@ -362,6 +362,7 @@ def my_matmul(M, K, n_cores, trace_sz):
                         NextBDOp(blocks[2*j+3] if 2*j+3<len(blocks) else blocks[1])
 
                 # L2 (MemTile) stream --> L1 (CoreTile) memory
+                # Fused movement of A and b through same channel
                 blocks = CoreTileDMAChain.append_blocks(n_dma_blocks_per_stream + n_buffers_per_stream)
                 with InsertionPoint(blocks[0]), Location.unknown():
                     CoreTileDMAChain.append_start_op(DMAStartOp(DMAChannelDir.S2MM, channel_index=A_L2L1[i].dstDMAChannel, dest=blocks[1]))
@@ -426,6 +427,7 @@ def my_matmul(M, K, n_cores, trace_sz):
                                     elem_in_a = A_L2L1[i].dstBuffers[j]
                                     elem_in_b = B_L2L1[i].dstBuffers[j]
                                     call(matvec_scalar, [elem_in_a, elem_in_b, elem_out])
+                                    #call(passthrough_b, [elem_in_a, elem_in_b, elem_out])
                                     use_lock(A_L2L1[i].dstProdLock, LockAction.Release, value=1)
                                     use_lock(B_L2L1[i].dstProdLock, LockAction.Release, value=1)
                                 yield_([])

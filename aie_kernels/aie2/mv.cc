@@ -163,7 +163,23 @@ extern "C" {
 
 combos(matvec_scalar_c_func)
 combos(matvec_vectorized_c_func)
-//combos(zero_scalar_c_func)
+combos(zero_scalar_c_func)
 combos(zero_vectorized_c_func)
+
+void passthrough_a(bfloat16 *a_in, bfloat16 *b_in, float *c_out) {
+  constexpr int M = 32;
+  constexpr int K = 32;
+  for(int i = 0; i < M; i++) {
+    c_out[i] = a_in[i];
+  }
+}
+
+void passthrough_b(bfloat16 *a_in, bfloat16 *b_in, float *c_out) {
+  constexpr int M = 32;
+  constexpr int K = 32;
+  for(int i = 0; i < M; i++) {
+    c_out[i] = b_in[i];
+  }
+}
 
 } // extern "C"
