@@ -96,7 +96,7 @@ static const std::map<WireBundle, StrmSwPortType>
     WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE = {
         {WireBundle::Core, StrmSwPortType::CORE},
         {WireBundle::DMA, StrmSwPortType::DMA},
-        // missing control from StrmSwPortType
+        {WireBundle::Ctrl, StrmSwPortType::CTRL},
         {WireBundle::FIFO, StrmSwPortType::FIFO},
         {WireBundle::South, StrmSwPortType::SOUTH},
         {WireBundle::West, StrmSwPortType::WEST},
@@ -265,7 +265,7 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
     // write them out like this so they show up with names in debug prints
     size_t smid = 0;
     size_t burstLen = 16; // (10):BLEN=16 (256Byte) (corresponds to
-                          // 0x800000000 from targetipu)
+                          // 0x800000000 from target)
     size_t qOs = 0;
     size_t cache = 0;
     size_t secure = 0;
@@ -390,15 +390,21 @@ struct AIEControl {
   XAie_Config configPtr;
   XAie_DevInst devInst;
 
-  AIEControl(size_t partitionStartCol, size_t partitionNumCols, bool aieSim,
-             bool xaieDebug, const AIETargetModel &tm) {
+  AIEControl(bool aieSim, bool xaieDebug, const BaseNPUTargetModel &tm) {
+    // The first column in the NPU lacks a shim tile.  AIE-RT exposes some of
+    // the internals about how this is modeled in a somewhat awkward way.
+    size_t partitionStartCol = tm.isVirtualized() ? 1 : 0;
+    size_t partitionNumCols = tm.columns();
+    size_t deviceRows = tm.rows();
+    size_t deviceCols = tm.columns() + partitionStartCol;
+
     configPtr = XAie_Config{
         /*AieGen*/ XAIE_DEV_GEN_AIEML,
         /*BaseAddr*/ XAIE_BASE_ADDR,
         /*ColShift*/ XAIE_COL_SHIFT,
         /*RowShift*/ XAIE_ROW_SHIFT,
-        /*NumRows*/ static_cast<uint8_t>(tm.rows()),
-        /*NumCols*/ static_cast<uint8_t>(tm.columns()),
+        /*NumRows*/ static_cast<uint8_t>(deviceRows),
+        /*NumCols*/ static_cast<uint8_t>(deviceCols),
         /*ShimRowNum*/ XAIE_SHIM_ROW,
         /*MemTileRowStart*/ XAIE_MEM_TILE_ROW_START,
         /*MemTileNumRows*/ static_cast<uint8_t>(tm.getNumMemTileRows()),
@@ -414,7 +420,6 @@ struct AIEControl {
     //		more memory from the user application for resource management.
     XAie_InstDeclare(_devInst, &configPtr);
     devInst = _devInst;
-    // TODO(max): what is the "partition"?
     TRY_XAIE_API_FATAL_ERROR(XAie_SetupPartitionConfig, &devInst,
                              XAIE_PARTITION_BASE_ADDR, partitionStartCol,
                              partitionNumCols);
@@ -559,8 +564,7 @@ struct AIEControl {
       int32_t col = switchboxOp.colIndex();
       int32_t row = switchboxOp.rowIndex();
       XAie_LocType tileLoc = XAie_TileLoc(col, row);
-      assert(targetOp.getDevice() == AIEDevice::ipu &&
-             "Only IPU currently supported");
+      assert(targetModel.isNPU() && "Only NPU currently supported");
       if (row == 0) {
         // FIXME hack for TCT routing
         // TODO Support both channels
@@ -773,24 +777,19 @@ LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
                                       byte_ordering endianness,
                                       bool emitUnified, bool cdoDebug,
                                       bool aieSim, bool xaieDebug,
-                                      size_t partitionStartCol,
                                       bool enableCores) {
   auto devOps = m.getOps<DeviceOp>();
   assert(llvm::range_size(devOps) == 1 &&
          "only exactly 1 device op supported.");
   DeviceOp targetOp = *devOps.begin();
+  const BaseNPUTargetModel &targetModel =
+      (const BaseNPUTargetModel &)targetOp.getTargetModel();
+
   // things like XAIE_MEM_TILE_ROW_START and the missing
-  // shim dma on tile (0,0) are hard-coded assumptions about IPU...
-  assert(targetOp.getDevice() == AIEDevice::ipu &&
-         "Only IPU currently supported");
-  int maxCol = 0, minCol = 0;
-  for (auto tileOp : targetOp.getOps<TileOp>()) {
-    minCol = std::min(tileOp.getCol(), minCol);
-    maxCol = std::max(tileOp.getCol(), maxCol);
-  }
-  size_t partitionNumCols = maxCol - minCol + 1;
-  AIEControl ctl(partitionStartCol, partitionNumCols, aieSim, xaieDebug,
-                 targetOp.getTargetModel());
+  // shim dma on tile (0,0) are hard-coded assumptions about NPU...
+  assert(targetModel.isNPU() && "Only NPU currently supported");
+
+  AIEControl ctl(aieSim, xaieDebug, targetModel);
   initializeCDOGenerator(endianness, cdoDebug);
   if (emitUnified)
     return generateCDOUnified(ctl, workDirPath, targetOp, aieSim, enableCores);
@@ -803,12 +802,10 @@ namespace xilinx::AIE {
 LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
                                       bool bigEndian, bool emitUnified,
                                       bool cdoDebug, bool aieSim,
-                                      bool xaieDebug, size_t partitionStartCol,
-                                      bool enableCores) {
+                                      bool xaieDebug, bool enableCores) {
   byte_ordering endianness =
       bigEndian ? byte_ordering::Big_Endian : byte_ordering::Little_Endian;
   return AIETranslateToCDODirect(m, workDirPath, endianness, emitUnified,
-                                 cdoDebug, aieSim, xaieDebug, partitionStartCol,
-                                 enableCores);
+                                 cdoDebug, aieSim, xaieDebug, enableCores);
 }
 } // namespace xilinx::AIE

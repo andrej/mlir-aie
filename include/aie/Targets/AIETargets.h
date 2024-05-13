@@ -31,9 +31,9 @@ mlir::LogicalResult AIETranslateShimSolution(mlir::ModuleOp module,
                                              llvm::raw_ostream &);
 mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
                                          llvm::raw_ostream &);
-mlir::LogicalResult AIETranslateToIPU(mlir::ModuleOp module,
+mlir::LogicalResult AIETranslateToNPU(mlir::ModuleOp module,
                                       llvm::raw_ostream &output);
-std::vector<uint32_t> AIETranslateToIPU(mlir::ModuleOp);
+std::vector<uint32_t> AIETranslateToNPU(mlir::ModuleOp);
 mlir::LogicalResult AIETranslateToLdScript(mlir::ModuleOp module,
                                            llvm::raw_ostream &output,
                                            int tileCol, int tileRow);
@@ -50,8 +50,7 @@ mlir::LogicalResult
 AIETranslateToCDODirect(mlir::ModuleOp m, llvm::StringRef workDirPath,
                         bool bigEndian = false, bool emitUnified = false,
                         bool cdoDebug = false, bool aieSim = false,
-                        bool xaieDebug = false, size_t partitionStartCol = 1,
-                        bool enableCores = true);
+                        bool xaieDebug = false, bool enableCores = true);
 #ifdef AIE_ENABLE_AIRBIN
 mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
                                          const std::string &outputFilename,

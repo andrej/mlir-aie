@@ -55,15 +55,15 @@ MlirStringRef aieTranslateModuleToLLVMIR(MlirOperation moduleOp) {
   return mlirStringRefCreate(cStr, llvmir.size());
 }
 
-MlirLogicalResult
-aieTranslateToCDODirect(MlirOperation moduleOp, MlirStringRef workDirPath,
-                        bool bigEndian, bool emitUnified, bool cdoDebug,
-                        bool aieSim, bool xaieDebug, size_t partitionStartCol,
-                        bool enableCores) {
+MlirLogicalResult aieTranslateToCDODirect(MlirOperation moduleOp,
+                                          MlirStringRef workDirPath,
+                                          bool bigEndian, bool emitUnified,
+                                          bool cdoDebug, bool aieSim,
+                                          bool xaieDebug, bool enableCores) {
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
   auto status = AIETranslateToCDODirect(
       mod, llvm::StringRef(workDirPath.data, workDirPath.length), bigEndian,
-      emitUnified, cdoDebug, aieSim, xaieDebug, partitionStartCol, enableCores);
+      emitUnified, cdoDebug, aieSim, xaieDebug, enableCores);
   std::vector<std::string> diagnostics;
   ScopedDiagnosticHandler handler(mod.getContext(), [&](Diagnostic &d) {
     llvm::raw_string_ostream(diagnostics.emplace_back())
@@ -76,15 +76,15 @@ aieTranslateToCDODirect(MlirOperation moduleOp, MlirStringRef workDirPath,
   return wrap(status);
 }
 
-MlirStringRef aieTranslateToIPU(MlirOperation moduleOp) {
-  std::string ipu;
-  llvm::raw_string_ostream os(ipu);
+MlirStringRef aieTranslateToNPU(MlirOperation moduleOp) {
+  std::string npu;
+  llvm::raw_string_ostream os(npu);
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
-  if (failed(AIETranslateToIPU(mod, os)))
+  if (failed(AIETranslateToNPU(mod, os)))
     return mlirStringRefCreate(nullptr, 0);
-  char *cStr = static_cast<char *>(malloc(ipu.size()));
-  ipu.copy(cStr, ipu.size());
-  return mlirStringRefCreate(cStr, ipu.size());
+  char *cStr = static_cast<char *>(malloc(npu.size()));
+  npu.copy(cStr, npu.size());
+  return mlirStringRefCreate(cStr, npu.size());
 }
 
 MlirStringRef aieTranslateToXAIEV2(MlirOperation moduleOp) {

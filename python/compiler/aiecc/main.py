@@ -35,7 +35,7 @@ from aie.dialects import aie as aiedialect
 from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
 
-INPUT_WITH_ADDRESSES_PIPELINE = (
+INPUT_WITH_ADDRESSES_PIPELINE = lambda basic_alloc_scheme=False: (
     Pipeline()
     .lower_affine()
     .add_pass("aie-canonicalize-device")
@@ -48,9 +48,8 @@ INPUT_WITH_ADDRESSES_PIPELINE = (
         .add_pass("aie-assign-bd-ids")
         .add_pass("aie-lower-cascade-flows")
         .add_pass("aie-lower-broadcast-packet")
-        .add_pass("aie-create-packet-flows")
         .add_pass("aie-lower-multicast")
-        .add_pass("aie-assign-buffer-addresses"),
+        .add_pass("aie-assign-buffer-addresses", basic_alloc=basic_alloc_scheme),
     )
     .convert_scf_to_cf()
 )
@@ -89,7 +88,7 @@ AIE_LOWER_TO_LLVM = (
 CREATE_PATH_FINDER_FLOWS = Pipeline().Nested(
     "aie.device", Pipeline().add_pass("aie-create-pathfinder-flows")
 )
-DMA_TO_IPU = Pipeline().Nested("aie.device", Pipeline().add_pass("aie-dma-to-ipu"))
+DMA_TO_NPU = Pipeline().Nested("aie.device", Pipeline().add_pass("aie-dma-to-npu"))
 
 
 async def read_file_async(file_path: str) -> str:
@@ -193,8 +192,21 @@ def emit_partition(mlir_module_str, kernel_id="0x901", start_columns=None):
         max_col = max([t.col.value for t in tiles])
 
     num_cols = max_col - min_col + 1
+    device = find_ops(
+        module.operation,
+        lambda o: isinstance(o.operation.opview, aiedialect.DeviceOp),
+    )
+
     if start_columns is None:
-        start_columns = list(range(1, 6 - num_cols))
+        # It's arguable that this should should come from the device model
+        # somehow.  Or perhaps that it shouldn't be needed in the
+        # XCLbin at all, since it is basically describing information
+        # which is already inherent in the CDO.
+        # For the time being, we just leave it here.
+        if len(device) > 0 and int(device[0].device) == int(aiedialect.AIEDevice.npu1):
+            start_columns = [0]
+        else:
+            start_columns = list(range(1, 6 - num_cols))
 
     uuid = random.randint(2222, 9999)
     return {
@@ -582,7 +594,7 @@ class FlowRunner:
             self.prepend_tmp("aie_partition.json"),
         )
 
-        buffer_arg_names = ["in", "tmp", "out"]
+        buffer_arg_names = [f"bo{i}" for i in range(6)]
         await write_file_async(
             json.dumps(
                 emit_design_kernel_json(
@@ -625,9 +637,7 @@ class FlowRunner:
                 [
                     "aie-opt",
                     "--aie-create-pathfinder-flows",
-                    "--aie-lower-broadcast-packet",
                     "--aie-create-packet-flows",
-                    "--aie-lower-multicast",
                     file_with_addresses,
                     "-o",
                     file_physical,
@@ -987,7 +997,12 @@ class FlowRunner:
             )
 
             file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
-            pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE.materialize(module=True)
+            if opts.basic_alloc_scheme:
+                pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(True).materialize(
+                    module=True
+                )
+            else:
+                pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE().materialize(module=True)
             run_passes(
                 pass_pipeline,
                 self.mlir_module_str,
@@ -1013,14 +1028,14 @@ class FlowRunner:
                 exit(-3)
             aie_peano_target = aie_target.lower() + "-none-elf"
 
-            # Optionally generate insts.txt for IPU instruction stream
-            if opts.ipu or opts.only_ipu:
-                generated_insts_mlir = self.prepend_tmp("generated_ipu_insts.mlir")
+            # Optionally generate insts.txt for NPU instruction stream
+            if opts.npu or opts.only_npu:
+                generated_insts_mlir = self.prepend_tmp("generated_npu_insts.mlir")
                 await self.do_call(
                     progress_bar.task,
                     [
                         "aie-opt",
-                        "--aie-dma-to-ipu",
+                        "--aie-dma-to-npu",
                         file_with_addresses,
                         "-o",
                         generated_insts_mlir,
@@ -1030,13 +1045,13 @@ class FlowRunner:
                     progress_bar.task,
                     [
                         "aie-translate",
-                        "--aie-ipu-instgen",
+                        "--aie-npu-instgen",
                         generated_insts_mlir,
                         "-o",
                         opts.insts_name,
                     ],
                 )
-                if opts.only_ipu:
+                if opts.only_npu:
                     return
 
             chess_intrinsic_wrapper_ll_path = await self.prepare_for_chesshack(
