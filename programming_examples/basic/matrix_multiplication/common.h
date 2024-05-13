@@ -137,7 +137,7 @@ void matmul(int M, int N, int K, const std::vector<Tin> A,
   // B is a   KxN matrix
   // C is the MxN output matrix, assumed to be zeroed out
 
-  constexpr int K_block_size = 64;
+  const int K_block_size = std::min(K, 64);
   const int n_K_blocks = K / K_block_size;
 
   const Tin *B_origin = B.data(); /* Avoid a calls to B.data() within the loop
@@ -212,7 +212,7 @@ bool nearly_equal(float a, float b, float epsilon = 128 * FLT_EPSILON,
 
 template <typename T>
 void print_matrix(const std::vector<T> matrix, int n_cols,
-                  int n_printable_rows = 10, int n_printable_cols = 10,
+                  int n_printable_rows = 32, int n_printable_cols = 32,
                   std::ostream &ostream = std::cout,
                   const char col_sep[] = "  ", const char elide_sym[] = " ... ",
                   int w = -1) {
