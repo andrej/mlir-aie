@@ -10,8 +10,8 @@ subdir=matrix_vector
 targetname=matrixVectorMultiplication
 kernels=mv
 
-M?=288
-K?=288
+M?=512
+K?=512
 N=1
 
 cores?=1
@@ -21,4 +21,3 @@ target_suffix?=_${M}x${K}_c${cores}_t${trace}
 
 SELF_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 include ${SELF_DIR}../makefile-common
-aieargs+= --cores ${cores}
