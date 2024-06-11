@@ -103,35 +103,37 @@ You will...
     build-essential debhelper flex bison libssl-dev libelf-dev libboost-all-dev libpython3.10-dev libsystemd-dev libtiff-dev libudev-dev
     ```
 
-1. Pull the source for the correct kernel version, which is available in the AMDESE linux repository.
+1. Pull the source for the correct kernel version, which is available in the AMD-SW linux repository.
 
     ```bash
     git clone --depth=1 --branch v6.8-iommu-sva-part4-v7 git@github.com:AMD-SW/linux
     export LINUX_SRC_DIR=$(realpath linux)
     ```
 
-1. Create a build directory and a configuration within it.
+1. Create a build directory.
     
     ```bash
     mkdir linux-build
     export LINUX_BUILD_DIR=$(realpath linux-build)
-    cp /boot/config-`uname -r` $LINUX_BUILD_DIR/.config
     ```
 
-1. Go to the directory where you cloned Linux and adjust the configuration.
+1. Go to the directory where you cloned Linux, adjust the configuration and move it to the build folder.
 
     ```bash
     cd $LINUX_SRC_DIR
+    cp /boot/config-$(uname -r) .config
     make olddefconfig
-    ./scripts/config --file $LINUX_BUILD_DIR/.config --disable MODULE_SIG
-    ./scripts/config --file $LINUX_BUILD_DIR/.config --disable SYSTEM_TRUSTED_KEYS
-    ./scripts/config --file $LINUX_BUILD_DIR/.config --disable SYSTEM_REVOCATION_KEYS
-    ./scripts/config --file $LINUX_BUILD_DIR/.config --enable DRM_ACCEL
+    ./scripts/config --disable MODULE_SIG
+    ./scripts/config --disable SYSTEM_TRUSTED_KEYS
+    ./scripts/config --disable SYSTEM_REVOCATION_KEYS
+    ./scripts/config --enable DRM_ACCEL
+    mv .config $LINUX_BUILD_DIR
     ```
 
 1. Build Linux.
 
     ```bash
+    make mproper
     make -j$(nproc) O=$LINUX_BUILD_DIR bindeb-pkg 2>&1 | tee kernel-build.log
     ```
 
@@ -211,7 +213,8 @@ You will...
 
        ```bash
        cd $XDNA_SRC_DIR/xrt/build
-       ./build.sh
+       ./build.sh clean  # If you have previous old builds to clear.
+       ./build.sh -opt
        cd Release
        make package
        ```
@@ -224,14 +227,13 @@ You will...
        sudo dpkg -i xrt_202420.2.18.0_22.04-amd64-xbflash2.deb
        ```
 
-       > **An error is expected in this step.** Ignore it.
-
 
 
 1. Build XDNA-Driver. Below steps are adapted from [here](https://github.com/amd/xdna-driver).
 
     ```bash
     cd $XDNA_SRC_DIR/build
+    ./build.sh -clean
     ./build.sh -release
     ./build.sh -package
     ```
