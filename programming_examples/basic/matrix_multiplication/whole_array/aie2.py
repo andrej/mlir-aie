@@ -39,9 +39,15 @@ def main():
 
 
 def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
-    r = 4
-    s = 8
-    t = 4
+
+    if dtype_in_str == "bf16":
+        r = 4
+        s = 8
+        t = 4
+    elif dtype_in_str == "i16":
+        r = 4
+        s = 4
+        t = 4
 
     dtype_in = None
     if dtype_in_str == "bf16":
