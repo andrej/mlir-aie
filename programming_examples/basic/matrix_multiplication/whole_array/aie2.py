@@ -26,14 +26,27 @@ def main():
     argparser.add_argument("-m", type=int, default=64)
     argparser.add_argument("-k", type=int, default=64)
     argparser.add_argument("-n", type=int, default=64)
+    argparser.add_argument("--dtype_in", type=str, choices=["bf16", "i16"], default="bf16")
+    argparser.add_argument("--dtype_out", type=str, choices=["bf16", "i16"], default="bf16")
     args = argparser.parse_args()
-    my_matmul(args.M, args.K, args.N, args.m, args.k, args.n)
+    my_matmul(args.M, args.K, args.N, args.m, args.k, args.n, args.dtype_in, args.dtype_out)
 
 
-def my_matmul(M, K, N, m, k, n):
+def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
     r = 4
     s = 8
     t = 4
+
+    dtype_in = None
+    if dtype_in_str == "bf16":
+        dtype_in = T.bf16
+    elif dtype_in_str == "i16":
+        dtype_in = T.i16
+    dtype_out = None
+    if dtype_out_str == "bf16":
+        dtype_out = T.bf16
+    elif dtype_out_str == "i16":
+        dtype_out = T.i16
 
     n_rows = 4
     n_cols = 4
@@ -75,22 +88,22 @@ def my_matmul(M, K, N, m, k, n):
 
         @device(AIEDevice.npu1_4col)
         def device_body():
-            memRef_inA_ty = T.memref(m * k, T.bf16())
-            memRef_inB_ty = T.memref(k * n, T.bf16())
-            memRef_outC_ty = T.memref(m * n * n_rows, T.bf16())
-            memRef_A_ty = T.memref(m, k, T.bf16())
-            memRef_B_ty = T.memref(k, n, T.bf16())
-            memRef_C_ty = T.memref(m, n, T.bf16())
+            memRef_inA_ty = T.memref(m * k, dtype_in())
+            memRef_inB_ty = T.memref(k * n, dtype_in())
+            memRef_outC_ty = T.memref(m * n * n_rows, dtype_out())
+            memRef_A_ty = T.memref(m, k, dtype_in())
+            memRef_B_ty = T.memref(k, n, dtype_in())
+            memRef_C_ty = T.memref(m, n, dtype_out())
 
             # AIE Core Function declarations
-            zero_scalar = external_func("zero_scalar_bf16", inputs=[memRef_C_ty])
-            zero = external_func("zero_bf16", inputs=[memRef_C_ty])
+            zero_scalar = external_func(f"zero_scalar_{dtype_out_str}", inputs=[memRef_C_ty])
+            zero = external_func(f"zero_{dtype_out_str}", inputs=[memRef_C_ty])
             matmul_scalar = external_func(
-                "matmul_scalar_bf16_bf16",
+                f"matmul_scalar_{dtype_in_str}_{dtype_out_str}",
                 inputs=[memRef_A_ty, memRef_B_ty, memRef_C_ty],
             )
             matmul = external_func(
-                "matmul_bf16_bf16", inputs=[memRef_A_ty, memRef_B_ty, memRef_C_ty]
+                f"matmul_{dtype_in_str}_{dtype_out_str}", inputs=[memRef_A_ty, memRef_B_ty, memRef_C_ty]
             )
 
             # Tile declarations
@@ -298,9 +311,9 @@ def my_matmul(M, K, N, m, k, n):
             # To/from AIE-array data movement
 
             @FuncOp.from_py_func(
-                T.memref(M * K, T.bf16()),
-                T.memref(K * N, T.bf16()),
-                T.memref(M * N, T.bf16()),
+                T.memref(M * K, dtype_in()),
+                T.memref(K * N, dtype_in()),
+                T.memref(M * N, dtype_out()),
             )
             def sequence(A, B, C):
                 # only do 5 tile rows at a time before synchronizing, so we can reuse BDs
