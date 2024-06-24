@@ -155,7 +155,7 @@ int main(int argc, const char *argv[]) {
   std::vector<A_DATATYPE> AVec(A_VOLUME);
   for (int i = 0; i < A_VOLUME; i++) {
     AVec[i] = matmul_common::random_bfloat16_t();
-    //AVec[i] = i;
+    // AVec[i] = i;
   }
   memcpy(bufA, AVec.data(), (AVec.size() * sizeof(A_DATATYPE)));
   B_DATATYPE *bufB = bo_b.map<B_DATATYPE *>();
@@ -163,7 +163,7 @@ int main(int argc, const char *argv[]) {
   for (int i = 0; i < B_VOLUME; i++) {
     BVec[i] = matmul_common::random_bfloat16_t();
     // Diagonal:
-    //if(i % N == i / N) {
+    // if(i % N == i / N) {
     //  BVec[i] = 1.0;
     //} else {
     //  BVec[i] = 0.0;
@@ -179,7 +179,8 @@ int main(int argc, const char *argv[]) {
   if (verbosity >= 2) {
     std::cout << "DTYPE_IN  = " XSTR(DTYPE_IN) "\n";
     std::cout << "DTYPE_OUT = " XSTR(DTYPE_OUT) "\n";
-    std::cout << "Verification tolerance " << abs_tol << " absolute, " << rel_tol << " relative.\n";
+    std::cout << "Verification tolerance " << abs_tol << " absolute, "
+              << rel_tol << " relative.\n";
     std::cout << "A = \n";
     matmul_common::print_matrix(AVec, K);
     std::cout << "B = \n";
@@ -239,7 +240,8 @@ int main(int argc, const char *argv[]) {
       if (do_verify_stochastic) {
         errors = matmul_common::verify_stochastic<A_DATATYPE, C_DATATYPE,
                                                   ACC_DATATYPE>(
-            M, N, K, AVec, BVec, CVec, verify_stochastic_n_samples, verbosity, abs_tol, rel_tol);
+            M, N, K, AVec, BVec, CVec, verify_stochastic_n_samples, verbosity,
+            abs_tol, rel_tol);
       } else {
         errors = matmul_common::verify<A_DATATYPE, C_DATATYPE, ACC_DATATYPE>(
             M, N, K, AVec, BVec, CVec, abs_tol, rel_tol);

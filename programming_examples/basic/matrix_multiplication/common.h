@@ -237,7 +237,8 @@ struct error {
 
 template <typename Tout>
 std::optional<struct error<Tout>>
-verify_single(std::ostream &os, int row, int col, Tout expected, Tout actual, float abs_tol, float rel_tol) {
+verify_single(std::ostream &os, int row, int col, Tout expected, Tout actual,
+              float abs_tol, float rel_tol) {
   if (!nearly_equal(expected, actual, rel_tol, abs_tol)) {
     return (struct error<Tout>){row, col, expected, actual};
   }
@@ -273,8 +274,8 @@ void print_progress_bar(std::ostream &os, double progress, int len = 75) {
 
 template <typename Tin, typename Tout, typename Tacc>
 int verify(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B,
-           std::vector<Tout> C, int verbosity = 0,
-           float abs_tol = 0.5, float rel_tol = 0.05) {
+           std::vector<Tout> C, int verbosity = 0, float abs_tol = 0.5,
+           float rel_tol = 0.05) {
   int n_errors = 0;
   std::vector<struct error<Tout>> errors;
   Tout max_rel_error = (Tout)0.0f;
@@ -284,9 +285,9 @@ int verify(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B,
 
   for (int row = 0; row < M; row++) {
     for (int col = 0; col < N; col++) {
-      std::optional<struct error<Tout>> error = verify_single(
-          std::cout, row, col, CRef[row * N + col], C[row * N + col],
-          abs_tol, rel_tol);
+      std::optional<struct error<Tout>> error =
+          verify_single(std::cout, row, col, CRef[row * N + col],
+                        C[row * N + col], abs_tol, rel_tol);
       if (error.has_value()) {
         if (n_errors < max_printable_errors) {
           errors.push_back(*error);
@@ -316,8 +317,8 @@ int verify(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B,
 template <typename Tin, typename Tout, typename Tacc>
 int verify_stochastic(int M, int N, int K, std::vector<Tin> A,
                       std::vector<Tin> B, std::vector<Tout> C, int n_samples,
-                      int verbosity = 0,
-                      float abs_tol=0.5, float rel_tol=0.05) {
+                      int verbosity = 0, float abs_tol = 0.5,
+                      float rel_tol = 0.05) {
   std::mt19937 rng;
   auto rows = std::views::iota(0, M);
   auto cols = std::views::iota(0, N);
@@ -343,8 +344,8 @@ int verify_stochastic(int M, int N, int K, std::vector<Tin> A,
       print_progress_bar(std::cerr, progress);
     }
     Tout ref = mul_acc<Tin, Tout, Tacc>(M, N, K, row, col, A, B);
-    std::optional<struct error<Tout>> error =
-        verify_single(std::cout, row, col, ref, C[row * N + col], abs_tol, rel_tol);
+    std::optional<struct error<Tout>> error = verify_single(
+        std::cout, row, col, ref, C[row * N + col], abs_tol, rel_tol);
     if (error.has_value()) {
       if (n_errors < max_printable_errors) {
         errors.push_back(*error);

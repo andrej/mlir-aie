@@ -26,10 +26,16 @@ def main():
     argparser.add_argument("-m", type=int, default=64)
     argparser.add_argument("-k", type=int, default=64)
     argparser.add_argument("-n", type=int, default=64)
-    argparser.add_argument("--dtype_in", type=str, choices=["bf16", "i16"], default="bf16")
-    argparser.add_argument("--dtype_out", type=str, choices=["bf16", "i16"], default="bf16")
+    argparser.add_argument(
+        "--dtype_in", type=str, choices=["bf16", "i16"], default="bf16"
+    )
+    argparser.add_argument(
+        "--dtype_out", type=str, choices=["bf16", "i16"], default="bf16"
+    )
     args = argparser.parse_args()
-    my_matmul(args.M, args.K, args.N, args.m, args.k, args.n, args.dtype_in, args.dtype_out)
+    my_matmul(
+        args.M, args.K, args.N, args.m, args.k, args.n, args.dtype_in, args.dtype_out
+    )
 
 
 def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
@@ -90,14 +96,17 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
             ofifo_memref_c_ty = TypeAttr.get(ObjectFifoType.get(memref_c_ty))
 
             # AIE Core Function declarations
-            zero_scalar = external_func(f"zero_scalar_{dtype_out_str}", inputs=[memref_c_ty])
+            zero_scalar = external_func(
+                f"zero_scalar_{dtype_out_str}", inputs=[memref_c_ty]
+            )
             zero = external_func(f"zero_{dtype_out_str}", inputs=[memref_c_ty])
             matmul_scalar = external_func(
                 f"matmul_scalar_{dtype_in_str}_{dtype_out_str}",
                 inputs=[memref_a_ty, memref_b_ty, memref_c_ty],
             )
             matmul = external_func(
-                f"matmul_{dtype_in_str}_{dtype_out_str}", inputs=[memref_a_ty, memref_b_ty, memref_c_ty]
+                f"matmul_{dtype_in_str}_{dtype_out_str}",
+                inputs=[memref_a_ty, memref_b_ty, memref_c_ty],
             )
 
             # Tile declarations
