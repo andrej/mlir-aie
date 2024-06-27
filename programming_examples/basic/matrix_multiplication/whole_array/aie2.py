@@ -30,7 +30,7 @@ def main():
         "--dtype_in", type=str, choices=["bf16", "i16"], default="bf16"
     )
     argparser.add_argument(
-        "--dtype_out", type=str, choices=["bf16", "i16"], default="bf16"
+        "--dtype_out", type=str, choices=["bf16", "i16", "f32"], default="bf16"
     )
     args = argparser.parse_args()
     my_matmul(
@@ -59,6 +59,8 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
         dtype_out = T.bf16
     elif dtype_out_str == "i16":
         dtype_out = T.i16
+    elif dtype_out_str == "f32":
+        dtype_out = T.f32
 
     n_rows = 4
     n_cols = 4
