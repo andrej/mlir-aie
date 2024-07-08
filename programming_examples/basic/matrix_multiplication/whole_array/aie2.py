@@ -302,55 +302,73 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
         def sequence(A, B, C):
             # We are limited in the number of BDs. After synchronizing, we can reuse BDs.
             # We only transfer 5 rows of tiles at once before starting a new transfer block.
-            tb_max_n_rows = (
-                5  # tb = transfer block; block of transfers before sync call
-            )
-            for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
-                tb_n_rows = min(
-                    [tb_max_n_rows, M // m // n_aie_rows - tb * tb_max_n_rows]
+            t1_max_n_rows = 5 # transfer level 1
+            # We are also limited in the highest-dimension stride; this stride cannot exceed
+            # 1048576. The C transfer stride will exceed this limit first for large matrices.
+            # If the stride is too large, we have to do separate transfers instead of using
+            # a strided write.
+            C_row_stride = m * n_aie_rows * N
+            if C_row_stride  > 1048576:
+                t1_max_n_rows = 1
+                C_row_stride = 0
+            n_t1s = ceildiv(M // m // n_aie_rows, t1_max_n_rows)
+
+            # A row of tiles of A must be repeated to calculate the result with different
+            # inputs B to calculate the result for each column. We can implement up to 64
+            # of these repeats using hardware. Beyond that, we must implement it as 
+            # separate transfers.
+            t2_max_n_cols = 64
+            n_t2s = ceildiv(N // n // n_aie_cols, t2_max_n_cols)
+
+            # Transfer block
+            for t1 in range(n_t1s):
+                t1_n_rows = min(
+                    [t1_max_n_rows, M // m // n_aie_rows - t1 * t1_max_n_rows]
                 )
-                C_row_offset = tb * tb_max_n_rows * m * n_aie_rows * N
-                for col in range(n_aie_cols):
-                    C_col_offset = col * n
-                    C_offset = C_col_offset + C_row_offset
-                    npu_dma_memcpy_nd(
-                        metadata=C_l2l3_fifos[col].sym_name.value,
-                        bd_id=0,
-                        mem=C,
-                        offsets=[0, 0, 0, C_offset],
-                        sizes=[tb_n_rows, N // n // n_aie_cols, m * n_aie_rows, n],
-                        strides=[m * n_aie_rows * N, n * n_aie_cols, N, 1],
-                    )
-                    for tile_row in range(tb_n_rows):
-                        A_block_offset = (
-                            ((tb * tb_max_n_rows) + tile_row) * n_aie_rows * m * K
-                        )
-                        A_row_offset = col * n_A_tiles_per_shim * m * K
-                        A_offset = A_block_offset + A_row_offset
-                        B_col_offset = col * n
+                C_row_offset = t1 * t1_max_n_rows * m * n_aie_rows * N
+                for t2 in range(n_t2s):
+                    t2_n_cols = min([t2_max_n_cols, N // n // n_aie_cols - t2 * t2_max_n_cols])
+                    for col in range(n_aie_cols):
+                        C_col_offset = col * n + t2 * t2_max_n_cols * n
+                        C_offset = C_col_offset + C_row_offset
                         npu_dma_memcpy_nd(
-                            metadata=A_l3l2_fifos[col].sym_name.value,
-                            bd_id=2 * tile_row + 1,
-                            mem=A,
-                            offsets=[0, 0, 0, A_offset],
-                            sizes=[
-                                N // n // n_aie_cols,
-                                K // k,
-                                m * n_A_tiles_per_shim,
-                                k,
-                            ],
-                            strides=[0, k, K, 1],
+                            metadata=C_l2l3_fifos[col].sym_name.value,
+                            bd_id=0,
+                            mem=C,
+                            offsets=[0, 0, 0, C_offset],
+                            sizes=[t1_n_rows, t2_n_cols, m * n_aie_rows, n],
+                            strides=[C_row_stride, n * n_aie_cols, N, 1],
                         )
-                        npu_dma_memcpy_nd(
-                            metadata=B_l3l2_fifos[col].sym_name.value,
-                            bd_id=2 * tile_row + 2,
-                            mem=B,
-                            offsets=[0, 0, 0, B_col_offset],
-                            sizes=[N // n // n_aie_cols, K // k, k, n],
-                            strides=[n * n_aie_cols, k * N, N, 1],
-                        )
-                for col in range(n_aie_cols):
-                    npu_sync(column=col, row=0, direction=0, channel=0)
+                        for tile_row in range(t1_n_rows):
+                            A_block_offset = (
+                                ((t1 * t1_max_n_rows) + tile_row) * n_aie_rows * m * K
+                            )
+                            A_row_offset = col * n_A_tiles_per_shim * m * K
+                            A_offset = A_block_offset + A_row_offset
+                            B_col_offset = col * n + t2 * t2_max_n_cols * n
+                            npu_dma_memcpy_nd(
+                                metadata=A_l3l2_fifos[col].sym_name.value,
+                                bd_id=2 * tile_row + 1,
+                                mem=A,
+                                offsets=[0, 0, 0, A_offset],
+                                sizes=[
+                                    t2_n_cols,
+                                    K // k,
+                                    m * n_A_tiles_per_shim,
+                                    k,
+                                ],
+                                strides=[0, k, K, 1],
+                            )
+                            npu_dma_memcpy_nd(
+                                metadata=B_l3l2_fifos[col].sym_name.value,
+                                bd_id=2 * tile_row + 2,
+                                mem=B,
+                                offsets=[0, 0, 0, B_col_offset],
+                                sizes=[t2_n_cols, K // k, k, n],
+                                strides=[n * n_aie_cols, k * N, N, 1],
+                            )
+                    for col in range(n_aie_cols):
+                        npu_sync(column=col, row=0, direction=0, channel=0)
 
 
 if __name__ == "__main__":
