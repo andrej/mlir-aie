@@ -298,42 +298,47 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
             for tile_row in range(M // m // n_aie_rows):
                 for tile_col in range(N // n // n_aie_cols):
 
+                    n_bds = 0
                     for iter in range(K // k):
 
                         for col in range(n_aie_cols):
-                            A_offset = (tile_row * n_aie_rows * m * K 
-                                        + iter * k
-                                        + col * n_A_tiles_per_shim * m * K)
+                            A_offset = (
+                                tile_row * n_aie_rows * m * K
+                                + iter * k
+                                + col * n_A_tiles_per_shim * m * K
+                            )
                             npu_dma_memcpy_nd(
                                 metadata=A_l3l2_fifos[col].sym_name.value,
-                                #bd_id=1, 
-                                #bd_id=2*iter+1,
-                                bd_id=0,
+                                bd_id=n_bds,
                                 mem=A,
                                 offsets=[0, 0, 0, A_offset],
-                                sizes=  [1, 1, m * n_A_tiles_per_shim, k],
-                                strides=[0, 0,                      K, 1],
-                                issue_token=True
+                                sizes=[1, 1, m * n_A_tiles_per_shim, k],
+                                strides=[0, 0, K, 1],
+                                issue_token=True,
                             )
+                            n_bds += 1
 
-                            B_offset = (tile_col * n_aie_cols * n 
-                                        + col * n
-                                        + iter * k * N)
+                            B_offset = (
+                                tile_col * n_aie_cols * n + col * n + iter * k * N
+                            )
                             npu_dma_memcpy_nd(
                                 metadata=B_l3l2_fifos[col].sym_name.value,
-                                #bd_id=2, 
-                                #bd_id=2*iter+2,
-                                bd_id=1,
+                                bd_id=n_bds,
                                 mem=B,
                                 offsets=[0, 0, 0, B_offset],
-                                sizes=  [1, 1, k, n],
+                                sizes=[1, 1, k, n],
                                 strides=[0, 0, N, 1],
-                                issue_token=True
+                                issue_token=True,
                             )
+                            n_bds += 1
 
-                        for col in range(n_aie_cols):
-                            #npu_sync(column=col, row=1, direction=0, channel=0)
-                            npu_dma_wait(A_l3l2_fifos[col].sym_name.value)
+                        if n_bds >= 16:
+                            for col in range(n_aie_cols):
+                                n_tcts = n_bds // n_aie_cols // 2
+                                for _ in range(n_tcts):
+                                    npu_dma_wait(A_l3l2_fifos[col].sym_name.value)
+                                    npu_dma_wait(B_l3l2_fifos[col].sym_name.value)
+                            n_bds = 0
 
                     for col in range(n_aie_cols):
                         C_col_offset = tile_col * n_aie_cols * n + col * n
@@ -344,12 +349,13 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                             bd_id=0,
                             mem=C,
                             offsets=[0, 0, 0, C_offset],
-                            sizes=  [1, 1, m * n_aie_rows, n],
-                            strides=[0, 0,              N, 1],
+                            sizes=[1, 1, m * n_aie_rows, n],
+                            strides=[0, 0, N, 1],
                         )
 
                     for col in range(n_aie_cols):
-                        npu_sync(column=col, row=0, direction=0, channel=0)
+                        npu_dma_wait(C_l2l3_fifos[col].sym_name.value)
+                        # npu_sync(column=col, row=0, direction=0, channel=0)
 
 
 if __name__ == "__main__":
