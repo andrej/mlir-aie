@@ -116,7 +116,8 @@ int main(int argc, const char *argv[]) {
   // Compare out to in
   int errors = 0;
   for (int i = 0; i < PASSTHROUGH_SIZE * REPEAT_COUNT; i++) {
-    if (bufOut[i] != bufInA[i % PASSTHROUGH_SIZE])
+    // Every lineSize (==4) * pingpong part of the input will be repeated three times.
+    if (bufOut[i] != bufInA[(i / (REPEAT_COUNT*4*2)) * (4*2) + i % (4*2)])
       errors++;
   }
 

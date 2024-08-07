@@ -25,17 +25,22 @@ module {
 
     // -- attention --
     // We will repeat from mem tile memory onto the stream REPEAT_COUNT (3) times.
-    // In other words: Once the memtile receives something from the shim (S2MM), it will be sent out three times (MM2S).
+    // In other words: Each time the memtile receives something from the shim (S2MM), it will send that out three times (MM2S).
 
-    // The following lock is acquired by S2MM and released by MM2S.
+    // The following locks are acquired by S2MM and released by MM2S.
     // Since S2MM should run once for every three runs of MM2S, the S2MM side must acquire with a value of 3,
     // and the MM2S side releases by 1 each time it runs. This achieves one run of S2MM for three runs of MM2S.
-    %in_L3L2_cons_prod_lock = aie.lock(%tile_0_1, 0) {init = 6 : i32, sym_name = "in_L3L2_cons_prod_lock"} // lock init == 2 * REPEAT_COUNT
-    // The receiving side will release this lock once it has received something from the stream that is ready to 
-    // consume by the MM2S side. Since any buffer received once should be sent out (==consumed) three times,
-    // the receiving side (S2MM) will release this with a value of 3 for each received buffer. The sending (==repeating)
-    // side (MM2S) will acquire with a value of 1 each time it consumes a buffer.
-    %in_L3L2_cons_cons_lock = aie.lock(%tile_0_1, 1) {init = 0 : i32, sym_name = "in_L3L2_cons_cons_lock"}
+    // We need separate locks for the ping and pong buffers; if we had one lock initialized to value 6,
+    // the "pong" consumer side (acquiring only a value of 1) may start running even if only the ping producer side
+    // completed (releasing with a value of 3).
+    %in_L3L2_cons_prod_ping_lock = aie.lock(%tile_0_1, 0) {init = 3 : i32, sym_name = "in_L3L2_cons_prod_ping_lock"} 
+    %in_L3L2_cons_prod_pong_lock = aie.lock(%tile_0_1, 1) {init = 3 : i32, sym_name = "in_L3L2_cons_prod_pong_lock"} 
+    // The following locks are acquired by MM2S and released by S2MM.
+    // Since any buffer received once should be sent out three times, the receiving side (S2MM) will release this 
+    // with a value of 3 for each received buffer. The sending side (MM2S) will acquire with a value of 1 
+    // each time it consumes a buffer.
+    %in_L3L2_cons_cons_ping_lock = aie.lock(%tile_0_1, 2) {init = 0 : i32, sym_name = "in_L3L2_cons_cons_ping_lock"}
+    %in_L3L2_cons_cons_pong_lock = aie.lock(%tile_0_1, 3) {init = 0 : i32, sym_name = "in_L3L2_cons_cons_pong_lock"}
     // -- /attention--
 
     %in_L3L2_prod_lock = aie.lock(%tile_0_0, 0) {init = 0 : i32, sym_name = "in_L3L2_prod_lock"}
@@ -87,37 +92,37 @@ module {
 
     // -- attention --
     // This is the receiving side of the DMA.
-    // It receives buffers from the shim and stores them in memory.
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
     ^bb1:
       // Next lock asks: MM2S side, are you done with the ping buffer? If so, proceed.
-      aie.use_lock(%in_L3L2_cons_prod_lock, AcquireGreaterEqual, 3) // lock acquire = REPEAT_COUNT
+      aie.use_lock(%in_L3L2_cons_prod_ping_lock, AcquireGreaterEqual, 3) // lock acquire = REPEAT_COUNT
       aie.dma_bd(%in_L3L2_cons_buff_0 : memref<4xui8>, 0, 4)
       // Next lock says: MM2S side, I have new data for you to consume.
-      aie.use_lock(%in_L3L2_cons_cons_lock, Release, 3) // lock release = REPEAT_COUNT
+      aie.use_lock(%in_L3L2_cons_cons_ping_lock, Release, 3) // lock release = REPEAT_COUNT
       aie.next_bd ^bb2
     ^bb2:
       // As above, but for the pong buffer.
-      aie.use_lock(%in_L3L2_cons_prod_lock, AcquireGreaterEqual, 3) // lock acquire = REPEAT_COUNT
+      aie.use_lock(%in_L3L2_cons_prod_pong_lock, AcquireGreaterEqual, 3) // lock acquire = REPEAT_COUNT
       aie.dma_bd(%in_L3L2_cons_buff_1 : memref<4xui8>, 0, 4)
-      aie.use_lock(%in_L3L2_cons_cons_lock, Release, 3)  // lock release = REPEAT_COUNT
+      aie.use_lock(%in_L3L2_cons_cons_pong_lock, Release, 3)  // lock release = REPEAT_COUNT
       aie.next_bd ^bb1
     
     // This is the sending side of the DMA.
-    // It reads from memory and puts it on the stream.
-    // This does the actual repetition; 
-    // since it only acquires the locks with a value of 1, and the S2MM side needs to acqurie a value of 3.
+    // This does the actual repetition, since it only acquires the locks with a value of 1, and the S2MM side needs to acqurie a value of 3.
     ^bb3:
       %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb6, repeat_count = 2)  // repeat_count = (REPEAT_COUNT - 1)
     ^bb4:
-      aie.use_lock(%in_L3L2_cons_cons_lock, AcquireGreaterEqual, 1)
+      aie.use_lock(%in_L3L2_cons_cons_ping_lock, AcquireGreaterEqual, 1)
       aie.dma_bd(%in_L3L2_cons_buff_0 : memref<4xui8>, 0, 4)
-      aie.use_lock(%in_L3L2_cons_prod_lock, Release, 1)
+      aie.use_lock(%in_L3L2_cons_prod_ping_lock, Release, 1)
       aie.next_bd ^bb5
     ^bb5:
-      aie.use_lock(%in_L3L2_cons_cons_lock, AcquireGreaterEqual, 1)
+      aie.use_lock(%in_L3L2_cons_cons_pong_lock, AcquireGreaterEqual, 1)
       aie.dma_bd(%in_L3L2_cons_buff_1 : memref<4xui8>, 0, 4)
-      aie.use_lock(%in_L3L2_cons_prod_lock, Release, 1)
+      aie.use_lock(%in_L3L2_cons_prod_pong_lock, Release, 1)
+      // Since we are looping back to bb4 here, the repeat count really isn't necessary.
+      // This chain of BDs will never complete, since it's an infinite cycle.
+      // So it will never actually be repeated.
       aie.next_bd ^bb4
     ^bb6:
       aie.end
