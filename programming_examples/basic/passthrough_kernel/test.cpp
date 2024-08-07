@@ -24,7 +24,19 @@
 using DATATYPE = std::uint8_t;
 #endif
 
+#define PASSTHROUGH_SIZE 16
+#define REPEAT_COUNT 3
+
 namespace po = boost::program_options;
+
+void print_array(DATATYPE *data, size_t len) {
+  for(int i = 0; i < len; i++) {
+    if(i % 16 == 0) {
+      std::cout << std::endl;
+    }
+    std::cout << std::setw(3) << (unsigned)data[i] << " ";
+  }
+}
 
 int main(int argc, const char *argv[]) {
 
@@ -60,7 +72,7 @@ int main(int argc, const char *argv[]) {
   auto bo_inA = xrt::bo(device, PASSTHROUGH_SIZE * sizeof(DATATYPE),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
   auto bo_out =
-      xrt::bo(device, PASSTHROUGH_SIZE * sizeof(DATATYPE) + trace_size,
+      xrt::bo(device, PASSTHROUGH_SIZE * sizeof(DATATYPE) * REPEAT_COUNT,
               XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
 
   if (verbosity >= 1)
@@ -77,7 +89,7 @@ int main(int argc, const char *argv[]) {
 
   // Zero out buffer bo_out
   DATATYPE *bufOut = bo_out.map<DATATYPE *>();
-  memset(bufOut, 0, PASSTHROUGH_SIZE * sizeof(DATATYPE) + trace_size);
+  memset(bufOut, 0, PASSTHROUGH_SIZE * sizeof(DATATYPE) * REPEAT_COUNT);
 
   // sync host to device memories
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
@@ -94,17 +106,18 @@ int main(int argc, const char *argv[]) {
   // Sync device to host memories
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
+  // Print input & output
+  std::cout << "Input: ";
+  print_array(bufInA, PASSTHROUGH_SIZE);
+  std::cout << std::endl;
+  std::cout << "Output: ";
+  print_array(bufOut, PASSTHROUGH_SIZE * REPEAT_COUNT);
+
   // Compare out to in
   int errors = 0;
-  for (int i = 0; i < PASSTHROUGH_SIZE; i++) {
-    if (bufOut[i] != bufInA[i])
+  for (int i = 0; i < PASSTHROUGH_SIZE * REPEAT_COUNT; i++) {
+    if (bufOut[i] != bufInA[i % PASSTHROUGH_SIZE])
       errors++;
-  }
-
-  if (trace_size > 0) {
-    test_utils::write_out_trace(((char *)bufOut) +
-                                    (PASSTHROUGH_SIZE * sizeof(DATATYPE)),
-                                trace_size, vm["trace_file"].as<std::string>());
   }
 
   // Print Pass/Fail result of our test
