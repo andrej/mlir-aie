@@ -31,7 +31,11 @@ iterations?=9
 
 host_target?=build/test
 xclbin_targets?=\
-	build/final_do_nothing.xclbin \programming_examples/basic/opsync_benchmarks/aie2_config.mlir
+	build/final_do_nothing.xclbin \
+	build/final_config.xclbin \
+	build/final_config_start.xclbin \
+	build/final_config_start_sync.xclbin
+
 all: ${host_target} ${xclbin_targets}
 
 build/insts_%.txt: build/final_%.xclbin
