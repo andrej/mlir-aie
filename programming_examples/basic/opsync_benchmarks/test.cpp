@@ -134,14 +134,14 @@ int main(int argc, const char *argv[]) {
     ert_cmd_state r = run.wait();
     stop = std::chrono::high_resolution_clock::now();
     if (r != ERT_CMD_STATE_COMPLETED) {
-      std::cout << std::endl << "Error: " << r;
+      std::cout << std::endl
+                << "Iteration " << i << " errored with code: " << r;
       i++;
       break;
     }
     npu_times[i] =
         std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
             .count();
-    usleep(500);
   }
 
   double sum = std::accumulate(npu_times, npu_times + i, 0.0);
