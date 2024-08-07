@@ -136,7 +136,6 @@ int main(int argc, const char *argv[]) {
     if (r != ERT_CMD_STATE_COMPLETED) {
       std::cout << std::endl
                 << "Iteration " << i << " errored with code: " << r;
-      i++;
       break;
     }
     npu_times[i] =
