@@ -25,20 +25,16 @@ module {
 
     // -- attention --
     // We will repeat from mem tile memory onto the stream REPEAT_COUNT (3) times.
-    // In other words: Each time the memtile receives something from the shim (S2MM), it will send that out three times (MM2S).
 
     // The following locks are acquired by S2MM and released by MM2S.
-    // Since S2MM should run once for every three runs of MM2S, the S2MM side must acquire with a value of 3,
-    // and the MM2S side releases by 1 each time it runs. This achieves one run of S2MM for three runs of MM2S.
+    // Since S2MM should run once for every three runs of MM2S, the S2MM side acquires with a value of 3,
+    // and the MM2S side releases by 1 each time it runs.
     // We need separate locks for the ping and pong buffers; if we had one lock initialized to value 6,
     // the "pong" consumer side (acquiring only a value of 1) may start running even if only the ping producer side
     // completed (releasing with a value of 3).
     %in_L3L2_cons_prod_ping_lock = aie.lock(%tile_0_1, 0) {init = 3 : i32, sym_name = "in_L3L2_cons_prod_ping_lock"} 
     %in_L3L2_cons_prod_pong_lock = aie.lock(%tile_0_1, 1) {init = 3 : i32, sym_name = "in_L3L2_cons_prod_pong_lock"} 
     // The following locks are acquired by MM2S and released by S2MM.
-    // Since any buffer received once should be sent out three times, the receiving side (S2MM) will release this 
-    // with a value of 3 for each received buffer. The sending side (MM2S) will acquire with a value of 1 
-    // each time it consumes a buffer.
     %in_L3L2_cons_cons_ping_lock = aie.lock(%tile_0_1, 2) {init = 0 : i32, sym_name = "in_L3L2_cons_cons_ping_lock"}
     %in_L3L2_cons_cons_pong_lock = aie.lock(%tile_0_1, 3) {init = 0 : i32, sym_name = "in_L3L2_cons_cons_pong_lock"}
     // -- /attention--
@@ -112,8 +108,11 @@ module {
     ^bb3:
       %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb6, repeat_count = 2)  // repeat_count = (REPEAT_COUNT - 1)
     ^bb4:
+      // The following lock asks: Is data available in memory? If so, proceed.
+      // This will succeed three times before the data in memory changes.
       aie.use_lock(%in_L3L2_cons_cons_ping_lock, AcquireGreaterEqual, 1)
       aie.dma_bd(%in_L3L2_cons_buff_0 : memref<4xui8>, 0, 4)
+      // The next lock says: I consumed data once. S2MM will produce new data into the buffer after three consumptions.
       aie.use_lock(%in_L3L2_cons_prod_ping_lock, Release, 1)
       aie.next_bd ^bb5
     ^bb5:
