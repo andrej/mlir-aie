@@ -115,12 +115,17 @@ int main(int argc, const char *argv[]) {
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
 
+  // set up a dummy buffer
+  auto bo_dummy =
+      xrt::bo(device, 1024, XCL_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+
   // Copy instruction stream to xrt buffer object
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
 
   // sync host to device memories
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_dummy.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   // Execute the kernel and wait to finish
   unsigned int opcode = 3;
@@ -130,7 +135,7 @@ int main(int argc, const char *argv[]) {
   int i;
   for (i = 0; i < iters; i++) {
     start = std::chrono::high_resolution_clock::now();
-    auto run = kernel(opcode, bo_instr, instr_v.size());
+    auto run = kernel(opcode, bo_instr, instr_v.size(), bo_dummy);
     ert_cmd_state r = run.wait();
     stop = std::chrono::high_resolution_clock::now();
     if (r != ERT_CMD_STATE_COMPLETED) {
