@@ -25,16 +25,18 @@ void zero_scalar(T *__restrict c) {
 
 template <typename T, int M, int N, int r>
 void zero_vectorized(T *__restrict c) {
-  const aie::vector<T, r> zeros = aie::zeros<T, r>();
-  const T *__restrict c_end = c + M * N;
-  for (; c + r < c_end; c += r) {
-    aie::store_v(c, zeros);
-  }
-  // Do a scalar write for any remainder not divisible by vector instruction
-  // size r
-  for (; c < c_end; c++) {
-    *c = 0;
-  }
+   static_assert(M * N % (2*r) == 0);
+   const aie::vector<T, r> zeros = aie::zeros<T, r>();
+   const size_t c_sz = M * N;
+   T *__restrict c1 = c;
+   const T *__restrict c_end = c + c_sz;
+   for (; c1 < c_end; ) {
+     aie::store_v(c1, zeros);
+     c1 += r;
+     aie::store_v(c1, zeros);
+     c1 += r;
+   }
+   // No processing of left over r; see static assert above.
 }
 
 #endif
