@@ -313,6 +313,9 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
             tb_max_n_rows = (
                 4  # tb = transfer block; block of transfers before sync call
             )
+            c_tasks = [[] for _ in range(n_aie_cols)]
+            a_tasks = [[] for _ in range(n_aie_cols)]
+            b_tasks = [[] for _ in range(n_aie_cols)]
             for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
                 for pingpong in [0, 1]:
                     M // m // n_aie_rows // tb_max_n_rows
@@ -348,14 +351,27 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                         C_row_offset = row_base * m * n_aie_rows * N
                         C_col_offset = col * n
                         C_offset = C_col_offset + C_row_offset
-                        npu_dma_memcpy_nd(
-                            metadata=C_l2l3_fifos[col].sym_name.value,
-                            bd_id=bd_id_base,
-                            mem=C,
-                            offsets=[0, 0, 0, C_offset],
-                            sizes=[tb_n_rows, N // n // n_aie_cols, m * n_aie_rows, n],
-                            strides=[m * n_aie_rows * N, n * n_aie_cols, N, 1],
-                        )
+                        c_task = dma_configure_task_for(C_l2l3_fifos[col],
+                                                        repeat_count=tb_n_rows - 1,
+                                                        issue_token=True)
+                        with bds(c_task) as bd:
+                            with bd[0]:
+                                dma_bd(
+                                    C, 
+                                    offset=C_offset, 
+                                    len=N // n // n_aie_cols * m * n_aie_rows * n,
+                                    dimensions=[
+                                        # size,                stride
+                                        (tb_n_rows,            m * n_aie_rows * N),
+                                        (N // n // n_aie_cols, n * n_aie_cols), 
+                                        (m * n_aie_rows,       N),
+                                        (n,                    1)
+                                    ],
+                                    bd_id=bd_id_base
+                                )
+                                EndOp()
+                        dma_start_task(c_task)
+                        c_tasks[col].append(c_task)
 
                         for tile_row in range(tb_n_rows):
 
@@ -384,19 +400,27 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                                 col * n_A_tiles_per_shim * m * K
                             )  # base address for the shim in this column
                             A_offset = A_block_offset + A_row_offset
-                            npu_dma_memcpy_nd(
-                                metadata=A_l3l2_fifos[col].sym_name.value,
-                                bd_id=bd_id_base + 2 * tile_row + 1,
-                                mem=A,
-                                offsets=[0, 0, 0, A_offset],
-                                sizes=[
-                                    N // n // n_aie_cols,
-                                    K // k,
-                                    m * n_A_tiles_per_shim,
-                                    k,
-                                ],
-                                strides=[0, k, K, 1],
-                            )
+                            a_task = dma_configure_task_for(A_l3l2_fifos[col],
+                                                            repeat_count=N // n // n_aie_cols - 1)
+                            with bds(a_task) as bd:
+                                with bd[0]:
+                                    dma_bd(
+                                        A,
+                                        offset=A_offset,
+                                        len= K * m * n_A_tiles_per_shim,
+                                        dimensions=[
+                                            #(N // n // n_aie_cols,   0),
+                                            (1,                      0),
+                                            (K // k,                 k),
+                                            (m * n_A_tiles_per_shim, K),
+                                            (k,                      1)
+                                        ],
+                                        bd_id = bd_id_base + 2 * tile_row + 1
+                                    )
+                                    EndOp()
+                            dma_start_task(a_task)
+                            dma_free_task(a_task)
+                            a_tasks[col].append(a_task)
 
                             # B input transfer:
                             # Transfer the first a (n)-wide block of columns of B,
@@ -417,21 +441,32 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                             #     |0011    0011    |
                             #      ----------------
                             B_col_offset = col * n
-                            npu_dma_memcpy_nd(
-                                metadata=B_l3l2_fifos[col].sym_name.value,
-                                bd_id=bd_id_base + 2 * tile_row + 2,
-                                mem=B,
-                                offsets=[0, 0, 0, B_col_offset],
-                                sizes=[N // n // n_aie_cols, K // k, k, n],
-                                strides=[n * n_aie_cols, k * N, N, 1],
-                            )
+                            b_task = dma_configure_task_for(B_l3l2_fifos[col],
+                                                            repeat_count=N // n // n_aie_cols - 1)
+                            with bds(b_task) as bd:
+                                with bd[0]:
+                                    dma_bd(
+                                        B,
+                                        offset=B_col_offset,
+                                        len=K * n,
+                                        dimensions=[
+                                            (N // n // n_aie_cols,   n * n_aie_cols),
+                                            (K // k,                 k * N),
+                                            (k,                      N),
+                                            (n,                      1),
+                                        ],
+                                        bd_id = bd_id_base + 2 * tile_row + 2
+                                    )
+                                    EndOp()
+                            dma_start_task(b_task)
+                            dma_free_task(b_task)
+                            b_tasks[col].append(b_task)
                     if tb > 0 or (tb == 0 and pingpong > 0):
                         for col in range(n_aie_cols):
-                            npu_sync(
-                                column=col, row=0, direction=0, channel=0
-                            )  # C done
+                            dma_await_task(c_tasks[col][-2])
             for col in range(n_aie_cols):
-                npu_sync(column=col, row=0, direction=0, channel=0)
+                dma_await_task(c_tasks[col][-1])
+                #npu_sync(column=col, row=0, direction=0, channel=0)
 
 
 if __name__ == "__main__":
