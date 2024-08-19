@@ -415,52 +415,53 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                                             (m * n_A_tiles_per_shim, K),
                                             (k,                      1)
                                         ],
-                                        bd_id = bd_id_base + 2 * tile_row + 1
+                                        bd_id = bd_id_base + 2 + tile_row
                                     )
                                     EndOp()
                             dma_start_task(a_task)
                             dma_free_task(a_task)
                             a_tasks[col].append(a_task)
 
-                            # B input transfer:
-                            # Transfer the first a (n)-wide block of columns of B,
-                            # Then transfer the (n_aie_columns)-th such block, and so on.
-                            # Each shim will start at a different column offset.
-                            # For example, shim 0 may transfer the tiles marked 0 below,
-                            # and shim 1 may transfer the tiles marked 1.
-                            #
-                            #             N
-                            #      ----------------
-                            #     |0011    0011    |
-                            #     |0011    0011    |
-                            #     |0011    0011    |
-                            # K   |0011    0011    |
-                            #     |0011    0011    |
-                            #     |0011    0011    |
-                            #     |0011    0011    |
-                            #     |0011    0011    |
-                            #      ----------------
-                            B_col_offset = col * n
-                            b_task = dma_configure_task_for(B_l3l2_fifos[col],
-                                                            repeat_count=N // n // n_aie_cols - 1)
-                            with bds(b_task) as bd:
-                                with bd[0]:
-                                    dma_bd(
-                                        B,
-                                        offset=B_col_offset,
-                                        len=K * n,
-                                        dimensions=[
-                                            (N // n // n_aie_cols,   n * n_aie_cols),
-                                            (K // k,                 k * N),
-                                            (k,                      N),
-                                            (n,                      1),
-                                        ],
-                                        bd_id = bd_id_base + 2 * tile_row + 2
-                                    )
-                                    EndOp()
-                            dma_start_task(b_task)
-                            dma_free_task(b_task)
-                            b_tasks[col].append(b_task)
+                        # B input transfer:
+                        # Transfer the first a (n)-wide block of columns of B,
+                        # Then transfer the (n_aie_columns)-th such block, and so on.
+                        # Each shim will start at a different column offset.
+                        # For example, shim 0 may transfer the tiles marked 0 below,
+                        # and shim 1 may transfer the tiles marked 1.
+                        #
+                        #             N
+                        #      ----------------
+                        #     |0011    0011    |
+                        #     |0011    0011    |
+                        #     |0011    0011    |
+                        # K   |0011    0011    |
+                        #     |0011    0011    |
+                        #     |0011    0011    |
+                        #     |0011    0011    |
+                        #     |0011    0011    |
+                        #      ----------------
+                        B_col_offset = col * n
+                        b_task = dma_configure_task_for(B_l3l2_fifos[col],
+                                                        repeat_count=N // n // n_aie_cols * tb_n_rows - 1)
+                        with bds(b_task) as bd:
+                            with bd[0]:
+                                dma_bd(
+                                    B,
+                                    offset=B_col_offset,
+                                    len=K * n,
+                                    dimensions=[
+                                        (N // n // n_aie_cols,   n * n_aie_cols),
+                                        (K // k,                 k * N),
+                                        (k,                      N),
+                                        (n,                      1),
+                                    ],
+                                    bd_id = bd_id_base + 1
+                                )
+                                EndOp()
+                        dma_start_task(b_task)
+                        dma_free_task(b_task)
+                        b_tasks[col].append(b_task)
+
                     if tb > 0 or (tb == 0 and pingpong > 0):
                         for col in range(n_aie_cols):
                             dma_await_task(c_tasks[col][-2])
