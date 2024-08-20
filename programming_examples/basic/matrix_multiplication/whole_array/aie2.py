@@ -309,38 +309,36 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
         )
         def sequence(A, B, C):
 
+            c_tasks = [None] * n_aie_cols
+            for col in range(n_aie_cols):
+                c_task_repeat = 0
+                c_task = dma_configure_task_for(C_l2l3_fifos[col],
+                                                repeat_count=c_task_repeat,
+                                                issue_token=True)
+                C_aie_col_offset = (
+                    col * n
+                )
+                C_offset = C_aie_col_offset
+                with bds(c_task) as bd:
+                    with bd[0]:
+                        dma_bd(
+                            C,
+                            offset=C_offset,
+                            len=M*N//n_aie_cols,
+                            dimensions=[
+                                (N // n // n_aie_cols, n * n_aie_cols),
+                                (M, N),
+                                (n, 1)
+                            ]
+                        )
+                        EndOp()
+                dma_start_task(c_task)
+                c_tasks[col] = c_task
+
             for output_col_iter in range(N // n // n_aie_cols):
-
-                c_tasks = [None] * n_aie_cols
-                for col in range(n_aie_cols):
-                    c_task_repeat = 0
-                    c_task = dma_configure_task_for(C_l2l3_fifos[col],
-                                                    repeat_count=c_task_repeat,
-                                                    issue_token=True)
-                    C_col_offset = (
-                        output_col_iter * n_aie_cols * n
-                    )
-                    C_aie_col_offset = (
-                        col * n
-                    )
-                    C_offset = C_col_offset + C_aie_col_offset
-                    with bds(c_task) as bd:
-                        with bd[0]:
-                            dma_bd(
-                                C,
-                                offset=C_offset,
-                                len=M*n,
-                                dimensions=[
-                                    (M, N),
-                                    (n, 1)
-                                ]
-                            )
-                            EndOp()
-                    dma_start_task(c_task)
-                    c_tasks[col] = c_task
-
-                    a_tasks = [None] * n_aie_cols
-                    b_tasks = [None] * n_aie_cols
+                
+                a_tasks = [None] * n_aie_cols
+                b_tasks = [None] * n_aie_cols
 
                 for col in range(n_aie_cols):
                     # A
@@ -402,8 +400,8 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                     dma_await_task(a_tasks[col])
                     dma_await_task(b_tasks[col])
 
-                for col in range(n_aie_cols):
-                    dma_await_task(c_tasks[col])
+            for col in range(n_aie_cols):
+                dma_await_task(c_tasks[col])
 
 
 if __name__ == "__main__":
