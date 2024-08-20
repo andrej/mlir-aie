@@ -316,7 +316,9 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
             c_tasks = [[] for _ in range(n_aie_cols)]
             a_tasks = [[] for _ in range(n_aie_cols)]
             b_tasks = [[] for _ in range(n_aie_cols)]
-            for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
+            tb_iters = ceildiv(M // m // n_aie_rows, tb_max_n_rows)
+            for tb in range(tb_iters):
+                last_iter = (tb == tb_iters - 1)
                 for pingpong in [0, 1]:
                     M // m // n_aie_rows // tb_max_n_rows
                     row_base = tb * tb_max_n_rows + pingpong * tb_max_n_rows // 2
@@ -328,6 +330,115 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                         # for small input sizes, we may not even need a "pong" iteration
                         break
                     for col in range(n_aie_cols):
+
+
+                        if tb > 0 or (tb == 0 and pingpong > 0):
+                            a_task, a_task_repeat = a_tasks[col][0]
+                            #for _ in range(a_task_repeat):
+                            dma_await_task(a_task)
+                            del a_tasks[col][0]
+
+                        for tile_row in range(tb_n_rows):
+                            last_tile_row = tile_row == tb_n_rows-1
+                            # A input transfer:
+                            #
+                            # The smallest transfer unit is a (m*n_A_tiles_per_shim)-sized sub-tile of the input matrix.
+                            # Transfer one such tile for every column, contiguously.
+                            # Repeat this transfer with identical tiles a total of (N//n//n_aie_cols) times.
+                            # Each shim transfers the tiles for separate rows. For example, shim 0 may transfer the
+                            # tiles marked 0 below, and shim 1 may transfer the tiles marked 1.
+                            #             K
+                            #      ----------------
+                            #     |0000000000000000|    (repeated N//n//n_aie_cols times)
+                            #     |0000000000000000|
+                            #     |1111111111111111|
+                            # M   |1111111111111111|
+                            #     |                |
+                            #     |                |
+                            #     |                |
+                            #     |                |
+                            #      ----------------
+
+                            A_block_offset = (
+                                (row_base + tile_row) * n_aie_rows * m * K
+                            )  # base address for this transfer block for all BDs
+                            A_row_offset = (
+                                col * n_A_tiles_per_shim * m * K
+                            )  # base address for the shim in this column
+                            A_offset = A_block_offset + A_row_offset
+                            a_task_repeat = N // n // n_aie_cols - 1
+                            a_task = dma_configure_task_for(A_l3l2_fifos[col],
+                                                            repeat_count=a_task_repeat,
+                                                            issue_token=last_tile_row)
+                            with bds(a_task) as bd:
+                                with bd[0]:
+                                    dma_bd(
+                                        A,
+                                        offset=A_offset,
+                                        len= K * m * n_A_tiles_per_shim,
+                                        dimensions=[
+                                            #(N // n // n_aie_cols,   0),
+                                            (1,                      0),
+                                            (K // k,                 k),
+                                            (m * n_A_tiles_per_shim, K),
+                                            (k,                      1)
+                                        ],
+                                        bd_id = bd_id_base + 2 + tile_row
+                                    )
+                                    EndOp()
+                            dma_start_task(a_task)
+                            if not last_tile_row:
+                                dma_free_task(a_task)
+                            else:
+                                a_tasks[col].append((a_task, a_task_repeat))
+
+                        # B input transfer:
+                        # Transfer the first a (n)-wide block of columns of B,
+                        # Then transfer the (n_aie_columns)-th such block, and so on.
+                        # Each shim will start at a different column offset.
+                        # For example, shim 0 may transfer the tiles marked 0 below,
+                        # and shim 1 may transfer the tiles marked 1.
+                        #
+                        #             N
+                        #      ----------------
+                        #     |0011    0011    |
+                        #     |0011    0011    |
+                        #     |0011    0011    |
+                        # K   |0011    0011    |
+                        #     |0011    0011    |
+                        #     |0011    0011    |
+                        #     |0011    0011    |
+                        #     |0011    0011    |
+                        #      ----------------
+
+                        if tb > 0 or (tb == 0 and pingpong > 0):
+                            b_task, b_task_repeat = b_tasks[col][0]
+                            #for _ in range(b_task_repeat):
+                            dma_await_task(b_task)
+                            del b_tasks[col][0]
+
+                        B_col_offset = col * n
+                        b_task_repeat = N // n // n_aie_cols * tb_n_rows - 1
+                        b_task = dma_configure_task_for(B_l3l2_fifos[col],
+                                                        repeat_count=b_task_repeat,
+                                                        issue_token=True)
+                        with bds(b_task) as bd:
+                            with bd[0]:
+                                dma_bd(
+                                    B,
+                                    offset=B_col_offset,
+                                    len=K * n,
+                                    dimensions=[
+                                        (N // n // n_aie_cols,   n * n_aie_cols),
+                                        (K // k,                 k * N),
+                                        (k,                      N),
+                                        (n,                      1),
+                                    ],
+                                    bd_id = bd_id_base + 1
+                                )
+                                EndOp()
+                        dma_start_task(b_task)
+                        b_tasks[col].append((b_task, b_task_repeat))
 
                         # C Output Transfer:
                         # The smallest transfer unit is a (m*n_aie_rows)-x-(n)-sized sub-tile of the matrix.
@@ -348,11 +459,18 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                         #     |                |
                         #     |                |
                         #      ----------------
+
+                        if tb > 0 or (tb == 0 and pingpong > 0):
+                            c_task, c_task_repeat = c_tasks[col][0]
+                            dma_await_task(c_task)
+                            del c_tasks[col][0]
+
                         C_row_offset = row_base * m * n_aie_rows * N
                         C_col_offset = col * n
                         C_offset = C_col_offset + C_row_offset
+                        c_task_repeat = tb_n_rows - 1
                         c_task = dma_configure_task_for(C_l2l3_fifos[col],
-                                                        repeat_count=tb_n_rows - 1,
+                                                        repeat_count=c_task_repeat,
                                                         issue_token=True)
                         with bds(c_task) as bd:
                             with bd[0]:
@@ -371,103 +489,18 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                                 )
                                 EndOp()
                         dma_start_task(c_task)
-                        c_tasks[col].append(c_task)
+                        #if not last_iter:
+                        #    dma_free_task(c_task)
+                        #else:
+                        dma_free_task(c_task)
+                        c_tasks[col].append((c_task, c_task_repeat))
 
-                        for tile_row in range(tb_n_rows):
-
-                            # A input transfer:
-                            #
-                            # The smallest transfer unit is a (m*n_A_tiles_per_shim)-sized sub-tile of the input matrix.
-                            # Transfer one such tile for every column, contiguously.
-                            # Repeat this transfer with identical tiles a total of (N//n//n_aie_cols) times.
-                            # Each shim transfers the tiles for separate rows. For example, shim 0 may transfer the
-                            # tiles marked 0 below, and shim 1 may transfer the tiles marked 1.
-                            #             K
-                            #      ----------------
-                            #     |0000000000000000|    (repeated N//n//n_aie_cols times)
-                            #     |0000000000000000|
-                            #     |1111111111111111|
-                            # M   |1111111111111111|
-                            #     |                |
-                            #     |                |
-                            #     |                |
-                            #     |                |
-                            #      ----------------
-                            A_block_offset = (
-                                (row_base + tile_row) * n_aie_rows * m * K
-                            )  # base address for this transfer block for all BDs
-                            A_row_offset = (
-                                col * n_A_tiles_per_shim * m * K
-                            )  # base address for the shim in this column
-                            A_offset = A_block_offset + A_row_offset
-                            a_task = dma_configure_task_for(A_l3l2_fifos[col],
-                                                            repeat_count=N // n // n_aie_cols - 1)
-                            with bds(a_task) as bd:
-                                with bd[0]:
-                                    dma_bd(
-                                        A,
-                                        offset=A_offset,
-                                        len= K * m * n_A_tiles_per_shim,
-                                        dimensions=[
-                                            #(N // n // n_aie_cols,   0),
-                                            (1,                      0),
-                                            (K // k,                 k),
-                                            (m * n_A_tiles_per_shim, K),
-                                            (k,                      1)
-                                        ],
-                                        bd_id = bd_id_base + 2 + tile_row
-                                    )
-                                    EndOp()
-                            dma_start_task(a_task)
-                            dma_free_task(a_task)
-                            a_tasks[col].append(a_task)
-
-                        # B input transfer:
-                        # Transfer the first a (n)-wide block of columns of B,
-                        # Then transfer the (n_aie_columns)-th such block, and so on.
-                        # Each shim will start at a different column offset.
-                        # For example, shim 0 may transfer the tiles marked 0 below,
-                        # and shim 1 may transfer the tiles marked 1.
-                        #
-                        #             N
-                        #      ----------------
-                        #     |0011    0011    |
-                        #     |0011    0011    |
-                        #     |0011    0011    |
-                        # K   |0011    0011    |
-                        #     |0011    0011    |
-                        #     |0011    0011    |
-                        #     |0011    0011    |
-                        #     |0011    0011    |
-                        #      ----------------
-                        B_col_offset = col * n
-                        b_task = dma_configure_task_for(B_l3l2_fifos[col],
-                                                        repeat_count=N // n // n_aie_cols * tb_n_rows - 1)
-                        with bds(b_task) as bd:
-                            with bd[0]:
-                                dma_bd(
-                                    B,
-                                    offset=B_col_offset,
-                                    len=K * n,
-                                    dimensions=[
-                                        (N // n // n_aie_cols,   n * n_aie_cols),
-                                        (K // k,                 k * N),
-                                        (k,                      N),
-                                        (n,                      1),
-                                    ],
-                                    bd_id = bd_id_base + 1
-                                )
-                                EndOp()
-                        dma_start_task(b_task)
-                        dma_free_task(b_task)
-                        b_tasks[col].append(b_task)
-
-                    if tb > 0 or (tb == 0 and pingpong > 0):
-                        for col in range(n_aie_cols):
-                            dma_await_task(c_tasks[col][-2])
             for col in range(n_aie_cols):
-                dma_await_task(c_tasks[col][-1])
-                #npu_sync(column=col, row=0, direction=0, channel=0)
+                while c_tasks[col]:
+                    c_task, c_task_repeat = c_tasks[col][0]
+                    dma_await_task(c_task)
+                    del c_tasks[col][0]
+                    #for _ in range(c_task_repeat):
 
 
 if __name__ == "__main__":
