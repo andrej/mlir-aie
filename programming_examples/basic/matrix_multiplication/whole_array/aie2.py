@@ -309,105 +309,101 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
         )
         def sequence(A, B, C):
 
-            for output_row_iter in range(M // m // n_aie_rows):
+            for output_col_iter in range(N // n // n_aie_cols):
 
+                c_tasks = [None] * n_aie_cols
+                for col in range(n_aie_cols):
+                    c_task_repeat = 0
+                    c_task = dma_configure_task_for(C_l2l3_fifos[col],
+                                                    repeat_count=c_task_repeat,
+                                                    issue_token=True)
+                    C_col_offset = (
+                        output_col_iter * n_aie_cols * n
+                    )
+                    C_aie_col_offset = (
+                        col * n
+                    )
+                    C_offset = C_col_offset + C_aie_col_offset
+                    with bds(c_task) as bd:
+                        with bd[0]:
+                            dma_bd(
+                                C,
+                                offset=C_offset,
+                                len=M*n,
+                                dimensions=[
+                                    (M, N),
+                                    (n, 1)
+                                ]
+                            )
+                            EndOp()
+                    dma_start_task(c_task)
+                    c_tasks[col] = c_task
 
-                for output_col_iter in range(N // n // n_aie_cols):
                     a_tasks = [None] * n_aie_cols
                     b_tasks = [None] * n_aie_cols
-                    c_tasks = [None] * n_aie_cols
 
-                    for col in range(n_aie_cols):
-                        c_task_repeat = 0
-                        c_task = dma_configure_task_for(C_l2l3_fifos[col],
-                                                        repeat_count=c_task_repeat,
-                                                        issue_token=True)
-                        C_row_offset = (
-                            output_row_iter * n_aie_rows * m * N
-                        )
-                        C_col_offset = (
-                            output_col_iter * n_aie_cols * n
-                        )
-                        C_aie_col_offset = (
-                            col * n
-                        )
-                        C_offset = C_row_offset + C_col_offset + C_aie_col_offset
-                        with bds(c_task) as bd:
-                            with bd[0]:
-                                dma_bd(
-                                    C,
-                                    offset=C_offset,
-                                    len=m*n_aie_rows*n,
-                                    dimensions=[
-                                        (m*n_aie_rows, N),
-                                        (n, 1)
-                                    ]
-                                )
-                                EndOp()
-                        dma_start_task(c_task)
-                        c_tasks[col] = c_task
+                for col in range(n_aie_cols):
+                    # A
+                    A_aie_col_offset = (
+                        col * n_A_tiles_per_shim * m * K
+                    )
+                    A_offset = A_aie_col_offset
+                    a_task_repeat = M // m // n_aie_rows - 1
+                    a_task = dma_configure_task_for(A_l3l2_fifos[col],
+                                                    repeat_count=a_task_repeat,
+                                                    issue_token=True)
+                    with bds(a_task) as bd:
+                        with bd[0]:
+                            dma_bd(
+                                A,
+                                offset=A_offset,
+                                len=K * m * n_A_tiles_per_shim,
+                                dimensions=[
+                                    (M // m // n_aie_rows,   m * K * n_aie_rows),
+                                    (K // k,                 k),
+                                    (m * n_A_tiles_per_shim, K),
+                                    (k,                      1)
+                                ]
+                            )
+                            EndOp()
+                    dma_start_task(a_task)
+                    a_tasks[col] = a_task
 
-                    for col in range(n_aie_cols):
-                        # A
-                        A_row_offset = (
-                            output_row_iter * n_aie_rows * m * K
-                        )  # base address for this transfer block for all BDs
-                        A_aie_col_offset = (
-                            col * n_A_tiles_per_shim * m * K
-                        )  # base address for the shim in this column
-                        A_offset = A_row_offset + A_aie_col_offset
-                        a_task_repeat = 0
-                        a_task = dma_configure_task_for(A_l3l2_fifos[col],
-                                                        repeat_count=a_task_repeat,
-                                                        issue_token=True)
-                        with bds(a_task) as bd:
-                            with bd[0]:
-                                dma_bd(
-                                    A,
-                                    offset=A_offset,
-                                    len=K * m * n_A_tiles_per_shim,
-                                    dimensions=[
-                                        (K // k,                 k),
-                                        (m * n_A_tiles_per_shim, K),
-                                        (k,                      1)
-                                    ]
-                                )
-                                EndOp()
-                        dma_start_task(a_task)
-                        a_tasks[col] = a_task
+                    # B
+                    B_col_offset = (
+                        output_col_iter * n_aie_cols * n
+                    )
+                    B_aie_col_offset = (
+                        col * n
+                    )
+                    B_offset = B_col_offset + B_aie_col_offset
+                    b_task_repeat = M // m // n_aie_rows - 1
+                    b_task = dma_configure_task_for(B_l3l2_fifos[col],
+                                                    repeat_count=b_task_repeat,
+                                                    issue_token=True)
+                    with bds(b_task) as bd:
+                        with bd[0]:
+                            dma_bd(
+                                B,
+                                offset=B_offset,
+                                len=K*n,
+                                dimensions=[
+                                    (1, 0),
+                                    (1, 0),  
+                                    (K, N),
+                                    (n, 1)
+                                ]
+                            )
+                            EndOp()
+                    dma_start_task(b_task)
+                    b_tasks[col] = b_task
+                
+                for col in range(n_aie_cols):
+                    dma_await_task(a_tasks[col])
+                    dma_await_task(b_tasks[col])
 
-                        # B
-                        B_col_offset = (
-                            output_col_iter * n_aie_cols * n
-                        )
-                        B_aie_col_offset = (
-                            col * n
-                        )
-                        B_offset = B_col_offset + B_aie_col_offset
-                        b_task_repeat = 0
-                        b_task = dma_configure_task_for(B_l3l2_fifos[col],
-                                                        repeat_count=b_task_repeat,
-                                                        issue_token=True)
-                        with bds(b_task) as bd:
-                            with bd[0]:
-                                dma_bd(
-                                    B,
-                                    offset=B_offset,
-                                    len=K*n,
-                                    dimensions=[
-                                        (K // k * 2, k // 2 * N),  
-                                        (k // 2, N), # we need to split this dim to not exceed size 1 range
-                                        (n, 1)
-                                    ]
-                                )
-                                EndOp()
-                        dma_start_task(b_task)
-                        b_tasks[col] = b_task
-                    
-                    for col in range(n_aie_cols):
-                        dma_await_task(a_tasks[col])
-                        dma_await_task(b_tasks[col])
-                        dma_await_task(c_tasks[col])
+                for col in range(n_aie_cols):
+                    dma_await_task(c_tasks[col])
 
 
 if __name__ == "__main__":
