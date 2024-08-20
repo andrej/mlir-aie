@@ -308,6 +308,10 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
             T.memref(M * N, dtype_out()),
         )
         def sequence(A, B, C):
+            assert M // m // n_aie_rows == 1  # Assumption made many places below
+            # If we wanted to support mutiple rows, would need 
+            #  - multiple BDs for transferring separate rows A with different offsets
+            #  - multiple BDs to repeat columns of B for each row
 
             c_tasks = [None] * n_aie_cols
             for col in range(n_aie_cols):
@@ -360,7 +364,11 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                         next_bd(bd[1])  # cycle forever
                 dma_start_task(a_task)
 
+            cols_per_t = 32
             for output_col_iter in range(N // n // n_aie_cols):
+
+                if output_col_iter % cols_per_t != 0:
+                    continue
                 
                 b_tasks = [None] * n_aie_cols
 
@@ -373,7 +381,8 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                         col * n
                     )
                     B_offset = B_col_offset + B_aie_col_offset
-                    b_task_repeat = M // m // n_aie_rows - 1
+                    cols_this_iter = min(cols_per_t, N // n // n_aie_cols - (output_col_iter//cols_per_t)*cols_per_t)
+                    b_task_repeat = cols_this_iter - 1
                     b_task = dma_configure_task_for(B_l3l2_fifos[col],
                                                     repeat_count=b_task_repeat,
                                                     issue_token=True)
@@ -384,7 +393,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                                 offset=B_offset,
                                 len=K*n,
                                 dimensions=[
-                                    (1, 0),
+                                    (cols_this_iter, n_aie_cols * n),
                                     (1, 0),  
                                     (K, N),
                                     (n, 1)
