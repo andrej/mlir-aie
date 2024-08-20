@@ -335,38 +335,36 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                 dma_start_task(c_task)
                 c_tasks[col] = c_task
 
+            for col in range(n_aie_cols):
+                # A
+                A_aie_col_offset = (
+                    col * n_A_tiles_per_shim * m * K
+                )
+                A_offset = A_aie_col_offset
+                a_task = dma_configure_task_for(A_l3l2_fifos[col])
+                with bds(a_task) as bd:
+                    with bd[0]:
+                        next_bd(bd[1])
+                    with bd[1]:
+                        dma_bd(
+                            A,
+                            offset=A_offset,  # add one BD for each additional row below, and add offset here
+                            len=K * m * n_A_tiles_per_shim,  
+                            dimensions=[
+                                #(M // m // n_aie_rows,   m * K * n_aie_rows),
+                                (K // k,                 k),
+                                (m * n_A_tiles_per_shim, K),
+                                (k,                      1)
+                            ]
+                        )
+                        next_bd(bd[1])  # cycle forever
+                dma_start_task(a_task)
+
             for output_col_iter in range(N // n // n_aie_cols):
                 
-                a_tasks = [None] * n_aie_cols
                 b_tasks = [None] * n_aie_cols
 
                 for col in range(n_aie_cols):
-                    # A
-                    A_aie_col_offset = (
-                        col * n_A_tiles_per_shim * m * K
-                    )
-                    A_offset = A_aie_col_offset
-                    a_task_repeat = M // m // n_aie_rows - 1
-                    a_task = dma_configure_task_for(A_l3l2_fifos[col],
-                                                    repeat_count=a_task_repeat,
-                                                    issue_token=True)
-                    with bds(a_task) as bd:
-                        with bd[0]:
-                            dma_bd(
-                                A,
-                                offset=A_offset,
-                                len=K * m * n_A_tiles_per_shim,
-                                dimensions=[
-                                    (M // m // n_aie_rows,   m * K * n_aie_rows),
-                                    (K // k,                 k),
-                                    (m * n_A_tiles_per_shim, K),
-                                    (k,                      1)
-                                ]
-                            )
-                            EndOp()
-                    dma_start_task(a_task)
-                    a_tasks[col] = a_task
-
                     # B
                     B_col_offset = (
                         output_col_iter * n_aie_cols * n
@@ -397,7 +395,6 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                     b_tasks[col] = b_task
                 
                 for col in range(n_aie_cols):
-                    dma_await_task(a_tasks[col])
                     dma_await_task(b_tasks[col])
 
             for col in range(n_aie_cols):
