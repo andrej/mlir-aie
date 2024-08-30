@@ -70,7 +70,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
     assert n % t == 0
 
     vectorized = True
-    enable_tracing = False
+    enable_tracing = True
     trace_size = 65536
 
     dtype_in = None
@@ -231,6 +231,10 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                                 call(matmul, [elem_in_a, elem_in_b, elem_out])
                             else:
                                 call(matmul_scalar, [elem_in_a, elem_in_b, elem_out])
+                            #a = memref.load(elem_in_a.result, [0, 1])
+                            #b = memref.load(elem_in_b.result, [0, 1])
+                            #c = a + b
+                            #memref.store(c, elem_out, [0, 1])
                             memA.release(ObjectFifoPort.Consume, 1)
                             memB.release(ObjectFifoPort.Consume, 1)
                             if K_div_k > 1:
