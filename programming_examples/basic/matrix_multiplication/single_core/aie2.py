@@ -316,7 +316,9 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                             bd_id=bd_id_base,
                             mem=C,
                             offsets=[0, 0, 0, C_row_offset],
-                            sizes=[num_tile_rows, N_div_n, 2, 2],
+                            #sizes=[1, 1, 1, num_tile_rows*N_div_n*m*n],
+                            #strides=[0, 0, 0, 1],
+                            sizes=[num_tile_rows, N_div_n, m, n],
                             strides=[m_x_N, n, N, 1],
                         )
                         for tile_row in range(num_tile_rows):
@@ -326,7 +328,9 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                                 bd_id=bd_id_base + 2 * tile_row + 1,
                                 mem=A,
                                 offsets=[0, 0, 0, A_row_offset],
-                                sizes=[N_div_n, K_div_k, 2, 2],
+                                #sizes=[1, 1, 1, N_div_n*K_div_k*m*k],
+                                #strides=[0, 0, 0, 1],
+                                sizes=[N_div_n, K_div_k, m, k],
                                 strides=[0, k, K, 1],
                             )
                             npu_dma_memcpy_nd(
@@ -334,6 +338,9 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                                 bd_id=bd_id_base + 2 * tile_row + 2,
                                 mem=B,
                                 sizes=[N_div_n, K_div_k, 2, 2],
+                                #sizes=[1, 1, 1, N_div_n*K_div_k*k*n],
+                                #strides=[0, 0, 0, 1]
+                                sizes=[N_div_n, K_div_k, k, n],
                                 strides=[n, k_x_N, N, 1],
                             )
                         if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
