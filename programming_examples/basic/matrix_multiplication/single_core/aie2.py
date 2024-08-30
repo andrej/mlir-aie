@@ -217,10 +217,10 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                 for _ in for_(0xFFFFFFFF):
                     for _ in for_(tiles) if tiles > 1 else range(1):  # issue #1547
                         elem_out = memC.acquire(ObjectFifoPort.Produce, 1)
-                        if vectorized:
-                            call(zero, [elem_out])
-                        else:
-                            call(zero_scalar, [elem_out])
+                        #if vectorized:
+                        #    call(zero, [elem_out])
+                        #else:
+                        #    call(zero_scalar, [elem_out])
 
                         for _ in (
                             for_(K_div_k) if K_div_k > 1 else range(1)
