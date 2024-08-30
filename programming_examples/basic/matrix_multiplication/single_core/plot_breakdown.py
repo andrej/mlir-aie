@@ -10,7 +10,9 @@ compute_times = [
 ]
 
 data_movement_times = [
-        (117950, {"label": "Data Movement"})
+        (67192, {"label": "Data Movement"}),
+        (60, {"label": "L2->L1 Data Rearr."}),
+        (50698, {"label": "L3->L2 Data Rearr."})
 ]
 
 theoretical_min = [
