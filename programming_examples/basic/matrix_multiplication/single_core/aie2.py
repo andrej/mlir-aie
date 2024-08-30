@@ -113,9 +113,12 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
 
         @device(AIEDevice.npu1_1col)
         def device_body():
-            memref_a_ty = T.memref(m, k, dtype_in())
-            memref_b_ty = T.memref(k, n, dtype_in())
-            memref_c_ty = T.memref(m, n, dtype_out())
+            #memref_a_ty = T.memref(m, k, dtype_in())
+            #memref_b_ty = T.memref(k, n, dtype_in())
+            #memref_c_ty = T.memref(m, n, dtype_out())
+            memref_a_ty = T.memref(2, 2, dtype_in())
+            memref_b_ty = T.memref(2, 2, dtype_in())
+            memref_c_ty = T.memref(2, 2, dtype_out())
 
             ofifo_memref_a_ty = TypeAttr.get(ObjectFifoType.get(memref_a_ty))
             ofifo_memref_b_ty = TypeAttr.get(ObjectFifoType.get(memref_b_ty))
@@ -151,14 +154,14 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                 2,
                 memref_a_ty,
                 (
-                    [
-                        (m // r, r * k),
-                        (k // s, s),
-                        (r, k),
-                        (s, 1),
-                    ]
-                    if vectorized
-                    else []
+                    #[
+                    #    (m // r, r * k),
+                    #    (k // s, s),
+                    #    (r, k),
+                    #    (s, 1),
+                    #]
+                    #if vectorized
+                    #else []
                 ),
             )
             object_fifo_link(inA, memA)
@@ -172,14 +175,14 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                 2,
                 memref_b_ty,
                 (
-                    [
-                        (k // s, s * n),
-                        (n // t, t),
-                        (s, n),
-                        (t, 1),
-                    ]
-                    if vectorized
-                    else []
+                    #[
+                    #    (k // s, s * n),
+                    #    (n // t, t),
+                    #    (s, n),
+                    #    (t, 1),
+                    #]
+                    #if vectorized
+                    #else []
                 ),
             )
             object_fifo_link(inB, memB)
@@ -193,14 +196,14 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                 2,
                 memref_c_ty,
                 (
-                    [
-                        (m // r, r * n),
-                        (r, t),
-                        (n // t, r * t),
-                        (t, 1),
-                    ]
-                    if vectorized
-                    else []
+                    #[
+                    #    (m // r, r * n),
+                    #    (r, t),
+                    #    (n // t, r * t),
+                    #    (t, 1),
+                    #]
+                    #if vectorized
+                    #else []
                 ),
             )
             object_fifo_link(memC, outC)
@@ -306,7 +309,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                             bd_id=bd_id_base,
                             mem=C,
                             offsets=[0, 0, 0, C_row_offset],
-                            sizes=[num_tile_rows, N_div_n, m, n],
+                            sizes=[num_tile_rows, N_div_n, 2, 2],
                             strides=[m_x_N, n, N, 1],
                         )
                         for tile_row in range(num_tile_rows):
@@ -316,14 +319,14 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                                 bd_id=bd_id_base + 2 * tile_row + 1,
                                 mem=A,
                                 offsets=[0, 0, 0, A_row_offset],
-                                sizes=[N_div_n, K_div_k, m, k],
+                                sizes=[N_div_n, K_div_k, 2, 2],
                                 strides=[0, k, K, 1],
                             )
                             npu_dma_memcpy_nd(
                                 metadata="inB",
                                 bd_id=bd_id_base + 2 * tile_row + 2,
                                 mem=B,
-                                sizes=[N_div_n, K_div_k, k, n],
+                                sizes=[N_div_n, K_div_k, 2, 2],
                                 strides=[n, k_x_N, N, 1],
                             )
                         if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
