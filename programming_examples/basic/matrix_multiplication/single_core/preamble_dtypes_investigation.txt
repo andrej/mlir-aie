@@ -1,0 +1,49 @@
+-- single core -- 
+
+M=2048 K=2048 N=2048 m=64 k=64 n=64 dtype_in=i16 dtype_out=i16 trace_size=65536 runargs="--iters 100 --warmup 10 --verify 0 --trace_sz 65536" make run
+
+data movement + preamble/postamble + zeroing + matmul: 158828 us    trc_normal.json         commit 9262fe4a
+data movement + preamble/postamble + zeroing:          123089 us    trc_zero.json           commit f6ec59bd
+data movement + preamble/postamble:                    121085 us    trc_datamovement.json   commit 7878c991
+preamble/postamble:                                      3135 us    trc_preamble.json       commit 34639d97
+preamble/postamble + compute on buffer:                152095 us    trace_compute.json      commit 4fcf8ff4
+preamble/postamble + compute + zero on buffer:         152543 us    trc_compute_zero.json   commit 8fadbd66
+
+conclusions:
+
+preamble/postamble:                                 3135 us
+zeroing:             152543 us - 152095 us     =     448 us
+compute:             152095 us - 3135 us       =  148960 us
+data movement:       121085 us - 3135 us       =  117950 us
+total:                                            152543 us
+
+theoretical max
+64 [MAC/cycle] * 2 [MAC/OP] * 1e9 [GHz] * 1 [cores] = 128 * 1e9
+
+theoretical min execution time:
+2048*2048*2048*2/(128*1e9) * 1e6 = 134217 us
+
+theoretical min execution time - preamble:
+134217 + 3135 = 137352 us
+
+achieved: 152543 us
+(2048*2048*2048*2) [OP] / (152543 * 1e-6 [s]) =  112 * 1e9 [OP/s]
+~ 88 %
+util. without preamble: ~ 90%
+
+-- whole array --
+
+preamble/postamble + zeroing + matmul: 11606 us
+preamble/postamble + zeroing:          TODO     
+preamble/postamble:   TODO
+
+
+theoretical max
+64 [MAC/cycle] * 2 [MAC/OP] * 1e9 [GHz] * 16 [cores] = 2048 * 1e9
+
+achieved: 11606 us
+(2048*2048*2048*2) [OP] / (11606 * 1e-6 [s]) = 1480 * 1e9 [OP/s]
+
+1480/2048 = 72%
+
+
