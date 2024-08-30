@@ -5,19 +5,31 @@ M=2048 K=2048 N=2048 m=64 k=64 n=64 dtype_in=i16 dtype_out=i16 trace_size=65536 
 data movement + preamble/postamble + zeroing + matmul: 158828 us    trc_normal.json         commit 9262fe4a
 data movement + preamble/postamble + zeroing:          123089 us    trc_zero.json           commit f6ec59bd
 data movement + preamble/postamble:                    121085 us    trc_datamovement.json   commit 7878c991
+data movement w/o mem->core transf. + pre/postamble:   121025 us                            commit 1dc4d7cb
+data movement w/o ANY transf. + pre/postamble:          70327 us                            commit 1c19a5aa
 preamble/postamble:                                      3135 us    trc_preamble.json       commit 34639d97
 preamble/postamble + compute on buffer:                152095 us    trace_compute.json      commit 4fcf8ff4
 preamble/postamble + compute + zero on buffer:         152543 us    trc_compute_zero.json   commit 8fadbd66
 
+
+
 conclusions:
+
+compute:
 
 preamble/postamble:                                 3135 us
 zeroing:             152543 us - 152095 us     =     448 us
 compute:             152095 us - 3135 us       =  148960 us
-data movement:       121085 us - 3135 us       =  117950 us
+
 total of above numbers:                           152543 us
 actual total:                                     158828 us
 unaccounted for:                                    6285 us
+
+data movement:
+data movement wo/transf. or pre/postamble:   70327 us - 3135 us  =   67192 us
+array layout transformations (mem->core):    121085 - 121025 us  =      60 us
+shim layout transformations (shim->mem):     121025 - 70327 us   =   50698 us
+
 
 theoretical max
 64 [MAC/cycle] * 2 [MAC/OP] * 1e9 [GHz] * 1 [cores] = 128 * 1e9
