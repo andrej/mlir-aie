@@ -6,7 +6,7 @@ data movement + preamble/postamble + zeroing + matmul: 158828 us    trc_normal.j
 data movement + preamble/postamble + zeroing:          123089 us    trc_zero.json           commit f6ec59bd
 data movement + preamble/postamble:                    121085 us    trc_datamovement.json   commit 7878c991
 data movement w/o mem->core transf. + pre/postamble:   121025 us                            commit 1dc4d7cb
-data movement w/o ANY transf. + pre/postamble:          70327 us                            commit 1c19a5aa
+data movement w/o ANY transf. + pre/postamble:          70327 us                            commit 966619e7
 preamble/postamble:                                      3135 us    trc_preamble.json       commit 34639d97
 preamble/postamble + compute on buffer:                152095 us    trace_compute.json      commit 4fcf8ff4
 preamble/postamble + compute + zero on buffer:         152543 us    trc_compute_zero.json   commit 8fadbd66
