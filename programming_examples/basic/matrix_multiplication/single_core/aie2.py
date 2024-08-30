@@ -318,8 +318,8 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                                 bd_id=bd_id_base + 2 * tile_row + 1,
                                 mem=A,
                                 offsets=[0, 0, 0, A_row_offset],
-                                sizes=[1, 1, 1, N_div_n*K_div_k*m*k],
-                                strides=[0, 0, 0, 1],
+                                sizes=[N_div_n, K_div_k, m, k],
+                                strides=[0,         m*k, k, 1],
                                 #sizes=[N_div_n, K_div_k, m, k],
                                 #strides=[0, k, K, 1],
                             )
