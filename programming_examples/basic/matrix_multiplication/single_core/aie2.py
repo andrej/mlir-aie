@@ -113,15 +113,9 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
 
         @device(AIEDevice.npu1_1col)
         def device_body():
-            #memref_a_ty = T.memref(m, k, dtype_in())
-            #memref_b_ty = T.memref(k, n, dtype_in())
-            #memref_c_ty = T.memref(m, n, dtype_out())
-            memref_a_ty = T.memref(2, 2, dtype_in())
-            memref_b_ty = T.memref(2, 2, dtype_in())
-            memref_c_ty = T.memref(2, 2, dtype_out())
-            buf_a_ty = T.memref(m, k, dtype_in())
-            buf_b_ty = T.memref(k, n, dtype_in())
-            buf_c_ty = T.memref(m, n, dtype_out())
+            memref_a_ty = T.memref(m, k, dtype_in())
+            memref_b_ty = T.memref(k, n, dtype_in())
+            memref_c_ty = T.memref(m, n, dtype_out())
 
             ofifo_memref_a_ty = TypeAttr.get(ObjectFifoType.get(memref_a_ty))
             ofifo_memref_b_ty = TypeAttr.get(ObjectFifoType.get(memref_b_ty))
@@ -129,16 +123,16 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
 
             # AIE Core Function declarations
             zero_scalar = external_func(
-                f"zero_scalar_{dtype_out_str}", inputs=[buf_c_ty]
+                f"zero_scalar_{dtype_out_str}", inputs=[memref_c_ty]
             )
-            zero = external_func(f"zero_{dtype_out_str}", inputs=[buf_c_ty])
+            zero = external_func(f"zero_{dtype_out_str}", inputs=[memref_c_ty])
             matmul_scalar = external_func(
                 f"matmul_scalar_{dtype_in_str}_{dtype_out_str}",
-                inputs=[buf_a_ty, buf_b_ty, buf_c_ty],
+                inputs=[memref_a_ty, memref_b_ty, memref_c_ty],
             )
             matmul = external_func(
                 f"matmul_{dtype_in_str}_{dtype_out_str}",
-                inputs=[buf_a_ty, buf_b_ty, buf_c_ty],
+                inputs=[memref_a_ty, memref_b_ty, memref_c_ty],
             )
 
             # Tile declarations
@@ -217,10 +211,6 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
 
             # Set up compute tiles
 
-            buf_a = buffer(compute_tile2, (m, k), dtype_in())
-            buf_b = buffer(compute_tile2, (k, n), dtype_in())
-            buf_c = buffer(compute_tile2, (m, n), dtype_out())
-
             # Compute tile 2
             @core(compute_tile2, f"mm_{m}x{k}x{n}.o")
             def core_body():
@@ -228,23 +218,23 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                     for _ in for_(tiles) if tiles > 1 else range(1):  # issue #1547
                         elem_out = memC.acquire(ObjectFifoPort.Produce, 1)
                         #if vectorized:
-                        #    call(zero, [buf_c])
+                        #    call(zero, [elem_out])
                         #else:
-                        #    call(zero_scalar, [buf_c])
+                        #    call(zero_scalar, [elem_out])
 
                         for _ in (
                             for_(K_div_k) if K_div_k > 1 else range(1)
                         ):  # issue #1547
                             elem_in_a = memA.acquire(ObjectFifoPort.Consume, 1)
                             elem_in_b = memB.acquire(ObjectFifoPort.Consume, 1)
-                            if vectorized:
-                                call(matmul, [buf_a, buf_b, buf_c])
-                            else:
-                                call(matmul_scalar, [buf_a, buf_b, buf_c])
-                            #a = memref.load(elem_in_a.result, [0, 1])
-                            #b = memref.load(elem_in_b.result, [0, 1])
-                            #c = a + b
-                            #memref.store(c, elem_out, [0, 1])
+                            #if vectorized:
+                            #    call(matmul, [elem_in_a, elem_in_b, elem_out])
+                            #else:
+                            #    call(matmul_scalar, [elem_in_a, elem_in_b, elem_out])
+                            a = memref.load(elem_in_a.result, [0, 1])
+                            b = memref.load(elem_in_b.result, [0, 1])
+                            c = a + b
+                            memref.store(c, elem_out, [0, 1])
                             memA.release(ObjectFifoPort.Consume, 1)
                             memB.release(ObjectFifoPort.Consume, 1)
                             if K_div_k > 1:
@@ -316,10 +306,10 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                             bd_id=bd_id_base,
                             mem=C,
                             offsets=[0, 0, 0, C_row_offset],
-                            #sizes=[1, 1, 1, num_tile_rows*N_div_n*m*n],
-                            #strides=[0, 0, 0, 1],
-                            sizes=[num_tile_rows, N_div_n, m, n],
-                            strides=[m_x_N, n, N, 1],
+                            sizes=[1, 1, 1, num_tile_rows*N_div_n*m*n],
+                            strides=[0, 0, 0, 1],
+                            #sizes=[num_tile_rows, N_div_n, m, n],
+                            #strides=[m_x_N, n, N, 1],
                         )
                         for tile_row in range(num_tile_rows):
                             A_row_offset = (row_base + tile_row) * m * K
@@ -328,20 +318,19 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                                 bd_id=bd_id_base + 2 * tile_row + 1,
                                 mem=A,
                                 offsets=[0, 0, 0, A_row_offset],
-                                #sizes=[1, 1, 1, N_div_n*K_div_k*m*k],
-                                #strides=[0, 0, 0, 1],
-                                sizes=[N_div_n, K_div_k, m, k],
-                                strides=[0, k, K, 1],
+                                sizes=[1, 1, 1, N_div_n*K_div_k*m*k],
+                                strides=[0, 0, 0, 1],
+                                #sizes=[N_div_n, K_div_k, m, k],
+                                #strides=[0, k, K, 1],
                             )
                             npu_dma_memcpy_nd(
                                 metadata="inB",
                                 bd_id=bd_id_base + 2 * tile_row + 2,
                                 mem=B,
-                                sizes=[N_div_n, K_div_k, 2, 2],
-                                #sizes=[1, 1, 1, N_div_n*K_div_k*k*n],
-                                #strides=[0, 0, 0, 1]
-                                sizes=[N_div_n, K_div_k, k, n],
-                                strides=[n, k_x_N, N, 1],
+                                sizes=[1, 1, 1, N_div_n*K_div_k*k*n],
+                                strides=[0, 0, 0, 1]
+                                #sizes=[N_div_n, K_div_k, k, n],
+                                #strides=[n, k_x_N, N, 1],
                             )
                         if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
                             npu_sync(column=0, row=0, direction=0, channel=0)
