@@ -15,7 +15,9 @@ preamble/postamble:                                 3135 us
 zeroing:             152543 us - 152095 us     =     448 us
 compute:             152095 us - 3135 us       =  148960 us
 data movement:       121085 us - 3135 us       =  117950 us
-total:                                            152543 us
+total of above numbers:                           152543 us
+actual total:                                     158828 us
+unaccounted for:                                    6285 us
 
 theoretical max
 64 [MAC/cycle] * 2 [MAC/OP] * 1e9 [GHz] * 1 [cores] = 128 * 1e9
