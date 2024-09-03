@@ -2,22 +2,21 @@
 
 M=2048 K=2048 N=2048 m=64 k=64 n=64 dtype_in=i16 dtype_out=i16 trace_size=65536 runargs="--iters 100 --warmup 10 --verify 0 --trace_sz 65536" make run
 
-data movement + preamble/postamble + zeroing + matmul: 158828 us    trc_normal.json         commit 9262fe4a
-data movement + preamble/postamble + zeroing:          123089 us    trc_zero.json           commit f6ec59bd
-data movement + preamble/postamble:                    121085 us    trc_datamovement.json   commit 7878c991
-data movement w/o mem->core transf. + pre/postamble:   121025 us                            commit 1dc4d7cb
-data movement w/o ANY transf. + pre/postamble:          70327 us                            commit 966619e7
-preamble/postamble:                                      3135 us    trc_preamble.json       commit 34639d97
-preamble/postamble + compute on buffer:                152095 us    trace_compute.json      commit 4fcf8ff4
-preamble/postamble + compute + zero on buffer:         152543 us    trc_compute_zero.json   commit 8fadbd66
-
+data movement + outer loop locks + zeroing + matmul: 158828 us    trc_normal.json         commit 9262fe4a
+data movement + outer loop locks + zeroing:          123089 us    trc_zero.json           commit f6ec59bd
+data movement + outer loop locks:                    121085 us    trc_datamovement.json   commit 7878c991
+data movement w/o mem->core transf. + outer loop locks:   121025 us                            commit 1dc4d7cb
+data movement w/o ANY transf. + outer loop locks:          70327 us                            commit 966619e7
+outer loop locks:                                      3135 us    trc_preamble.json       commit 34639d97
+outer loop locks + compute on buffer:                152095 us    trace_compute.json      commit 4fcf8ff4
+outer loop locks + compute + zero on buffer:         152543 us    trc_compute_zero.json   commit 8fadbd66
 
 
 conclusions:
 
 compute:
 
-preamble/postamble:                                 3135 us
+outer loop locks:                                 3135 us
 zeroing:             152543 us - 152095 us     =     448 us
 compute:             152095 us - 3135 us       =  148960 us
 
@@ -26,7 +25,7 @@ actual total:                                     158828 us
 unaccounted for:                                    6285 us
 
 data movement:
-data movement wo/transf. or pre/postamble:   70327 us - 3135 us  =   67192 us
+data movement wo/transf. or outer loop locks:   70327 us - 3135 us  =   67192 us
 array layout transformations (mem->core):    121085 - 121025 us  =      60 us
 shim layout transformations (shim->mem):     121025 - 70327 us   =   50698 us
 
@@ -47,9 +46,9 @@ util. without preamble: ~ 90%
 
 -- whole array --
 
-preamble/postamble + zeroing + matmul: 11606 us
-preamble/postamble + zeroing:          TODO     
-preamble/postamble:   TODO
+outer loop locks + zeroing + matmul: 11606 us
+outer loop locks + zeroing:          TODO     
+outer loop locks:   TODO
 
 
 theoretical max
@@ -61,3 +60,40 @@ achieved: 11606 us
 1480/2048 = 72%
 
 
+-- microcode --
+
+function: matmul_i16_i16
+6 instructions  - jump latency?
+should be inlined!
+
+function: _Z21matmul_vectorized_1x2IssLj16ELj16ELj16ELj4ELj4ELj4EEvPKT_S2_PT0_
+
+microcode_0.lst: instructions that run once per function call
+15 instr
++ 6 instructions for non-inlined call
+total non-MAC: 15 [inst] + 6 [inst]                      = 21 [inst]
+
+microcode_1.lst: instructions that run 4 times per call
+16 instr (all non-MAC)
+total:         16 [inst] * 4 [loop iter]                 = 64 [inst]
+total non-MAC:                                           = 64 [inst]
+
+microcode_2.lst: instructions that run 8 times per outer iteration, 4 * 8 per call
+29 instr
+of which are MACs: 16 instr
+13 non-MAC instr
+total:         29 [inst] * 8 [loop iter] * 4 [loop iter] = 928 [inst]
+total non-MAC: 13 [inst] * 8 [loop iter] * 4 [loop iter] = 416 [inst]
+total MAC:                                               = 512 [inst]
+
+zero-overhead loop:  movx lc #14, meaning 14 iterations?
+8 instr
+of which are MACs: 8 instr
+0 non-MAC instr
+total:           8 [inst] * 14 [loop iter] * 8 [loop iter] * 4 [loop iter] = 3584 [inst]
+total non-MAC:                                                             = 0    [inst]
+
+grand total:
+total inst:     4597 [inst]
+total non-MAC:   501 [inst]
+pre/postamble:    11%

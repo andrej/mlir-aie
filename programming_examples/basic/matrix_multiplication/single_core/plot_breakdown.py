@@ -3,10 +3,11 @@ import matplotlib.pyplot as plt
 
 
 compute_times = [
-        (3135,   {"label": "Preamble/Postamble"}), 
+        (3135,   {"label": "Outer Loop"}), 
         (448,    {"label": "Zeroing Output"}), 
         (6285,   {"label": "Unknown"}),
-        (148960, {"label": "Compute Mat. Mul."})
+        (148960*0.108, {"label": "Pre/postamble"}),
+        (148960*0.892, {"label": "Compute Mat. Mul."})
 ]
 
 data_movement_times = [
