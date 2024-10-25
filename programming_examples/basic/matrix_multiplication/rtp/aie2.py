@@ -8,9 +8,6 @@
 # B matrix is assumed to be column major in this design!
 
 import argparse
-from ml_dtypes import bfloat16
-import numpy as np
-import sys
 
 from aie.extras.context import mlir_mod_ctx
 
@@ -21,13 +18,12 @@ import aie.dialects.index as index_dialect
 import aie.dialects.arith as arith_dialect
 
 dtype_map = {
-    "bf16": bfloat16,
-    "i8": np.int8,
-    "i16": np.int16,
-    "f32": np.float32,
-    "i32": np.int32,
+    "bf16": T.bf16,
+    "i8": T.i8,
+    "i16": T.i16,
+    "f32": T.f32,
+    "i32": T.i32,
 }
-
 
 def main():
     argparser = argparse.ArgumentParser(
@@ -80,15 +76,8 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
     dtype_out = dtype_map[dtype_out_str]
 
     # Only tested with these types thus far
-    assert dtype_in == bfloat16
-    assert dtype_out == np.float32
-
-    assert np.issubdtype(dtype_in, np.integer) == np.issubdtype(
-        dtype_out, np.integer
-    ), f"Input dtype ({dtype_in}) and output dtype ({dtype_out}) must either both be integral or both be float"
-    assert (
-        np.dtype(dtype_out).itemsize >= np.dtype(dtype_in).itemsize
-    ), f"Output dtype ({dtype_out}) must be equal or larger to input dtype ({dtype_in})"
+    assert dtype_in == T.bf16
+    assert dtype_out == T.f32
 
     if dtype_in_str == "bf16":
         r = 4
@@ -147,13 +136,13 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
 
     @device(dev)
     def device_body():
-        A_l2_ty = np.ndarray[(m * k * n_A_tiles_per_shim,), np.dtype[dtype_in]]
-        B_l2_ty = np.ndarray[(k * n,), np.dtype[dtype_in]]
-        C_l2_ty = np.ndarray[(m * n * n_aie_rows,), np.dtype[dtype_out]]
-        A_l1_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
-        B_l1_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
-        C_l1_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
-        rtp_ty = np.ndarray[(3,), np.dtype[np.int32]]
+        A_l2_ty = T.memref(m * k * n_A_tiles_per_shim, dtype_in())
+        B_l2_ty = T.memref(k * n, dtype_in())
+        C_l2_ty = T.memref(m * n * n_aie_rows, dtype_out())
+        A_l1_ty = T.memref(m, k, dtype_in())
+        B_l1_ty = T.memref(k, n, dtype_in())
+        C_l1_ty = T.memref(m, n, dtype_out())
+        rtp_ty = T.memref(3, T.i32()) 
 
         # AIE Core Function declarations
         zero = external_func(f"zero_{dtype_out_str}", inputs=[C_l1_ty])
@@ -338,9 +327,9 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
 
         # To/from AIE-array data movement
         @runtime_sequence(
-            np.ndarray[(M * K,), np.dtype[dtype_in]],
-            np.ndarray[(K * N,), np.dtype[dtype_in]],
-            np.ndarray[(M * N,), np.dtype[dtype_out]],
+            T.memref(M * K, dtype_in()),
+            T.memref(K * N, dtype_in()),
+            T.memref(M * N, dtype_out()),
         )
         def sequence(A, B, C):
             # Write number of inner loop iterations for cores to use as run-time parameter.
