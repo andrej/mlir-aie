@@ -80,7 +80,7 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
     T_out *__restrict pC1 = pC + (z * colB) * MMUL::size_C;
     T_out *__restrict pC2 = pC + ((z + 1) * colB) * MMUL::size_C;
 
-    for (unsigned j = 0; j < colB; j += 2)
+    for (unsigned j = 0; j < colB; j += 2) 
 #ifdef OPT_PERF_ENABLED
     AIE_LOOP_FLATTEN
 #endif

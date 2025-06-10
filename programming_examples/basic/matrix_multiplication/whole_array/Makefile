@@ -9,7 +9,7 @@
 ##===----------------------------------------------------------------------===##
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 subdir=whole_array
-targetname=whole_array
+targetname?=whole_array
 
 
 # M, K, N: final GEMM dimensions
@@ -31,6 +31,10 @@ runargs+=--b_col_maj ${b_col_maj}
 target_suffix=${M}x${K}x${N}_${m}x${k}x${n}_${n_aie_cols}c
 use_placed?=0
 use_iron?=0
+
+ifeq (${targetname}, whole_array_optimized)
+	aieargs+=-mtk ${mtk} -ktn ${ktn}
+endif
 
 # set this flag to 1 for linear buffer allocation
 # else, 0 for bank-aware
