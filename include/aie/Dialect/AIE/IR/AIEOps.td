@@ -55,10 +55,13 @@ def AIE_DeviceOp: AIE_Op<"device", [
     ```
   }];
 
-  let arguments = (ins AIEDevice:$device);
+  let arguments = (
+    ins SymbolNameAttr:$sym,
+        AIEDevice:$device
+  );
   let regions = (region AnyRegion:$body_region);
   let assemblyFormat = [{
-    `(` $device `)` regions attr-dict
+    `(` $device `)` $sym regions attr-dict
   }];
   let extraClassDeclaration = [{
     const xilinx::AIE::AIETargetModel &getTargetModel();

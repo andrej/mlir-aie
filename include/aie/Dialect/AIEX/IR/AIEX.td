@@ -546,6 +546,40 @@ def AIE_RuntimeSequenceOp : AIEX_Op<"runtime_sequence", [NoTerminator, HasParent
   let hasVerifier = 1;
 }
 
+def AIE_ConfigureOp: AIEX_Op<"configure", [
+  HasParent<"RuntimeSequenceOp">,
+]>,
+  Results<(outs Index:$result)>
+ {
+  let arguments = (
+    ins FlatSymbolRefAttr:$symbol
+  );
+
+  let assemblyFormat = [{
+     $symbol attr-dict
+  }];
+
+  //let arguments = (
+  //  ins FlatSymbolRefAttr:$symbol,
+  //      Variadic<AnyType>:$args
+  //);
+  //let assemblyFormat = [{
+  //   $symbol `(` $args `)` `:` `(` type($args) `)` attr-dict
+  //}];
+}
+
+def AIE_RunOp: AIEX_Op<"run", [HasParent<"RuntimeSequenceOp">]> {
+  let arguments = (
+    ins Index:$config,
+        FlatSymbolRefAttr:$symbol,
+        Variadic<AnyType>:$args
+  );
+
+  let assemblyFormat = [{
+     $config `->` $symbol `(` $args `)` `:` `(` type($args) `)` attr-dict
+  }];
+}
+
 def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     AttrSizedOperandSegments,
     MyOffsetSizeAndStrideOpInterface
