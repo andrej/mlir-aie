@@ -555,7 +555,8 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
 
 ParseResult AIEX::RuntimeSequenceOp::parse(OpAsmParser &parser,
                                            OperationState &result) {
-
+  
+  // Name of this runtime sequence
   StringAttr nameAttr;
   (void)parser.parseOptionalSymbolName(
       nameAttr, mlir::SymbolTable::getSymbolAttrName(), result.attributes);
