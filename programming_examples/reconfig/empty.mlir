@@ -1,4 +1,4 @@
 module {
-    aie.device(npu1_1col) {
+    aie.device(npu1_1col) @dev {
     }
 }

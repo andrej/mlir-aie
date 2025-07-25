@@ -1,5 +1,5 @@
 module {
-  aie.device(npu1_1col) {
+  aie.device(npu1_1col) @dev {
 
     %t00 = aie.tile(0, 0)
     %t01 = aie.tile(0, 1)
@@ -37,7 +37,7 @@ module {
       aie.end
     }
 
-    aiex.runtime_sequence(%in : memref<64xi32>, %out : memref<64xi32>) {
+    aiex.runtime_sequence @rt(%in : memref<64xi32>, %out : memref<64xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c64 = arith.constant 64 : i64
