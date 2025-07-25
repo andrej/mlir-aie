@@ -527,7 +527,11 @@ def AIE_SelectOp: AIEX_Op<"select", []>, Results<(outs Index)> {
   ];
 }
 
-def AIE_RuntimeSequenceOp : AIEX_Op<"runtime_sequence", [NoTerminator, HasParent<"AIE::DeviceOp">]> {
+def AIE_RuntimeSequenceOp : AIEX_Op<"runtime_sequence", [
+  Symbol,
+  NoTerminator, 
+  HasParent<"AIE::DeviceOp">, 
+]> {
   let summary = "Program the configuration co-processor of the AI Engine array";
   let description = [{
     Instructions in this operation allow for runtime (re-)configuration of the AI Engine array, such as configuring data movement buffer descriptors.
@@ -537,7 +541,7 @@ def AIE_RuntimeSequenceOp : AIEX_Op<"runtime_sequence", [NoTerminator, HasParent
     The input arguments are arguments passed in from the host at kernel invocation time. This may include buffers on the host.
   }];
   let arguments = (
-    ins OptionalAttr<SymbolNameAttr>:$sym_name
+    ins SymbolNameAttr:$sym_name
   );
   let regions = (region
     AnyRegion:$body
@@ -559,6 +563,10 @@ def AIE_ConfigureOp: AIEX_Op<"configure", [
      $symbol attr-dict
   }];
 
+  let extraClassDeclaration = [{
+    AIE::DeviceOp getReferencedDeviceOp();
+  }];
+
   //let arguments = (
   //  ins FlatSymbolRefAttr:$symbol,
   //      Variadic<AnyType>:$args
@@ -571,12 +579,16 @@ def AIE_ConfigureOp: AIEX_Op<"configure", [
 def AIE_RunOp: AIEX_Op<"run", [HasParent<"RuntimeSequenceOp">]> {
   let arguments = (
     ins Index:$config,
-        FlatSymbolRefAttr:$symbol,
+        FlatSymbolRefAttr:$runtime_sequence_symbol,
         Variadic<AnyType>:$args
   );
 
   let assemblyFormat = [{
-     $config `->` $symbol `(` $args `)` `:` `(` type($args) `)` attr-dict
+     $config `->` $runtime_sequence_symbol `(` $args `)` `:` `(` type($args) `)` attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    RuntimeSequenceOp getCalleeRuntimeSequenceOp();
   }];
 }
 

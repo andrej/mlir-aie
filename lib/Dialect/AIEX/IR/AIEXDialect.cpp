@@ -842,3 +842,61 @@ AIEX::BlockFloatType::verify(function_ref<InFlightDiagnostic()> emitError,
 
   return success();
 }
+
+
+//===----------------------------------------------------------------------===//
+// ConfigureOp
+//===----------------------------------------------------------------------===//
+
+AIE::DeviceOp AIEX::ConfigureOp::getReferencedDeviceOp() {
+  ModuleOp moduleOp = this->getOperation()->getParentOfType<ModuleOp>();
+  if (!moduleOp) {
+    emitError("aiex.configure must be inside of a module");
+    return nullptr;
+  }
+  Operation *maybeReferencedDevice = SymbolTable::lookupSymbolIn(moduleOp.getOperation(), getSymbolAttr());
+  if (!maybeReferencedDevice) {
+    emitError("Referenced symbol is not defined");
+    return nullptr;
+  }
+  AIE::DeviceOp referencedDevice = llvm::dyn_cast<AIE::DeviceOp>(maybeReferencedDevice);
+  if (!referencedDevice) {
+    emitError("Referenced symbol is not a device");
+    return nullptr;
+  }
+  return referencedDevice;
+}
+
+
+//===----------------------------------------------------------------------===//
+// RunOp
+//===----------------------------------------------------------------------===//
+
+AIEX::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp() {
+  AIEX::ConfigureOp configureOp = getConfig().getDefiningOp<AIEX::ConfigureOp>();
+  if (!configureOp) {
+    return nullptr;
+  }
+  AIE::DeviceOp referencedDevice = configureOp.getReferencedDeviceOp();
+  if (!referencedDevice) {
+    return nullptr;
+  }
+
+  Operation *maybeRuntimeSequence = SymbolTable::lookupSymbolIn(
+    referencedDevice, 
+    getRuntimeSequenceSymbol()
+  );
+
+  if (!maybeRuntimeSequence) {
+    auto err = configureOp.emitError() << "No " << getRuntimeSequenceSymbol() << " runtime sequence found for this configuration";
+    err.attachNote(referencedDevice.getLoc()) << "This device does not have a " << getRuntimeSequenceSymbol() << " runtime sequence";
+    return nullptr;
+  }
+  AIEX::RuntimeSequenceOp runtimeSequence = llvm::dyn_cast<AIEX::RuntimeSequenceOp>(maybeRuntimeSequence);
+  if (!runtimeSequence) {
+    configureOp.emitError() << "Referenced " << getRuntimeSequenceSymbol() << " symbol is not a runtime sequence";
+    return nullptr;
+  }
+
+  return runtimeSequence;
+}

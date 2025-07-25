@@ -45,6 +45,8 @@ createAIECtrlPacketInferTilesPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIELowerSetLockPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIETransformBfpTypesPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> 
+createAIEMaterializeRuntimeSequencePass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
