@@ -14,6 +14,7 @@ add_mlir_dialect_library(AIEXTransforms
   AIELowerMulticast.cpp
   AIELowerMemcpy.cpp
   AIEDmaToNpu.cpp
+  AIEMaterializeRuntimeSequence.cpp
   AIEMaterializeBDChains.cpp
   AIEAssignRuntimeSequenceBDIDs.cpp
   AIEDMATasksToNPU.cpp

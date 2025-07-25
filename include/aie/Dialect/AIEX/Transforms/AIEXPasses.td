@@ -235,4 +235,8 @@ def AIETransformBfpTypes : Pass<"aie-transform-bfp-types", "AIE::DeviceOp"> {
   ];
 }
 
+def AIEMaterializeRuntimeSequence : Pass<"aie-materialize-runtime-sequence", "AIE::DeviceOp"> {
+  let constructor = "xilinx::AIEX::createAIEMaterializeRuntimeSequencePass()";
+}
+
 #endif
