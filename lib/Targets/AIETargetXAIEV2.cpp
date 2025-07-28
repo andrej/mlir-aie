@@ -301,7 +301,8 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
 }
 
 mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module,
-                                                      raw_ostream &output) {
+                                                      raw_ostream &output,
+                                                      llvm::StringRef deviceName) {
   //  StringRef ctx   = "ctx";                     // TODO
   StringRef ctx_p = "aie_libxaie_ctx_t* ctx"; // TODO
   //  StringRef deviceInst = "ctx->DevInst";       // TODO
@@ -310,9 +311,9 @@ mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module,
   DenseMap<TileID, Operation *> tiles;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
 
-  if (module.getOps<DeviceOp>().empty())
+  DeviceOp targetOp = AIE::DeviceOp::getForSymbolInModule(module, deviceName);
+  if (!targetOp)
     return module.emitOpError("expected AIE.device operation at toplevel");
-  DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
   const auto &targetModel = targetOp.getTargetModel();
 
   collectTiles(targetOp, tiles);

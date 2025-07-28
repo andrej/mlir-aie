@@ -15,6 +15,7 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
 
@@ -709,7 +710,7 @@ std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getOutputObjectFifos() {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       for (auto sym : getFifoOuts()) {
         auto name = dyn_cast<FlatSymbolRefAttr>(sym);
-        if (auto *st = SymbolTable::lookupSymbolIn(parent, name);
+        if (auto *st = mlir::SymbolTable::lookupSymbolIn(parent, name);
             isa_and_nonnull<ObjectFifoCreateOp>(st))
           outputObjFifos.push_back(dyn_cast<ObjectFifoCreateOp>(st));
       }
@@ -1051,6 +1052,32 @@ LogicalResult GetCascadeOp::verify() {
 
 const AIETargetModel &DeviceOp::getTargetModel() {
   return xilinx::AIE::getTargetModel(getDevice());
+}
+
+xilinx::AIE::DeviceOp DeviceOp::getForSymbolInModule(mlir::ModuleOp module, llvm::StringRef symbol) {
+  DeviceOp deviceOp;
+  if (!symbol.size()) {
+    deviceOp = *module.getOps<DeviceOp>().begin();
+  } else {
+    Operation *maybeDeviceOp = mlir::SymbolTable::lookupSymbolIn(module, symbol);
+    if (!maybeDeviceOp) {
+      return nullptr;
+    }
+    deviceOp = llvm::dyn_cast<DeviceOp>(maybeDeviceOp);
+  }
+  return deviceOp;
+}
+
+xilinx::AIE::DeviceOp DeviceOp::getForSymbolInModuleOrError(mlir::ModuleOp module, llvm::StringRef symbol) {
+  DeviceOp deviceOp = getForSymbolInModule(module, symbol);
+  if (!deviceOp) {
+    if (!symbol.empty()) {
+      module.emitError("No such device: ") << symbol;
+    } else {
+      module.emitError("No device in module");
+    }
+  }
+  return deviceOp;
 }
 
 //===----------------------------------------------------------------------===//

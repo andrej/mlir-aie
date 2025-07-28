@@ -69,6 +69,8 @@ def AIE_DeviceOp: AIE_Op<"device", [
   }];
   let extraClassDeclaration = [{
     const xilinx::AIE::AIETargetModel &getTargetModel();
+    static xilinx::AIE::DeviceOp getForSymbolInModule(mlir::ModuleOp module, llvm::StringRef symbol);
+    static xilinx::AIE::DeviceOp getForSymbolInModuleOrError(mlir::ModuleOp module, llvm::StringRef symbol);
   }];
 }
 

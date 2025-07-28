@@ -545,10 +545,10 @@ class FlowRunner:
                 await self.do_call(task, ["aie-opt", f"--pass-pipeline={LOWER_TO_LLVM_PIPELINE}", file_core, "-o", file_opt_core])
             if self.opts.xbridge:
                 file_core_bcf = corefile(self.tmpdirname, core, "bcf")
-                await self.do_call(task, ["aie-translate", file_with_addresses, "--aie-generate-bcf", "--tilecol=%d" % corecol, "--tilerow=%d" % corerow, "-o", file_core_bcf])
+                await self.do_call(task, ["aie-translate", file_with_addresses, "--aie-generate-bcf", "--aie-device-name", opts.device_name, "--tilecol=%d" % corecol, "--tilerow=%d" % corerow, "-o", file_core_bcf])
             else:
                 file_core_ldscript = corefile(self.tmpdirname, core, "ld.script")
-                await self.do_call(task, ["aie-translate", file_with_addresses, "--aie-generate-ldscript", "--tilecol=%d" % corecol, "--tilerow=%d" % corerow, "-o", file_core_ldscript])
+                await self.do_call(task, ["aie-translate", file_with_addresses, "--aie-generate-ldscript", "--aie-device-name", opts.device_name, "--tilecol=%d" % corecol, "--tilerow=%d" % corerow, "-o", file_core_ldscript])
             if not self.opts.unified:
                 file_core_llvmir = corefile(self.tmpdirname, core, "ll")
                 await self.do_call(task, ["aie-translate", "--mlir-to-llvmir", file_opt_core, "-o", file_core_llvmir])
@@ -597,7 +597,7 @@ class FlowRunner:
     async def process_cdo(self, module_str):
         with Context(), Location.unknown():
             input_physical = Module.parse(module_str)
-            aiedialect.generate_cdo(input_physical.operation, self.tmpdirname)
+            aiedialect.generate_cdo(input_physical.operation, self.tmpdirname, opts.device_name)
 
     async def process_txn(self, module_str):
         with Context(), Location.unknown():
@@ -678,9 +678,10 @@ class FlowRunner:
                 None,
                 [
                     "aie-translate",
-                    "-aie-ctrlpkt-to-bin",
-                    "-aie-sequence-name",
-                    "configure",
+                    "--aie-ctrlpkt-to-bin",
+                    "--aie-device-name",
+                    opts.device_name,
+                    '--aie-sequence-name="configure"',
                     self.prepend_tmp("ctrlpkt.mlir"),
                     "-o",
                     "ctrlpkt.bin",
@@ -697,9 +698,10 @@ class FlowRunner:
                 None,
                 [
                     "aie-translate",
-                    "-aie-npu-to-binary",
-                    "-aie-sequence-name",
-                    "configure",
+                    "--aie-npu-to-binary",
+                    "--aie-device-name",
+                    opts.device_name,
+                    '--aie-sequence-name="configure"',
                     self.prepend_tmp("ctrlpkt_dma_seq.mlir"),
                     "-o",
                     "ctrlpkt_dma_seq.bin",
@@ -723,7 +725,7 @@ class FlowRunner:
                 self.opts.verbose,
             )
             # translate npu instructions to binary and write to file
-            npu_insts = aiedialect.translate_npu_to_binary(npu_insts_module.operation)
+            npu_insts = aiedialect.translate_npu_to_binary(npu_insts_module.operation, opts.device_name, opts.sequence_name)
 
         npu_insts_bin = self.prepend_tmp("elf_insts.bin")
         with open(npu_insts_bin, "wb") as f:
@@ -870,6 +872,8 @@ class FlowRunner:
                     [
                         "aie-translate",
                         "--aie-generate-airbin",
+                        "--aie-device-name",
+                        opts.device_name,
                         file_physical,
                         "-o",
                         file_airbin,
@@ -883,6 +887,8 @@ class FlowRunner:
                     [
                         "aie-translate",
                         "--aie-generate-hsa",
+                        "--aie-device-name",
+                        opts.device_name,
                         file_physical,
                         "-o",
                         file_inc_cpp,
@@ -1083,6 +1089,8 @@ class FlowRunner:
                 [
                     "aie-translate",
                     "--aie-mlir-to-xpe",
+                    "--aie-device-name",
+                    opts.device_name,
                     file_physical,
                     "-o",
                     os.path.join(sim_reports_dir, "graph.xpe"),
@@ -1095,6 +1103,8 @@ class FlowRunner:
                 [
                     "aie-translate",
                     "--aie-mlir-to-shim-solution",
+                    "--aie-device-name",
+                    opts.device_name,
                     file_physical,
                     "-o",
                     os.path.join(sim_arch_dir, "aieshim_solution.aiesol"),
@@ -1107,6 +1117,8 @@ class FlowRunner:
                 [
                     "aie-translate",
                     "--aie-mlir-to-scsim-config",
+                    "--aie-device-name",
+                    opts.device_name,
                     file_physical,
                     "-o",
                     os.path.join(sim_config_dir, "scsim_config.json"),
@@ -1148,6 +1160,8 @@ class FlowRunner:
             task,
             [
                 "aie-translate",
+                "--aie-device-name",
+                opts.device_name,
                 "--aie-flows-to-json",
                 os.path.join(sim_dir, "flows_physical.mlir"),
                 "-o",
@@ -1220,6 +1234,8 @@ class FlowRunner:
                 [
                     "aie-translate",
                     "--aie-generate-target-arch",
+                    "--aie-device-name",
+                    opts.device_name,
                     file_with_addresses,
                 ],
                 self.opts.verbose,
@@ -1307,6 +1323,8 @@ class FlowRunner:
                     [
                         "aie-translate",
                         "--aie-generate-xaie",
+                        "--aie-device-name",
+                        opts.device_name,
                         input_physical,
                         "-o",
                         file_inc_cpp,

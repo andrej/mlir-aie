@@ -24,6 +24,8 @@
 #define GET_TYPEDEF_CLASSES
 #include "aie/Dialect/AIEX/IR/AIEXTypes.h.inc"
 
+#include "llvm/ADT/StringRef.h"
+
 namespace xilinx {
 namespace AIEX {
 

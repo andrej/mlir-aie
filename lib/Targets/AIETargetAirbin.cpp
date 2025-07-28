@@ -1181,6 +1181,7 @@ Elf_Data *sectionAddData(Elf_Scn *scn, const Section *section) {
 mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
                                          const std::string &outputFilename,
                                          const std::string &coreFilesDir,
+                                         llvm::StringRef deviceName,
                                          bool testAirBin) {
   int tmpElfFD;
   Elf *outElf;
@@ -1192,12 +1193,11 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
   char strTabName[] = ".shstrtab";
   std::vector<Section *> sections;
 
-  if (module.getOps<DeviceOp>().empty()) {
+  DeviceOp targetOp = AIE::DeviceOp::getForSymbolInModule(module, deviceName);
+  if (!targetOp) {
     LLVM_DEBUG(llvm::dbgs() << "no device ops found");
     return success();
   }
-
-  DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
 
   // Write the initial configuration for every tile specified in the MLIR.
   for (auto tileOp : targetOp.getOps<TileOp>()) {

@@ -14,6 +14,7 @@
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
@@ -619,6 +620,33 @@ LogicalResult AIEX::RuntimeSequenceOp::verify() {
   }
   return success();
 }
+
+AIEX::RuntimeSequenceOp AIEX::RuntimeSequenceOp::getForSymbolInDevice(AIE::DeviceOp deviceOp, llvm::StringRef symbol) {
+  AIEX::RuntimeSequenceOp runtimeSequenceOp;
+  if (!symbol.size()) {
+    runtimeSequenceOp = *deviceOp.getOps<AIEX::RuntimeSequenceOp>().begin();
+  } else {
+    Operation *maybeRuntimeSequenceOp = mlir::SymbolTable::lookupSymbolIn(deviceOp, symbol);
+    if (!maybeRuntimeSequenceOp) {
+      return nullptr;
+    }
+    runtimeSequenceOp = llvm::dyn_cast<AIEX::RuntimeSequenceOp>(maybeRuntimeSequenceOp);
+  }
+  return runtimeSequenceOp;
+}
+
+AIEX::RuntimeSequenceOp AIEX::RuntimeSequenceOp::getForSymbolInDeviceOrError(AIE::DeviceOp deviceOp, llvm::StringRef symbol) {
+  AIEX::RuntimeSequenceOp runtimeSequenceOp = getForSymbolInDevice(deviceOp, symbol);
+  if (!runtimeSequenceOp) {
+    if (!symbol.empty()) {
+      deviceOp.emitError("No such runtime sequence: ") << symbol;
+    } else {
+      deviceOp.emitError("No runtime sequence in device");
+    }
+  }
+  return runtimeSequenceOp;
+}
+
 
 //===----------------------------------------------------------------------===//
 // DMAConfigureTaskOp
