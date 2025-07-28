@@ -2,7 +2,7 @@
 
 module {
 
-  aie.device(npu1_1col) @add_one {
+  aie.device(npu2_1col) @add_one {
 
     %t00 = aie.tile(0, 0)
     %t02 = aie.tile(0, 2)
@@ -40,7 +40,7 @@ module {
     }
   }
 
-  aie.device(npu1_1col) @main {
+  aie.device(npu2_1col) @main {
     aiex.runtime_sequence (%global_in: memref<64xi32>, %global_out: memref<64xi32>) {
       %c1 = aiex.configure @add_one
       aiex.run %c1 -> @rt (%global_in, %global_out) : (memref<64xi32>, memref<64xi32>)

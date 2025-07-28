@@ -39,21 +39,24 @@ build/design.mlir: design.py
 
 # Complete binary for loading onto the NPU.
 # The following target generates both build/final.xclbin AND build/insts.txt
-build/empty.xclbin: empty.mlir
+build/empty.xclbin: aie.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	            --device-name=empty \
 				--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 				$(<:%=../%)
 
 build/config_insts.bin: aie.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py -v --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
+	            --device-name=subtract_three \
 				--aie-generate-txn --txn-name=txns.mlir ${<:%=../%}
-	aie-translate -aie-npu-to-binary build/txns.mlir -o $@
+	aie-translate --aie-device-name=subtract_three --aie-npu-to-binary build/txns.mlir -o $@
 
 build/run_insts.bin: aie.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py -v --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
+	            --device-name=subtract_three \
 				--aie-generate-npu-insts --npu-insts-name=${@F} $(<:%=../%)
 
 # Host-side code (runs on the CPU) that loads and starts our design onto the NPU using the XRT (Xilinx runtime) library.
@@ -65,7 +68,7 @@ build/test: test.cpp
 .PHONY: run
 run: build/test build/empty.xclbin build/config_insts.bin build/run_insts.bin
 	export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
-	./$< 
+	./$< build/config_insts.bin build/run_insts.bin
 
 # Remove all build artifacts.
 .PHONY: clean
