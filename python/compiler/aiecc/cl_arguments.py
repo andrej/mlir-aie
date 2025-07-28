@@ -343,6 +343,12 @@ def parse_args(args=None):
         default="",
         help="Symbol name of the device configuration to compile",
     )
+    parser.add_argument(
+        "--sequence-name",
+        dest="sequence_name",
+        default="",
+        help="Symbol name of the runtime sequence to compile"
+    )
 
     opts = parser.parse_args(args)
     return opts
