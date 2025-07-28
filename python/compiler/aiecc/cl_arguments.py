@@ -337,6 +337,12 @@ def parse_args(args=None):
         default="design.elf",
         help="Output elf filename for ELF target",
     )
+    parser.add_argument(
+        "--device-name",
+        dest="device_name",
+        default="",
+        help="Symbol name of the device configuration to compile",
+    )
 
     opts = parser.parse_args(args)
     return opts

@@ -548,6 +548,10 @@ def AIE_RuntimeSequenceOp : AIEX_Op<"runtime_sequence", [
   );
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
+  let extraClassDeclaration = [{
+    static RuntimeSequenceOp getForSymbolInDevice(AIE::DeviceOp module, llvm::StringRef symbol);
+    static RuntimeSequenceOp getForSymbolInDeviceOrError(AIE::DeviceOp module, llvm::StringRef symbol);
+  }];
 }
 
 def AIE_ConfigureOp: AIEX_Op<"configure", [
