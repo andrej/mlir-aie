@@ -65,10 +65,10 @@ int32_t get_random<int32_t>() {
 }
 
 void print_matrix(std::vector<DTYPE> matrix) {
-  std::cout << std::setfill('0') << std::setw(7) << std::fixed << std::setprecision(3);
   for(int row = 0; row < MATRIX_ROWS; row++) {
     for(int col = 0; col < MATRIX_COLS; col++) {
-      std::cout << matrix[row * MATRIX_COLS + col] << "  "; 
+      std::cout << std::setfill(' ') << std::setw(10) << std::fixed << std::setprecision(3)
+                << matrix[row * MATRIX_COLS + col] << "  "; 
     }
     std::cout << std::endl;
   }
@@ -76,16 +76,24 @@ void print_matrix(std::vector<DTYPE> matrix) {
 
 int main(int argc, const char *argv[]) {
 
+  if (argc != 3) {
+    std::cerr << "Usage: " << argv[0] << " <config_insts.bin> <run_insts.bin>\n";
+    exit(1);
+  }
+
+  std::string config_insts_bin = argv[1];
+  std::string run_insts_bin = argv[2];
+
   // Fix the seed to ensure reproducibility.
   srand(1726250518); // srand(time(NULL));
 
   size_t buf_size = SIZE * sizeof(DTYPE);
 
   // XRT setup: load instruction sequence and xclbin, find kernel in xclbin, initialize buffers, finally call the kernel.
-  std::vector<uint32_t> config_instr_v = load_instr_binary(CONFIG_INSTS_BIN);
+  std::vector<uint32_t> config_instr_v = load_instr_binary(config_insts_bin);
   const size_t config_instr_size = config_instr_v.size() * sizeof(uint32_t);
   std::cout << "Config sequence instr count: " << config_instr_v.size() << "\n";
-  std::vector<uint32_t> run_instr_v = load_instr_binary(RUN_INSTS_BIN);
+  std::vector<uint32_t> run_instr_v = load_instr_binary(run_insts_bin);
   const size_t run_instr_size = run_instr_v.size() * sizeof(uint32_t);
   std::cout << "Run sequence instr count: " << run_instr_v.size() << "\n";
   unsigned int device_index = 0;
@@ -104,7 +112,6 @@ int main(int argc, const char *argv[]) {
   const size_t instr_size = config_instr_size > run_instr_size ? config_instr_size : run_instr_size;
   auto bo_instr = xrt::bo(device, instr_size, XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
   auto bo_a = xrt::bo(device, buf_size, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_b = xrt::bo(device, buf_size, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
   auto bo_out = xrt::bo(device, buf_size, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
 
@@ -140,13 +147,6 @@ int main(int argc, const char *argv[]) {
   }
   memcpy(bufA, AVec.data(), (AVec.size() * sizeof(DTYPE)));
 
-  DTYPE *bufB = bo_b.map<DTYPE *>();
-  std::vector<DTYPE> BVec(SIZE);
-  for (int i = 0; i < SIZE; i++) {
-    BVec[i] = get_random<DTYPE>();
-  }
-  memcpy(bufB, BVec.data(), (BVec.size() * sizeof(DTYPE)));
-
   char *bufOut = bo_out.map<char *>();
   std::vector<DTYPE> CVec(SIZE);
   memset(bufOut, 0, buf_size);
@@ -155,7 +155,6 @@ int main(int argc, const char *argv[]) {
 
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_a.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_b.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   // Finally run the kernel.
