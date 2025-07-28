@@ -256,6 +256,13 @@ xilinx::AIE::AIETranslateNpuToBinary(mlir::ModuleOp moduleOp,
   words[1] = (numMemTileRows << 8) | numCols;
 
   AIEX::RuntimeSequenceOp seq = AIEX::RuntimeSequenceOp::getForSymbolInDeviceOrError(deviceOp, sequenceName);
+  if (!seq) {
+    return failure();
+  }
+  if (seq.getBody().empty()) {
+    seq.emitError("Runtime sequence is empty");
+    return failure();
+  }
   Block &entry = seq.getBody().front();
   for (auto &o : entry) {
     llvm::TypeSwitch<Operation *>(&o)

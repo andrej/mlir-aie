@@ -1268,7 +1268,9 @@ class FlowRunner:
                         self.opts.verbose,
                     )
                     npu_insts = aiedialect.translate_npu_to_binary(
-                        npu_insts_module.operation
+                        npu_insts_module.operation,
+                        opts.device_name,
+                        opts.sequence_name
                     )
                     with open(opts.insts_name, "wb") as f:
                         f.write(struct.pack("I" * len(npu_insts), *npu_insts))
