@@ -59,6 +59,16 @@ build/run_insts.bin: aie.mlir
 	            --device-name=subtract_three \
 				--aie-generate-npu-insts --npu-insts-name=${@F} $(<:%=../%)
 
+build/combined_insts.bin: aie.mlir
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py -v --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
+				--device-name=subtract_three \
+				--aie-generate-txn --txn-name=txns.mlir ${<:%=../%}
+	aie-opt --pass-pipeline="builtin.module(aie.device(aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-assign-runtime-sequence-bd-ids,aie-dma-tasks-to-npu,aie-dma-to-npu,aie-lower-set-lock))" \
+		build/txns.mlir -o build/txns_dma_lowered.mlir
+	aie-opt --aie-materialize-runtime-sequence build/txns_dma_lowered.mlir -o build/txns_inlined.mlir
+	aie-translate --aie-device-name main --aie-npu-to-binary --aie-sequence-name main_rt build/txns_inlined.mlir -o $@
+
 # Host-side code (runs on the CPU) that loads and starts our design onto the NPU using the XRT (Xilinx runtime) library.
 build/test: test.cpp 
 	mkdir -p ${@D}
