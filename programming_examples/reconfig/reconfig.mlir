@@ -41,7 +41,7 @@ module {
   }
 
   aie.device(npu2_1col) @main {
-    aiex.runtime_sequence (%global_in: memref<64xi32>, %global_out: memref<64xi32>) {
+    aiex.runtime_sequence @rt (%global_in: memref<64xi32>, %global_out: memref<64xi32>) {
       %c1 = aiex.configure @add_one
       aiex.run %c1 -> @rt (%global_in, %global_out) : (memref<64xi32>, memref<64xi32>)
     }
