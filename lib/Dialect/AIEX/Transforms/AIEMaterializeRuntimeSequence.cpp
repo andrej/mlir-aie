@@ -62,6 +62,46 @@ struct AIERuntimeCallGraphCyclicityAnalysis {
   }
 };
 
+// Inlines the definitions of all symbols referenced in the givent operation 
+// at the current insertion point in the given rewriter, unless the symbol
+// definition is in the "previouslyInlinedSymbolMap" map. While inlining,
+// symbols will be renamed to have a unique name.
+void inlineReferencedSymbolDefinitions(
+    PatternRewriter &rewriter, 
+    Operation *op, 
+    Operation *lookupFrom,
+    IRMapping argMap,
+    llvm::DenseMap<SymbolRefAttr, SymbolRefAttr> &previouslyInlinedSymbolMap) {
+  MLIRContext *ctx = op->getContext();
+  for (NamedAttribute namedAttr : op->getAttrs()) {
+    Attribute attr = namedAttr.getValue();
+    auto newAttr = attr.replace(
+      [&](SymbolRefAttr oldSymbolRef) {
+        SymbolRefAttr newSymbolRef;
+        if (!previouslyInlinedSymbolMap.count(oldSymbolRef)) {
+          llvm::StringRef oldName = oldSymbolRef.getRootReference().getValue();
+          std::string uniqueName = oldName.str();
+          unsigned uniquingCounter = 0;
+          while (SymbolTable::lookupNearestSymbolFrom(op, StringAttr::get(ctx, uniqueName))) {
+            uniqueName = oldName.str() + "_" + std::to_string(uniquingCounter);
+            uniquingCounter++;
+          }
+          newSymbolRef = SymbolRefAttr::get(ctx, uniqueName);
+          previouslyInlinedSymbolMap[oldSymbolRef] = newSymbolRef;
+
+          // Add the new symbol definition
+          Operation *symbolDefOp = SymbolTable::lookupNearestSymbolFrom(lookupFrom, oldSymbolRef);
+          Operation *clonedSymbolDefOp = rewriter.clone(*symbolDefOp, argMap);
+          clonedSymbolDefOp->setAttr(SymbolTable::getSymbolAttrName(), StringAttr::get(ctx, uniqueName));
+        } else {
+          newSymbolRef = previouslyInlinedSymbolMap[oldSymbolRef];
+        }
+        return std::make_pair(newSymbolRef, WalkResult::advance());
+      });
+    op->setAttr(namedAttr.getName(), newAttr);
+  }
+}
+
 struct AIEInlineRuntimeCallsPattern : RewritePattern {
 
   AIEInlineRuntimeCallsPattern(MLIRContext *ctx)
@@ -75,8 +115,9 @@ struct AIEInlineRuntimeCallsPattern : RewritePattern {
     if (!runOp) {
       return failure();
     }
+    AIE::DeviceOp calleeDevice = runOp.getCalleeDeviceOp();
     RuntimeSequenceOp calleeRuntimeSequence = runOp.getCalleeRuntimeSequenceOp();
-    if (!calleeRuntimeSequence) {
+    if (!calleeDevice, !calleeRuntimeSequence) {
       return failure();
     }
     if (!calleeRuntimeSequence.getOps<RunOp>().empty()) {
@@ -85,6 +126,12 @@ struct AIEInlineRuntimeCallsPattern : RewritePattern {
 
     // rewrite logic
     Region &calleeBody = calleeRuntimeSequence.getBody();
+    AIE::DeviceOp callerDevice = op->getParentOfType<AIE::DeviceOp>();
+    if (!callerDevice) {
+      runOp.emitError() << "needs to be in a DeviceOp";
+      return failure();
+    }
+    Region &callerDeviceBody = callerDevice.getBodyRegion();
     IRMapping argMap;
     ValueRange values = runOp.getArgs();
     for (unsigned i = 0, n = calleeBody.getNumArguments(); i < n; i++) {
@@ -97,10 +144,18 @@ struct AIEInlineRuntimeCallsPattern : RewritePattern {
       }
       argMap.map(arg, val);
     }
+    llvm::DenseMap<SymbolRefAttr, SymbolRefAttr> previouslyInlinedSymbolMap;
     rewriter.setInsertionPoint(runOp);
     for (Operation &op : calleeBody.getOps()) {
-      rewriter.clone(op, argMap);
+      Operation *clonedOp = rewriter.clone(op, argMap);
+
+      mlir::OpBuilder::InsertPoint oldInsertionPoint = rewriter.saveInsertionPoint();
+      rewriter.setInsertionPointToStart(&callerDeviceBody.front());
+      inlineReferencedSymbolDefinitions(
+        rewriter, clonedOp, calleeRuntimeSequence.getOperation(), argMap, previouslyInlinedSymbolMap);
+      rewriter.restoreInsertionPoint(oldInsertionPoint);
     }
+
     rewriter.eraseOp(runOp);
 
     return success();

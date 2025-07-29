@@ -592,6 +592,7 @@ def AIE_RunOp: AIEX_Op<"run", [HasParent<"RuntimeSequenceOp">]> {
   }];
 
   let extraClassDeclaration = [{
+    AIE::DeviceOp getCalleeDeviceOp();
     RuntimeSequenceOp getCalleeRuntimeSequenceOp();
   }];
 }

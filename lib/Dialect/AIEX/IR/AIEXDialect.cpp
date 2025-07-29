@@ -900,6 +900,15 @@ AIE::DeviceOp AIEX::ConfigureOp::getReferencedDeviceOp() {
 // RunOp
 //===----------------------------------------------------------------------===//
 
+AIE::DeviceOp AIEX::RunOp::getCalleeDeviceOp() {
+  AIEX::ConfigureOp configureOp = getConfig().getDefiningOp<AIEX::ConfigureOp>();
+  if (!configureOp) {
+    return nullptr;
+  }
+  AIE::DeviceOp referencedDevice = configureOp.getReferencedDeviceOp();
+  return referencedDevice;
+}
+
 AIEX::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp() {
   AIEX::ConfigureOp configureOp = getConfig().getDefiningOp<AIEX::ConfigureOp>();
   if (!configureOp) {
