@@ -146,14 +146,18 @@ struct AIEInlineRuntimeCallsPattern : RewritePattern {
     }
     llvm::DenseMap<SymbolRefAttr, SymbolRefAttr> previouslyInlinedSymbolMap;
     rewriter.setInsertionPoint(runOp);
+    mlir::OpBuilder::InsertPoint clonedOpInsertionPoint = rewriter.saveInsertionPoint();
+    mlir::Block &callerDeviceBodyFirstBlock = callerDeviceBody.front();
+    mlir::OpBuilder::InsertPoint clonedSymbolInsertionPoint(&callerDeviceBodyFirstBlock, callerDeviceBodyFirstBlock.begin());
     for (Operation &op : calleeBody.getOps()) {
+      rewriter.restoreInsertionPoint(clonedOpInsertionPoint);
       Operation *clonedOp = rewriter.clone(op, argMap);
+      clonedOpInsertionPoint = rewriter.saveInsertionPoint();
 
-      mlir::OpBuilder::InsertPoint oldInsertionPoint = rewriter.saveInsertionPoint();
-      rewriter.setInsertionPointToStart(&callerDeviceBody.front());
+      rewriter.restoreInsertionPoint(clonedSymbolInsertionPoint);
       inlineReferencedSymbolDefinitions(
         rewriter, clonedOp, calleeRuntimeSequence.getOperation(), argMap, previouslyInlinedSymbolMap);
-      rewriter.restoreInsertionPoint(oldInsertionPoint);
+      clonedSymbolInsertionPoint = rewriter.saveInsertionPoint();
     }
 
     rewriter.eraseOp(runOp);
