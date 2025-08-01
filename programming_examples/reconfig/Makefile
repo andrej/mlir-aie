@@ -31,7 +31,7 @@ XRT_LIB_DIR=/opt/xilinx/xrt/lib
 # --------------------------------------------------------------------------
 
 .PHONY: all
-all: build/empty.xclbin build/config_insts.bin build/run_insts.bin build/test
+all: build/empty.xclbin build/config_subtract_three_insts.bin build/run_subtract_three_insts.bin build/test
 
 # Intermediate lowering of our NPU design.
 build/design.mlir: design.py
@@ -39,35 +39,39 @@ build/design.mlir: design.py
 
 # Complete binary for loading onto the NPU.
 # The following target generates both build/final.xclbin AND build/insts.txt
-build/empty.xclbin: aie.mlir
+build/%.xclbin: aie.mlir
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
-	            --device-name=empty \
+	cd ${@D} && aiecc.py -v --no-unified --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	            --device-name ${*F} \
 				--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 				$(<:%=../%)
 
-build/config_insts.bin: aie.mlir
+build/config_%_insts.mlir: aie.mlir
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py -v --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
-	            --device-name=subtract_three \
-				--aie-generate-txn --txn-name=txns.mlir ${<:%=../%}
-	aie-translate --aie-device-name=subtract_three --aie-npu-to-binary build/txns.mlir -o $@
+	cd ${@D} && aiecc.py -v --no-unified --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
+				--aie-generate-txn --txn-name=${@F} ${<:%=../%}
 
-build/run_insts.bin: aie.mlir
-	mkdir -p ${@D}
-	cd ${@D} && aiecc.py -v --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
-	            --device-name=subtract_three \
-				--aie-generate-npu-insts --npu-insts-name=${@F} $(<:%=../%)
+build/config_%_insts.bin: build/config_%_insts.mlir
+	aie-translate --aie-device-name=${*F} --aie-sequence-name=configure --aie-npu-to-binary $< -o $@
 
-build/combined_insts.bin: aie.mlir
+build/run_%_insts.mlir: aie.mlir
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py -v --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
-				--device-name=subtract_three \
-				--aie-generate-txn --txn-name=txns.mlir ${<:%=../%}
+	cd ${@D} && aiecc.py -v --no-unified --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
+	            --aie-generate-txn --txn-name=txns.mlir \
+				--device-name=${*F} \
+				--aie-generate-npu-insts --sequence-name=rt --npu-insts-name=${@F} $(<:%=../%)
 	aie-opt --pass-pipeline="builtin.module(aie.device(aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-assign-runtime-sequence-bd-ids,aie-dma-tasks-to-npu,aie-dma-to-npu,aie-lower-set-lock))" \
-		build/txns.mlir -o build/txns_dma_lowered.mlir
-	aie-opt --aie-materialize-runtime-sequence build/txns_dma_lowered.mlir -o build/txns_inlined.mlir
-	aie-translate --aie-device-name main --aie-npu-to-binary --aie-sequence-name main_rt build/txns_inlined.mlir -o $@
+		build/aie.mlir.prj/input_with_addresses.mlir -o $@
+
+build/run_%_insts.bin: build/run_%_insts.mlir
+	mkdir -p ${@D}
+	aie-translate --aie-npu-to-binary --aie-device-name=${*F} --aie-sequence-name=rt $< -o $@
+
+build/npu_insts_main_rt.bin: aie.mlir
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py -v --no-unified --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
+	            --aie-generate-txn --txn-name=txns.mlir \
+				--aie-generate-npu-insts ${<:%=../%}
 
 # Host-side code (runs on the CPU) that loads and starts our design onto the NPU using the XRT (Xilinx runtime) library.
 build/test: test.cpp 
@@ -76,9 +80,9 @@ build/test: test.cpp
 
 # Convenience to run the host-side code above.
 .PHONY: run
-run: build/test build/empty.xclbin build/config_insts.bin build/run_insts.bin
+run: build/test build/empty.xclbin build/config_subtract_three_insts.bin build/run_subtract_three_insts.bin
 	export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
-	./$< build/config_insts.bin build/run_insts.bin
+	./$< build/config_subtract_three_insts.bin build/run_subtract_three_insts.bin
 
 # Remove all build artifacts.
 .PHONY: clean
