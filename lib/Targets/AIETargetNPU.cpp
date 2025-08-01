@@ -226,33 +226,30 @@ xilinx::AIE::AIETranslateNpuToBinary(mlir::ModuleOp moduleOp,
   if (!seq) {
     return failure();
   }
-  if (seq.getBody().empty()) {
-    seq.emitError("Runtime sequence is empty");
-    return failure();
-  }
-  Block &entry = seq.getBody().front();
-  for (auto &o : entry) {
-    llvm::TypeSwitch<Operation *>(&o)
-        .Case<NpuSyncOp>([&](auto op) {
-          count++;
-          appendSync(instructions, op);
-        })
-        .Case<NpuWrite32Op>([&](auto op) {
-          count++;
-          appendWrite32(instructions, op);
-        })
-        .Case<NpuBlockWriteOp>([&](auto op) {
-          count++;
-          appendBlockWrite(instructions, op);
-        })
-        .Case<NpuMaskWrite32Op>([&](auto op) {
-          count++;
-          appendMaskWrite32(instructions, op);
-        })
-        .Case<NpuAddressPatchOp>([&](auto op) {
-          count++;
-          appendAddressPatch(instructions, op);
-        });
+  for (Block &block : seq.getBody()) {
+    for (Operation &o : block) {
+      llvm::TypeSwitch<Operation *>(&o)
+          .Case<NpuSyncOp>([&](auto op) {
+            count++;
+            appendSync(instructions, op);
+          })
+          .Case<NpuWrite32Op>([&](auto op) {
+            count++;
+            appendWrite32(instructions, op);
+          })
+          .Case<NpuBlockWriteOp>([&](auto op) {
+            count++;
+            appendBlockWrite(instructions, op);
+          })
+          .Case<NpuMaskWrite32Op>([&](auto op) {
+            count++;
+            appendMaskWrite32(instructions, op);
+          })
+          .Case<NpuAddressPatchOp>([&](auto op) {
+            count++;
+            appendAddressPatch(instructions, op);
+          });
+    }
   }
 
   // write size fields of the txn header
