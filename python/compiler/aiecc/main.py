@@ -31,6 +31,7 @@ import rich.progress as progress
 import aie.compiler.aiecc.cl_arguments
 import aie.compiler.aiecc.configure
 from aie.dialects import aie as aiedialect
+from aie.dialects import aiex as aiexdialect
 from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
 
@@ -103,7 +104,7 @@ NPU_LOWERING_PIPELINE = Pipeline().Nested(
     .add_pass("aie-assign-runtime-sequence-bd-ids")
     .add_pass("aie-dma-tasks-to-npu")
     .add_pass("aie-dma-to-npu")
-    .add_pass("aie-lower-set-lock"),
+    .add_pass("aie-lower-set-lock")
 )
 
 
@@ -280,6 +281,14 @@ def generate_cores_list(device_op):
             device_op.operation,
             lambda o: isinstance(o.operation.opview, aiedialect.CoreOp),
         )
+    ]
+
+
+def generate_runtime_sequences_list(device_op):
+    return [
+        (s, s.sym_name.value)
+        for s in find_ops(device_op.operation, lambda o: isinstance(o.operation.opview, aiexdialect.RuntimeSequenceOp))
+        if not opts.sequence_name or s.sym_name.value == opts.sequence_name
     ]
 
 
@@ -700,19 +709,20 @@ class FlowRunner:
             aiedialect.generate_cdo(input_physical.operation, self.tmpdirname, device_name)
 
     async def process_txn(self, module_str):
+        file_txn = self.prepend_tmp("input_physical_with_elfs_and_txn.mlir")
         with Context(), Location.unknown():
             run_passes(
                 "builtin.module(aie.device(convert-aie-to-transaction{elf-dir="
                 + self.tmpdirname
                 + "}))",
                 module_str,
-                self.prepend_tmp("txn.mlir"),
+                file_txn,
                 self.opts.verbose,
             )
-            tmp = self.prepend_tmp("txn.mlir")
             if opts.verbose:
-                print(f"copy {tmp} to {opts.txn_name}")
-            shutil.copy(tmp, opts.txn_name)
+                print(f"copy {file_txn} to {opts.txn_name}")
+            shutil.copy(file_txn, opts.txn_name)
+        return file_txn
 
     async def aiebu_asm(self, input_file, output_file, ctrl_packet_file=None):
 
@@ -821,8 +831,14 @@ class FlowRunner:
             npu_insts_module = run_passes_module(
                 pass_pipeline,
                 module,
-                npu_insts_mlir,
+                None,
                 self.opts.verbose,
+            )
+            npu_insts_module = run_passes_module(
+                "builtin.module(aie.device(aie-materialize-runtime-sequence))",
+                npu_insts_module,
+                npu_insts_mlir,
+                self.opts.verbose
             )
             # translate npu instructions to binary and write to file
             npu_insts = aiedialect.translate_npu_to_binary(npu_insts_module.operation, device_name, opts.sequence_name)
@@ -1397,6 +1413,11 @@ class FlowRunner:
                 elf_paths[device_name] = await self.process_cores(device_op, device_name, file_with_addresses, aie_target, aie_peano_target)
             input_physical_with_elfs = await self.write_elf_paths_to_mlir(input_physical, elf_paths)
 
+            # 2.5) Targets that require the cores to be lowered but apply across all devices
+            if opts.txn and opts.execute:
+                input_physical_with_elfs_str = await read_file_async(input_physical_with_elfs)
+                input_physical_with_elfs = await self.process_txn(input_physical_with_elfs_str)
+
             # 3.) Generate compilation artifacts for each device
 
             # create other artifacts for each device
@@ -1410,29 +1431,36 @@ class FlowRunner:
         # Optionally generate insts.bin for NPU instruction stream
         if opts.npu:
             with Context(), Location.unknown():
-                input_physical_module = Module.parse(
-                    await read_file_async(input_physical)
+                input_physical_with_elfs_module = Module.parse(
+                    await read_file_async(input_physical_with_elfs)
                 )
                 pass_pipeline = NPU_LOWERING_PIPELINE.materialize(module=True)
                 npu_insts_file = (
-                    self.prepend_tmp("npu_insts.mlir")
-                    if self.opts.verbose
-                    else None
+                    self.prepend_tmp(f"npu_insts_{device_name}.mlir")
                 )
                 npu_insts_module = run_passes_module(
                     pass_pipeline,
-                    input_physical_module,
-                    npu_insts_file,
+                    input_physical_with_elfs_module,
+                    None,
                     self.opts.verbose,
                 )
-                npu_insts = aiedialect.translate_npu_to_binary(
-                    npu_insts_module.operation,
-                    device_name,
-                    opts.sequence_name
+                npu_insts_module = run_passes_module(
+                    "builtin.module(aie.device(aie-materialize-runtime-sequence))",
+                    npu_insts_module,
+                    npu_insts_file,
+                    self.opts.verbose
                 )
-                npu_insts_path = opts.insts_name.format(device_name)
-                with open(npu_insts_path, "wb") as f:
-                    f.write(struct.pack("I" * len(npu_insts), *npu_insts))
+                # write each runtime sequence binary into its own file
+                runtime_sequences = generate_runtime_sequences_list(device_op)
+                for seq_op, seq_name in runtime_sequences:
+                        npu_insts = aiedialect.translate_npu_to_binary(
+                            npu_insts_module.operation,
+                            device_name,
+                            seq_name
+                        )
+                        npu_insts_path = opts.insts_name.format(device_name, seq_name)
+                        with open(npu_insts_path, "wb") as f:
+                            f.write(struct.pack("I" * len(npu_insts), *npu_insts))
 
         if opts.progress:
             pb.update(pb.task, advance=0, visible=False)
@@ -1478,9 +1506,6 @@ class FlowRunner:
         # so don't call it again if opts.xcl is set
         elif opts.pdi:
             processes.append(self.process_pdi_gen(device_name, self.prepend_tmp(f"{device_name}_design.pdi")))
-
-        if opts.txn and opts.execute:
-            processes.append(self.process_txn(input_physical_with_elfs_str))
 
         if opts.ctrlpkt and opts.execute:
             processes.append(self.process_ctrlpkt(input_physical_with_elfs_str, device_name))

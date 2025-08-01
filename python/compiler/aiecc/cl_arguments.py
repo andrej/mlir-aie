@@ -230,8 +230,8 @@ def parse_args(args=None):
     parser.add_argument(
         "--npu-insts-name",
         dest="insts_name",
-        default="npu_insts_{}.bin",
-        help="Output instructions filename for NPU target. `{}` is replaced with device name.",
+        default="npu_insts_{0}_{1}.bin",
+        help="Output instructions filename for NPU target. `{0}` is replaced with device name, `{1}` with the selected runtime sequence.",
     )
     parser.add_argument(
         "--aie-generate-cdo",
@@ -347,7 +347,7 @@ def parse_args(args=None):
         "--sequence-name",
         dest="sequence_name",
         default="",
-        help="Symbol name of the runtime sequence to compile"
+        help="Symbol name of the runtime sequence to compile. If none supplied, all runtime sequences in the selected device(s) are compiled."
     )
 
     opts = parser.parse_args(args)
