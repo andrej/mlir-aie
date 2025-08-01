@@ -230,8 +230,8 @@ def parse_args(args=None):
     parser.add_argument(
         "--npu-insts-name",
         dest="insts_name",
-        default="npu_insts.bin",
-        help="Output instructions filename for NPU target",
+        default="npu_insts_{}.bin",
+        help="Output instructions filename for NPU target. `{}` is replaced with device name.",
     )
     parser.add_argument(
         "--aie-generate-cdo",
@@ -289,7 +289,7 @@ def parse_args(args=None):
         "--xclbin-name",
         dest="xclbin_name",
         default="final.xclbin",
-        help="Output xclbin filename for CDO/XCLBIN target",
+        help="Output xclbin filename for CDO/XCLBIN target. `{}` is replaced with device name.",
     )
     parser.add_argument(
         "--aie-generate-pdi",
@@ -303,7 +303,7 @@ def parse_args(args=None):
         "--pdi-name",
         dest="pdi_name",
         default="design.pdi",
-        help="Output pdi filename for PDI/CDO/XCLBIN target",
+        help="Output pdi filename for PDI/CDO/XCLBIN target. `{}` is replaced with device name.",
     )
     parser.add_argument(
         "--xclbin-kernel-name",
@@ -335,13 +335,13 @@ def parse_args(args=None):
         "--elf-name",
         dest="elf_name",
         default="design.elf",
-        help="Output elf filename for ELF target",
+        help="Output elf filename for ELF target. `{}` is replaced with the device name.",
     )
     parser.add_argument(
         "--device-name",
         dest="device_name",
         default="",
-        help="Symbol name of the device configuration to compile",
+        help="Symbol name of the device configuration to compile. If none supplied, all devices are compiled.",
     )
     parser.add_argument(
         "--sequence-name",

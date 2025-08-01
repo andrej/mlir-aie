@@ -209,7 +209,7 @@ mem_topology = {
 }
 
 
-def emit_partition(mlir_module_str, device_op, kernel_id="0x901"):
+def emit_partition(mlir_module_str, device_op, design_pdi, kernel_id="0x901"):
     with Context(), Location.unknown():
         module = Module.parse(mlir_module_str)
     device = aiedialect.AIEDevice(int(device_op.device))
@@ -240,7 +240,7 @@ def emit_partition(mlir_module_str, device_op, kernel_id="0x901"):
             "PDIs": [
                 {
                     "uuid": str(pdi_uuid),
-                    "file_name": "./design.pdi",
+                    "file_name": design_pdi,
                     "cdo_groups": [
                         {
                             "name": "DPU",
@@ -262,7 +262,11 @@ def parse_file_as_mlir(mlir_module_str):
 
 
 def generate_devices_list(module):
-    return [(d, d.sym_name.value) for d in find_ops(module.operation, lambda d: isinstance(d.operation.opview, aiedialect.DeviceOp))]
+    return [
+        (d, d.sym_name.value) 
+        for d in find_ops(module.operation, lambda d: isinstance(d.operation.opview, aiedialect.DeviceOp))
+        if not opts.device_name or d.sym_name.value == opts.device_name
+    ]
 
 
 def generate_cores_list(device_op):
@@ -279,14 +283,14 @@ def generate_cores_list(device_op):
     ]
 
 
-def emit_design_bif(root_path, has_cores=True, enable_cores=True, unified=False):
+def emit_design_bif(root_path, device_name, has_cores=True, enable_cores=True, unified=False):
     if unified:
-        cdo_unified_file = f"file={root_path}/aie_cdo.bin"
+        cdo_unified_file = f"file={root_path}/{device_name}_aie_cdo.bin"
         files = f"{cdo_unified_file}"
     else:
-        cdo_elfs_file = f"file={root_path}/aie_cdo_elfs.bin"
-        cdo_init_file = f"file={root_path}/aie_cdo_init.bin"
-        cdo_enable_file = f"file={root_path}/aie_cdo_enable.bin" if enable_cores else ""
+        cdo_elfs_file = f"file={root_path}/{device_name}_aie_cdo_elfs.bin"
+        cdo_init_file = f"file={root_path}/{device_name}_aie_cdo_init.bin"
+        cdo_enable_file = f"file={root_path}/{device_name}_aie_cdo_enable.bin" if enable_cores else ""
         files = f"{cdo_elfs_file} {cdo_init_file} {cdo_enable_file}"
     return dedent(
         f"""\
@@ -608,8 +612,6 @@ class FlowRunner:
                 file_core = corefile(self.tmpdirname, device_name, core, "mlir")
                 file_opt_core = corefile(self.tmpdirname, device_name, core, "opt.mlir")
                 await self.do_call(task, ["aie-opt", f"--pass-pipeline={AIE_LOWER_TO_LLVM(device_name, corecol, corerow)}", file_with_addresses, "-o", file_opt_core])
-                # await self.do_call(task, ["aie-opt", "--aie-localize-locks", "--aie-normalize-address-spaces", f"--aie-standard-lowering=device={device_name} tilecol={core[0]} tilerow={core[1]}", "--aiex-standard-lowering", file_with_addresses, "-o", file_core])
-                #await self.do_call(task, ["aie-opt", f"--pass-pipeline={LOWER_TO_LLVM_PIPELINE}", file_core, "-o", file_opt_core])
             if self.opts.xbridge:
                 file_core_bcf = corefile(self.tmpdirname, device_name, core, "bcf")
                 await self.do_call(task, ["aie-translate", file_with_addresses, "--aie-generate-bcf", "--aie-device-name", device_name, "--tilecol=%d" % corecol, "--tilerow=%d" % corerow, "-o", file_core_bcf])
@@ -814,7 +816,7 @@ class FlowRunner:
             module = Module.parse(module_str)
             pass_pipeline = NPU_LOWERING_PIPELINE.materialize(module=True)
             npu_insts_mlir = (
-                self.prepend_tmp("elf_insts.mlir") if self.opts.verbose else None
+                self.prepend_tmp(f"{device_name}_elf_insts.mlir") if self.opts.verbose else None
             )
             npu_insts_module = run_passes_module(
                 pass_pipeline,
@@ -825,17 +827,18 @@ class FlowRunner:
             # translate npu instructions to binary and write to file
             npu_insts = aiedialect.translate_npu_to_binary(npu_insts_module.operation, device_name, opts.sequence_name)
 
-        npu_insts_bin = self.prepend_tmp("elf_insts.bin")
+        npu_insts_bin = self.prepend_tmp(f"{device_name}_elf_insts.bin")
         with open(npu_insts_bin, "wb") as f:
             f.write(struct.pack("I" * len(npu_insts), *npu_insts))
 
-        await self.aiebu_asm(npu_insts_bin, opts.elf_name)
+        await self.aiebu_asm(npu_insts_bin, opts.elf_name.format(device_name))
 
-    async def process_pdi_gen(self):
+    async def process_pdi_gen(self, device_name, file_design_pdi):
+        file_design_bif = self.prepend_tmp(f"{device_name}_design.bif")
 
         await write_file_async(
-            emit_design_bif(self.tmpdirname),
-            self.prepend_tmp("design.bif"),
+            emit_design_bif(self.tmpdirname, device_name),
+            file_design_bif
         )
 
         await self.do_call(
@@ -845,17 +848,17 @@ class FlowRunner:
                 "-arch",
                 "versal",
                 "-image",
-                self.prepend_tmp("design.bif"),
+                file_design_bif,
                 "-o",
-                self.prepend_tmp("design.pdi"),
+                file_design_pdi,
                 "-w",
             ],
         )
         if opts.pdi:
-            tmp = self.prepend_tmp("design.pdi")
+            tmp = file_design_pdi,
             if opts.verbose:
-                print(f"copy {tmp} to {opts.pdi_name}")
-            shutil.copy(tmp, opts.pdi_name)
+                print(f"copy {tmp} to {opts.pdi_name.format(device_name)}")
+            shutil.copy(tmp, opts.pdi_name.format(device_name))
 
     # generate an xclbin. The inputs are self.mlir_module_str and the cdo
     # binaries from the process_cdo step.
@@ -867,6 +870,12 @@ class FlowRunner:
         else:
             task = None
 
+        file_mem_topology = self.prepend_tmp(f"{device_name}_mem_topology.json")
+        file_partition = self.prepend_tmp(f"{device_name}_aie_partition.json")
+        file_input_partition = self.prepend_tmp(f"{device_name}_aie_input_partition.json")
+        file_kernels = self.prepend_tmp(f"{device_name}_kernels.json")
+        file_pdi = self.prepend_tmp(f"{device_name}_design.pdi")
+
         # collect the tasks to generate the inputs to xclbinutil
         processes = []
 
@@ -874,7 +883,7 @@ class FlowRunner:
         processes.append(
             write_file_async(
                 json.dumps(mem_topology, indent=2),
-                self.prepend_tmp("mem_topology.json"),
+                file_mem_topology
             )
         )
 
@@ -882,10 +891,10 @@ class FlowRunner:
         processes.append(
             write_file_async(
                 json.dumps(
-                    emit_partition(self.mlir_module_str, device_op, opts.kernel_id),
+                    emit_partition(self.mlir_module_str, device_op, file_pdi, opts.kernel_id),
                     indent=2,
                 ),
-                self.prepend_tmp("aie_partition.json"),
+                file_partition
             )
         )
 
@@ -902,12 +911,12 @@ class FlowRunner:
                     ),
                     indent=2,
                 ),
-                self.prepend_tmp("kernels.json"),
+                file_kernels
             )
         )
 
         # generate pdi
-        processes.append(self.process_pdi_gen())
+        processes.append(self.process_pdi_gen(device_name, file_pdi))
 
         # get partition info from input xclbin, if present
         if opts.xclbin_input:
@@ -917,8 +926,7 @@ class FlowRunner:
                     [
                         "xclbinutil",
                         "--dump-section",
-                        "AIE_PARTITION:JSON:"
-                        + self.prepend_tmp("aie_input_partition.json"),
+                        f"AIE_PARTITION:JSON:{file_input_partition}",
                         "--force",
                         "--quiet",
                         "--input",
@@ -930,28 +938,29 @@ class FlowRunner:
         # wait for all of the above to finish
         await asyncio.gather(*processes)
 
+
         # fmt: off
         if opts.xclbin_input:
             # patch the input partition json with the new partition information
-            with open(self.prepend_tmp("aie_input_partition.json")) as f:
+            with open(file_input_partition) as f:
                 input_partition = json.load(f)
-            with open(self.prepend_tmp("aie_partition.json")) as f:
+            with open(file_partition) as f:
                 new_partition = json.load(f)
             input_partition["aie_partition"]["PDIs"].append(new_partition["aie_partition"]["PDIs"][0])
-            with open(self.prepend_tmp("aie_partition.json"), "w") as f:
+            with open(file_partition, "w") as f:
                 json.dump(input_partition, f, indent=2)
             flag = ['--input', opts.xclbin_input]
         else:
-            flag = ["--add-replace-section", "MEM_TOPOLOGY:JSON:" + self.prepend_tmp("mem_topology.json")]
+            flag = ["--add-replace-section", "MEM_TOPOLOGY:JSON:" + file_mem_topology]
 
         # run xclbinutil to generate the xclbin
         await self.do_call(task, ["xclbinutil"] + flag +
-                                 ["--add-kernel", self.prepend_tmp("kernels.json"),
-                                  "--add-replace-section", "AIE_PARTITION:JSON:" + self.prepend_tmp("aie_partition.json"),
-                                  "--force", "--quiet", "--output", opts.xclbin_name])
+                                 ["--add-kernel", file_kernels,
+                                  "--add-replace-section", "AIE_PARTITION:JSON:" + file_partition,
+                                  "--force", "--quiet", "--output", opts.xclbin_name.format(device_name)])
         # fmt: on
 
-    async def process_host_cgen(self, aie_target, file_physical, device_name):
+    async def process_host_cgen(self, aie_target, file_physical_with_elfs, device_name):
         async with self.limit:
             if self.stopall:
                 return
@@ -972,7 +981,7 @@ class FlowRunner:
                         "--aie-generate-airbin",
                         "--aie-device-name",
                         device_name,
-                        file_physical,
+                        file_physical_with_elfs,
                         "-o",
                         file_airbin,
                     ],
@@ -987,7 +996,7 @@ class FlowRunner:
                         "--aie-generate-hsa",
                         "--aie-device-name",
                         device_name,
-                        file_physical,
+                        file_physical_with_elfs,
                         "-o",
                         file_inc_cpp,
                     ],
@@ -1293,6 +1302,28 @@ class FlowRunner:
         print("Simulation generated...")
         print("To run simulation: " + sim_script)
 
+    async def get_aie_target_for_device(self, mlir_input_file, device_name):
+        t = do_run(
+            [
+                "aie-translate",
+                "--aie-generate-target-arch",
+                "--aie-device-name",
+                device_name,
+                mlir_input_file,
+            ],
+            self.opts.verbose,
+        )
+        aie_target = t.stdout.strip()
+        if not re.fullmatch("AIE.?.?", aie_target):
+            print(
+                "Unexpected target " + aie_target + ". Exiting...",
+                file=sys.stderr,
+            )
+            exit(-3)
+        aie_peano_target = aie_target.lower() + "-none-unknown-elf"
+
+        return (aie_target, aie_peano_target)
+
     async def run_flow(self):
         # First, we run some aie-opt passes that transform the MLIR for every
         # device. Then, we generate the core code for each AIE core tile in
@@ -1371,38 +1402,16 @@ class FlowRunner:
             # create other artifacts for each device
             for (device_op, device_name) in devices:
                 aie_target, aie_peano_target = await self.get_aie_target_for_device(input_physical, device_name)
-                await self.run_flow_for_device(file_with_addresses, input_physical, input_physical_with_elfs, device_op, device_name, aie_target, aie_peano_target)
+                await self.run_flow_for_device(input_physical, input_physical_with_elfs, device_op, device_name, aie_target, aie_peano_target)
 
-    async def get_aie_target_for_device(self, mlir_input_file, device_name):
-        t = do_run(
-            [
-                "aie-translate",
-                "--aie-generate-target-arch",
-                "--aie-device-name",
-                device_name,
-                mlir_input_file,
-            ],
-            self.opts.verbose,
-        )
-        aie_target = t.stdout.strip()
-        if not re.fullmatch("AIE.?.?", aie_target):
-            print(
-                "Unexpected target " + aie_target + ". Exiting...",
-                file=sys.stderr,
-            )
-            exit(-3)
-        aie_peano_target = aie_target.lower() + "-none-unknown-elf"
-
-        return (aie_target, aie_peano_target)
-
-    async def run_flow_for_device(self, file_with_addresses, input_physical, input_physical_with_elfs, device_op, device_name, aie_target, aie_peano_target):
+    async def run_flow_for_device(self, input_physical, input_physical_with_elfs, device_op, device_name, aie_target, aie_peano_target):
         pb = self.progress_bar
 
         # Optionally generate insts.bin for NPU instruction stream
         if opts.npu:
             with Context(), Location.unknown():
-                file_with_addresses_module = Module.parse(
-                    await read_file_async(file_with_addresses)
+                input_physical_module = Module.parse(
+                    await read_file_async(input_physical)
                 )
                 pass_pipeline = NPU_LOWERING_PIPELINE.materialize(module=True)
                 npu_insts_file = (
@@ -1412,7 +1421,7 @@ class FlowRunner:
                 )
                 npu_insts_module = run_passes_module(
                     pass_pipeline,
-                    file_with_addresses_module,
+                    input_physical_module,
                     npu_insts_file,
                     self.opts.verbose,
                 )
@@ -1421,7 +1430,8 @@ class FlowRunner:
                     device_name,
                     opts.sequence_name
                 )
-                with open(opts.insts_name, "wb") as f:
+                npu_insts_path = opts.insts_name.format(device_name)
+                with open(npu_insts_path, "wb") as f:
                     f.write(struct.pack("I" * len(npu_insts), *npu_insts))
 
         if opts.progress:
@@ -1441,16 +1451,14 @@ class FlowRunner:
                     "--aie-generate-xaie",
                     "--aie-device-name",
                     device_name,
-                    input_physical,
+                    input_physical_with_elfs,
                     "-o",
                     file_inc_cpp,
                 ],
             )
 
         if opts.compile_host and len(opts.host_args) > 0:
-            await self.process_host_cgen(aie_target, input_physical, device_name)
-
-        input_physical_str = await read_file_async(input_physical)
+            await self.process_host_cgen(aie_target, input_physical_with_elfs, device_name)
 
         processes = []
         if opts.aiesim:
@@ -1469,7 +1477,8 @@ class FlowRunner:
         # self.process_pdi_gen is called in process_xclbin_gen,
         # so don't call it again if opts.xcl is set
         elif opts.pdi:
-            processes.append(self.process_pdi_gen())
+            processes.append(self.process_pdi_gen(device_name, self.prepend_tmp(f"{device_name}_design.pdi")))
+
         if opts.txn and opts.execute:
             processes.append(self.process_txn(input_physical_with_elfs_str))
 

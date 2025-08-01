@@ -561,11 +561,13 @@ static void configMETile(TileOp tileOp, const std::string &coreFilesDir) {
   // read the AIE executable and copy the loadable parts
   if (auto coreOp = tileOp.getCoreOp()) {
     std::string fileName;
-    if (auto fileAttr = coreOp->getAttrOfType<StringAttr>("elf_file"))
+    if (auto fileAttr = coreOp->getAttrOfType<StringAttr>("elf_file")) {
       fileName = fileAttr.str();
-    else
-      fileName = llvm::formatv("{0}/core_{1}_{2}.elf", coreFilesDir,
-                               tileOp.colIndex(), tileOp.rowIndex());
+    } else {
+      return coreOp.emitOpError()
+             << "Expected lowered ELF file to be given as attribute "
+                "`elf_file` for this core. Compile cores first.";
+    }
     loadElf(tileAddress, fileName);
   }
 }
