@@ -82,7 +82,7 @@ static LogicalResult generateCDOBinariesSeparately(AIERTControl &ctl,
 
   LLVM_DEBUG(llvm::dbgs() << "Generating aie_cdo_elfs.bin");
   if (failed(generateCDOBinary(
-          (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_elfs.bin")
+          (llvm::Twine(workDirPath) + std::string(1, ps) + targetOp.getSymName() + "_aie_cdo_elfs.bin")
               .str(),
           [&ctl, &targetOp, &workDirPath, &aieSim] {
             return ctl.addAieElfs(targetOp, workDirPath, aieSim);
@@ -91,7 +91,7 @@ static LogicalResult generateCDOBinariesSeparately(AIERTControl &ctl,
 
   LLVM_DEBUG(llvm::dbgs() << "Generating aie_cdo_init.bin");
   if (failed(generateCDOBinary(
-          (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_init.bin")
+          (llvm::Twine(workDirPath) + std::string(1, ps) + targetOp.getSymName() + "_aie_cdo_init.bin")
               .str(),
           [&ctl, &targetOp] { return ctl.addInitConfig(targetOp); })))
     return failure();
@@ -99,7 +99,7 @@ static LogicalResult generateCDOBinariesSeparately(AIERTControl &ctl,
   LLVM_DEBUG(llvm::dbgs() << "Generating aie_cdo_enable.bin");
   if (enableCores &&
       failed(generateCDOBinary(
-          (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_enable.bin")
+          (llvm::Twine(workDirPath) + std::string(1, ps) + targetOp.getSymName() + "_aie_cdo_enable.bin")
               .str(),
           [&ctl, &targetOp] { return ctl.addCoreEnable(targetOp); })))
     return failure();
@@ -113,8 +113,9 @@ static LogicalResult generateCDOUnified(AIERTControl &ctl,
                                         bool enableCores) {
   auto ps = std::filesystem::path::preferred_separator;
 
+
   return generateCDOBinary(
-      (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo.bin").str(),
+      (llvm::Twine(workDirPath) + std::string(1, ps) + targetOp.getSymName() + "_aie_cdo.bin").str(),
       [&ctl, &targetOp, &workDirPath, &aieSim, &enableCores] {
         if (!targetOp.getOps<CoreOp>().empty() &&
             failed(ctl.addAieElfs(targetOp, workDirPath, aieSim)))

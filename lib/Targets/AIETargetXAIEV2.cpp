@@ -394,11 +394,13 @@ mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module,
              << tileLocStr(col, row) << ", XAie_LockInit(l, 0x0), 0));\n";
       if (auto coreOp = tileOp.getCoreOp()) {
         std::string fileName;
-        if (auto fileAttr = coreOp.getElfFile())
+        if (auto fileAttr = coreOp.getElfFile()) {
           fileName = fileAttr.value().str();
-        else
-          fileName = std::string("core_") + std::to_string(col) + "_" +
-                     std::to_string(row) + ".elf";
+        } else {
+          return coreOp.emitOpError()
+                 << "Expected lowered ELF file to be given as attribute "
+                    "`elf_file` for this core. Compile cores first.";
+        }
         output << "{\n"
                << "AieRC RC = XAie_LoadElf(" << deviceInstRef << ", "
                << tileLocStr(col, row) << ", "
