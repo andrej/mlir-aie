@@ -334,6 +334,11 @@ def AIE_CoreOp: AIE_Op<"core", [
     for each core.  The name of this file can be be specified using the `elf_file`
     attribute.
 
+    If the `elf_file` attribute is present, no MLIR besides a terminator may be
+    present in the core; in that case, the binary file linked dictates what 
+    will run in the core. The path specified should is relative to the MLIR
+    file.
+
     This op has an optional `stackSize` attribute, to control the amount of memory (in bytes)
     reserved for the stack.  The default value is 1024.  The stack (and other data allocations)
     are always stored in the local core memory, to avoid conflicts with static data allocations

@@ -1337,6 +1337,17 @@ LogicalResult CoreOp::verify() {
     return emitOpError("CoreOp cannot be created on shim tile, i.e. row == 0");
   if (getTileOp().isMemTile())
     return emitOpError("CoreOp cannot be created on mem tile");
+  if (getElfFile()) {
+    // If an ELF file is specified, no MLIR body is allowed to remove
+    // ambiguity; the ELF file will fully dictate what runs on the 
+    // core and any MLIR would be ignored.
+    Region &body = getBody();
+    if (!body.hasOneBlock()
+        || body.front().getOperations().size() != 1 
+        || !llvm::isa<AIE::EndOp>(body.front().front())) {
+      return emitOpError("When `elf_file` attribute is specified, core body must consist of exactly one `aie.end` op.");
+    }
+  }
   return success();
 }
 
