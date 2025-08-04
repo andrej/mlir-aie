@@ -16,6 +16,9 @@
 #include <chrono>
 
 
+#if USE_RUNLIST
+#include "xrt/experimental/xrt_kernel.h"
+#endif
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
@@ -23,7 +26,6 @@
 #define DTYPE int32_t
 
 // So logging to stdout doesn't affect measurements, disable it during benchmarking.
-#define VERBOSE 0
 #if VERBOSE
 #define log(X) X
 #else
@@ -147,13 +149,18 @@ int main(int argc, const char *argv[]) {
 
   // XRT setup: load instruction sequence and xclbin, find kernel in xclbin, initialize buffers, finally call the kernel.
   unsigned int device_index = 0;
-  auto device = xrt::device(device_index);
+  xrt::device device = xrt::device(device_index);
 
-  // pre-load all xclbins
+  // pre-load all xclbins and copy in insts.bins
   std::map<std::string, struct kernel> kernels;
   for (int i = 1; i < argc; i += 2) {
     std::string xclbin_path = argv[i];
-    kernels[xclbin_path] = load_xclbin(device, xclbin_path, max_instr_size);
+    std::string instr_path = argv[i + 1];
+    struct kernel &kernel = kernels[xclbin_path];
+    kernel = load_xclbin(device, xclbin_path, max_instr_size);
+    std::vector<uint32_t> &instr_v = instr_vectors[instr_path];
+    memcpy(kernel.buf_instr, instr_v.data(), instr_v.size() * sizeof(int));
+    kernel.bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   }
 
   const unsigned int opcode = 3;
@@ -168,6 +175,38 @@ int main(int argc, const char *argv[]) {
   }
   memcpy(buf_inout, vec_in.data(), BUF_SIZE);
 
+#if USE_RUNLIST
+
+  // Add kernels to runlist.
+  std::vector<xrt::run> runs;
+  std::string first_xclbin = argv[1];
+  xrt::runlist runlist = xrt::runlist(kernels[first_xclbin].hw_context);
+  for (int i = 1; i < argc; i += 2) {
+    std::string xclbin_path = argv[i];
+    std::string instr_path = argv[i + 1];
+    struct kernel &kernel = kernels[xclbin_path];
+    std::vector<uint32_t> &instr_v = instr_vectors[instr_path];
+    xrt::run &run = runs.emplace_back(kernel.xrt_kernel);
+    run.set_arg(0, opcode);
+    run.set_arg(1, kernel.bo_instr);
+    run.set_arg(2, instr_v.size());
+    run.set_arg(3, kernel.bo_inout);
+    run.set_arg(4, 0);
+    run.set_arg(5, 0);
+    run.set_arg(6, 0);
+    run.set_arg(7, 0);
+    runlist.add(run);
+  }
+
+  // Run them.
+  auto t_start = std::chrono::high_resolution_clock::now();
+  runlist.execute();
+  runlist.wait();
+  auto t_stop = std::chrono::high_resolution_clock::now();
+  kernels[argv[argc-2]].bo_inout.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+
+#else
+
   // Run each of the kernels.
   auto t_start = std::chrono::high_resolution_clock::now();
   struct kernel *last_kernel = nullptr;
@@ -181,9 +220,6 @@ int main(int argc, const char *argv[]) {
     void *buf_instr = kernel.buf_instr;
 
     std::vector<uint32_t> &instr_v = instr_vectors[instr_path];
-
-    memcpy(buf_instr, instr_v.data(), instr_v.size() * sizeof(int));
-    bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
     if (&kernel != last_kernel) {
       if (last_kernel != nullptr) {
@@ -205,6 +241,9 @@ int main(int argc, const char *argv[]) {
     last_kernel = &kernel;
   }
   auto t_stop = std::chrono::high_resolution_clock::now();
+
+#endif
+
 
   // Copy out outputs from last kernel run.
   std::vector<DTYPE> vec_out(SIZE);
