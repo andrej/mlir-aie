@@ -58,7 +58,6 @@ build/run_%_insts.mlir: aie.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py -v --no-unified --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 	            --aie-generate-txn --txn-name=txns.mlir \
-				--device-name=${*F} \
 				--aie-generate-npu-insts --sequence-name=rt --npu-insts-name=${@F} $(<:%=../%)
 	aie-opt --pass-pipeline="builtin.module(aie.device(aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-assign-runtime-sequence-bd-ids,aie-dma-tasks-to-npu,aie-dma-to-npu,aie-lower-set-lock))" \
 		build/aie.mlir.prj/input_with_addresses.mlir -o $@
@@ -73,16 +72,17 @@ build/npu_insts_main_rt.bin: aie.mlir
 	            --aie-generate-txn --txn-name=txns.mlir \
 				--aie-generate-npu-insts ${<:%=../%}
 
+VERBOSE?=0
+
 # Host-side code (runs on the CPU) that loads and starts our design onto the NPU using the XRT (Xilinx runtime) library.
 build/test: test.cpp 
 	mkdir -p ${@D}
-	g++ -std=c++20 -I${XRT_INC_DIR} -L${XRT_LIB_DIR} ${FLAGS} -o $@ $^ -lxrt_coreutil
+	g++ -std=c++20 -DVERBOSE=${VERBOSE} -I${XRT_INC_DIR} -L${XRT_LIB_DIR} ${FLAGS} -o $@ $^ -lxrt_coreutil
 
-# Convenience to run the host-side code above.
-.PHONY: run
-run: build/test build/empty.xclbin build/config_subtract_three_insts.bin build/run_subtract_three_insts.bin
-	export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
-	./$< build/config_subtract_three_insts.bin build/run_subtract_three_insts.bin
+build/test-runlist: test.cpp
+	mkdir -p ${@D}
+	g++ -std=c++20 -g -DVERBOSE=${VERBOSE} -DUSE_RUNLIST=1 -I${XRT_INC_DIR} -L${XRT_LIB_DIR} ${FLAGS} -o $@ $^ -lxrt_coreutil
+
 
 # Remove all build artifacts.
 .PHONY: clean
