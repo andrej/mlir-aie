@@ -2,16 +2,15 @@
 
 set -e
 
-MODE=3
-ITERS=100
+MODE=1
+ITERS=20
 
 if [[ $MODE -eq 0 ]] then
     # To get individual xclbins runtime:
     make build/test
     make build/add_two.xclbin
     make build/subtract_three.xclbin
-    make build/npu_insts_add_two_rt.bin
-    make build/npu_insts_subtract_three_rt.bin
+    make build/npu_insts_main_rt.bin
     for i in $(seq 0 $ITERS); do
         ./build/test ./build/add_two.xclbin ./build/npu_insts_add_two_rt.bin ./build/subtract_three.xclbin ./build/npu_insts_subtract_three_rt.bin
     done
@@ -51,8 +50,7 @@ if [[ $MODE -eq 3 ]] then
     make build/test-runlist
     make build/add_two.xclbin
     make build/subtract_three.xclbin
-    make build/npu_insts_add_two_rt.bin
-    make build/npu_insts_subtract_three_rt.bin
+    make build/npu_insts_main_rt.bin
     for i in $(seq 0 $ITERS); do
         ./build/test-runlist ./build/add_two.xclbin ./build/npu_insts_add_two_rt.bin ./build/subtract_three.xclbin ./build/npu_insts_subtract_three_rt.bin
     done

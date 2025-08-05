@@ -33,8 +33,8 @@
 #endif
 
 // All matrices are the same square size, 4x4, for 16 elements total.
-#define MATRIX_ROWS 64 
-#define MATRIX_COLS 64 
+#define MATRIX_ROWS 1024 
+#define MATRIX_COLS 1024 
 #define SIZE MATRIX_ROWS*MATRIX_COLS
 #define PRINT_MATRIX_ROWS 8
 #define PRINT_MATRIX_COLS 8
