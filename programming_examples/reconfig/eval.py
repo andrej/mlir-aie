@@ -311,22 +311,105 @@ small_fused_txns = [
      1420,
 ]
 
+large_separate_xclbins = [
+    7374,
+    6964,
+    8088,
+    5863,
+    7327,
+    7834,
+    7195,
+    7401,
+    6970,
+    7669,
+    6820,
+    7466,
+    6918,
+    6873,
+    6951,
+    7387,
+    6780,
+    6335,
+    6631,
+    7380,
+    7823,
+]
+
+large_runlist = [
+    7229,
+    7433,
+    8356,
+    6179,
+    7151,
+    7397,
+    7149,
+    7755,
+    7087,
+    8992,
+    9634,
+    9001,
+    7260,
+    7007,
+    6169,
+    7668,
+    7400,
+    7277,
+    6698,
+    7116,
+    7261,
+]
+
+large_fused_txns = [
+    5608,
+    4872,
+    5660,
+    5373,
+    4678,
+    5452,
+    4653,
+    5745,
+    6018,
+    5698,
+    5646,
+    5582,
+    5502,
+    5584,
+    5654,
+    5625,
+    5786,
+    5548,
+    5298,
+    5829,
+]
+
 import numpy as np
 
 import matplotlib.pyplot as plt
 
 bars = [
+    #{
+    #    "label": "Separate XCLBins \n(4096 i32s)",
+    #    "values": small_separate_xclbins
+    #},
+    #{
+    #    "label": "Runlist \n(4096 i32s)",
+    #    "values": small_runlist
+    #},
+    #{
+    #    "label": "Fused Transactions \n(4096 i32s)",
+    #    "values": small_fused_txns
+    #},
     {
-        "label": "Separate XCLBins",
-        "values": small_separate_xclbins
+        "label": "Separate XCLBins \n(1,048,576 i32s)",
+        "values": large_separate_xclbins
     },
     {
-        "label": "Runlist",
-        "values": small_runlist
+        "label": "Runlist \n(1,048,576 i32s)",
+        "values": large_runlist
     },
     {
-        "label": "Fused Transactions",
-        "values": small_fused_txns
+        "label": "Fused Transactions \n(1,048,576 i32s)",
+        "values": large_fused_txns
     }
 ]
 
@@ -340,6 +423,6 @@ for x, bar in zip(xs, bars):
 ax.set_xticks(xs)
 ax.set_xticklabels([bar["label"] for bar in bars])
 ax.set_ylabel("Total runtime (μs)")
-ax.set_title("Running add two, subtract three for 4096 i32s input")
+ax.set_title("Running add two, subtract three (commit 30ff018b91)")
 
 plt.savefig("eval.png")
