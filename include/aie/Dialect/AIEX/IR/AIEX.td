@@ -823,6 +823,9 @@ def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
     If 'buffer' is not present and 'column' and 'row' are not present then
     'address' is interpreted as a full 32-bit address in the AIE array.
   }];
+  let extraClassDeclaration = [{
+    std::optional<uint32_t> getAbsoluteAddress();
+  }];
 }
 
 // MASKWRITE
@@ -873,6 +876,10 @@ def AIE_NpuBlockWriteOp: AIEX_Op<"npu.blockwrite", []> {
     into the memory space of aie.tile(column, row).
     If 'buffer' is not present and 'column' and 'row' are not present then
     'address' is interpreted as a full 32-bit address in the AIE array.
+  }];
+  let extraClassDeclaration = [{
+    std::optional<uint32_t> getAbsoluteAddress();
+    mlir::DenseIntElementsAttr getDataWords(); 
   }];
 }
 

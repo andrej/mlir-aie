@@ -551,6 +551,107 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// NpuWrite32Op
+//===----------------------------------------------------------------------===//
+
+template<typename T>
+std::optional<uint32_t> getAbsoluteAddress<T>(T *op) {
+  AIE::DeviceOp device = op->getOperation()->getParentOfType<AIE::DeviceOp>();
+  if (!device) {
+    op->emitError("Must be inside a device.");
+    return std::nullopt;
+  }
+  const AIE::AIETargetModel &tm = device.getTargetModel();
+
+  uint32_t address = 0;
+  int col = 0;
+  int row = 0;
+
+  // If blockwrite references a buffer, the given address is understood to be
+  // relative to the buffer's start address.
+  if (op->getBuffer()) {
+    AIE::BufferOp buffer = device.lookupSymbol<AIE::BufferOp>(*getBuffer());
+    if (!buffer) {
+      op->emitError() << "buffer '" << *op->getBuffer() << "' not found in device";
+      return std::nullopt;
+    }
+
+    if (!buffer.getAddress()) {
+      mlir::InFlightDiagnostic err = op->emitError("referenced buffer must have address assigned");
+      err.attachNote(buffer.getLoc()) << "This buffer must have an address.";
+      return std::nullopt;
+    }
+
+    col = buffer.getTileOp().getCol();
+    row = buffer.getTileOp().getRow();
+    address = static_cast<uint32_t>(*buffer.getAddress()) + getAddress() * sizeof(uint32_t);
+  } else { // otherwise, the given address is absolute
+    if (op->getColumn().has_value()) {
+      col = *op->getColumn();
+    }
+    if (op->getRow().has_value()) {
+      row = *o->getRow();
+    }
+    address = op->getAddress();
+  }
+
+  address = ((col & 0xff) << tm.getColumnShift()) |
+            ((row & 0xff) << tm.getRowShift()) | 
+            (address & 0xFFFFF);
+  
+  return address;
+}
+
+std::optional<uint32_t> AIEX::NpuWrite32Op::getAbsoluteAddress() {
+  return getAbsoluteAddress(this);
+}
+
+//===----------------------------------------------------------------------===//
+// NpuBlockWriteOp
+//===----------------------------------------------------------------------===//
+
+std::optional<uint32_t> AIEX::NpuBlockWriteOp::getAbsoluteAddress() {
+  return getAbsoluteAddress(this);
+}
+
+DenseIntElementsAttr AIEX::NpuBlockWriteOp::getDataWords() {
+  Value memref = this->getData();
+  DataLayout dataLayout = DataLayout::closest(*this);
+  int64_t width = dataLayout.getTypeSizeInBits(cast<MemRefType>(memref.getType()).getElementType());
+  if (width != 32) {
+    emitWarning("Only 32-bit data type is supported for now");
+    return nullptr;
+  }
+
+  memref::GetGlobalOp getGlobal = memref.getDefiningOp<memref::GetGlobalOp>();
+  if (!getGlobal) {
+    emitError("Only MemRefs from memref.get_global are supported");
+    return nullptr;
+  }
+
+  auto global = dyn_cast_if_present<memref::GlobalOp>(
+      (*this)->getParentOfType<AIE::DeviceOp>().lookupSymbol(getGlobal.getName()));
+  if (!global) {
+    emitError("Global symbol not found");
+    return nullptr;
+  }
+
+  auto initVal = global.getInitialValue();
+  if (!initVal) {
+    emitError("Global symbol has no initial value");
+    return nullptr;
+  }
+
+  auto data = dyn_cast<DenseIntElementsAttr>(*initVal);
+  if (!data) {
+    emitError("Global symbol initial value is not a dense int array");
+    return nullptr;
+  }
+
+  return data;
+}
+
+//===----------------------------------------------------------------------===//
 // RuntimeSequenceOp
 //===----------------------------------------------------------------------===//
 

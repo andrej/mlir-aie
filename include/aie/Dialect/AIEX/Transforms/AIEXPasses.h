@@ -47,6 +47,12 @@ std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIETransformBfpTypesPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> 
 createAIEMaterializeRuntimeSequencePass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIESeparateBlockwritesPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> 
+createAIECoalesceWrite32sPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> 
+createAIEEliminateDeadWrite32sPass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION

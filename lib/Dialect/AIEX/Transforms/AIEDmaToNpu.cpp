@@ -37,24 +37,12 @@ struct Write32SymToAddr : OpConversionPattern<NpuWrite32Op> {
     if (!op.getBuffer())
       return failure();
 
-    auto device = op->getParentOfType<AIE::DeviceOp>();
-    auto buffer = device.lookupSymbol<AIE::BufferOp>(*op.getBuffer());
-    if (!buffer)
-      return op->emitError("buffer '" + *op.getBuffer() +
-                           "' not found in device");
+    std::optional<uint32_t> address = op.getAbsoluteAddress();
+    if(!address.has_value()) {
+      return failure();
+    }
 
-    if (!buffer.getAddress())
-      return op->emitError("buffer must have address assigned");
-
-    const AIE::AIETargetModel &tm = device.getTargetModel();
-    uint32_t address = static_cast<uint32_t>(*buffer.getAddress()) +
-                       op.getAddress() * sizeof(uint32_t);
-    auto col = buffer.getTileOp().getCol();
-    auto row = buffer.getTileOp().getRow();
-    address |= ((col & 0xff) << tm.getColumnShift()) |
-               ((row & 0xff) << tm.getRowShift()) | (address & 0xFFFFF);
-
-    rewriter.replaceOpWithNewOp<NpuWrite32Op>(op, address, op.getValue(),
+    rewriter.replaceOpWithNewOp<NpuWrite32Op>(op, *address, op.getValue(),
                                               nullptr, nullptr, nullptr);
     return success();
   }
@@ -72,26 +60,12 @@ struct BlockWriteSymToAddr : OpConversionPattern<NpuBlockWriteOp> {
 
     if (!op.getBuffer())
       return failure();
-
-    auto device = op->getParentOfType<AIE::DeviceOp>();
-
-    auto buffer = device.lookupSymbol<AIE::BufferOp>(*op.getBuffer());
-    if (!buffer)
-      return op->emitError("buffer '" + *op.getBuffer() +
-                           "' not found in device");
-
-    if (!buffer.getAddress())
-      return op->emitError("buffer must have address assigned");
-
-    const AIE::AIETargetModel &tm = device.getTargetModel();
-    uint32_t address = static_cast<uint32_t>(*buffer.getAddress()) +
-                       op.getAddress() * sizeof(uint32_t);
-    auto col = buffer.getTileOp().getCol();
-    auto row = buffer.getTileOp().getRow();
-    address |= ((col & 0xff) << tm.getColumnShift()) |
-               ((row & 0xff) << tm.getRowShift()) | (address & 0xFFFFF);
-
-    rewriter.replaceOpWithNewOp<NpuBlockWriteOp>(op, address, op.getData(),
+    
+    std::optional<uint32_t> address = op.getAbsoluteAddress();
+    if(!address.has_value()) {
+      return failure();
+    }
+    rewriter.replaceOpWithNewOp<NpuBlockWriteOp>(op, *address, op.getData(),
                                                  nullptr, nullptr, nullptr);
     return success();
   }
@@ -647,39 +621,15 @@ public:
       return failure();
     }
 
-    MemRefType memrefType = MemRefType::get({num_words}, rewriter.getI32Type());
-    TensorType tensorType =
-        RankedTensorType::get({num_words}, rewriter.getI32Type());
     memref::GlobalOp global = nullptr;
-    auto initVal = DenseElementsAttr::get<uint32_t>(tensorType, words);
-    auto otherGlobals = dev.getOps<memref::GlobalOp>();
-    for (auto g : otherGlobals) {
-      if (g == op)
-        continue;
-      if (g.getType() != memrefType)
-        continue;
-      auto otherValue = g.getInitialValue();
-      if (!otherValue)
-        continue;
-      if (*otherValue != initVal)
-        continue;
-      global = g;
-      break;
+    {
+      OpBuilder::InsertionGuard guard(builder);
+      builder.setInsertionPoint(op->getParentOfType<AIEX::RuntimeSequenceOp>());
+      global = getOrCreateDataMemref(rewriter, loc, words);
     }
-    if (!global) {
-      OpBuilder::InsertionGuard guard(rewriter);
-      rewriter.setInsertionPoint(
-          op->getParentOfType<AIEX::RuntimeSequenceOp>());
-      std::string name = "blockwrite_data_";
-      while (dev.lookupSymbol(name + std::to_string(cachedId)))
-        cachedId++;
-      name += std::to_string(cachedId);
-      global = rewriter.create<memref::GlobalOp>(
-          op->getLoc(), name, rewriter.getStringAttr("private"), memrefType,
-          initVal, true, nullptr);
-    }
-    auto memref = rewriter.create<memref::GetGlobalOp>(op->getLoc(), memrefType,
+    auto memref = builder.create<memref::GetGlobalOp>(loc, memrefType,
                                                        global.getName());
+
     (void)rewriter.replaceOpWithNewOp<NpuBlockWriteOp>(
         op, rewriter.getUI32IntegerAttr(bd_addr), memref.getResult(), nullptr,
         nullptr, nullptr);
