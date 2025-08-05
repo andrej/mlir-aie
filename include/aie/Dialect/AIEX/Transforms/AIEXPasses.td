@@ -239,4 +239,16 @@ def AIEMaterializeRuntimeSequence : Pass<"aie-materialize-runtime-sequence", "AI
   let constructor = "xilinx::AIEX::createAIEMaterializeRuntimeSequencePass()";
 }
 
+def AIESeparateBlockwrites : Pass<"aie-separate-blockwrites", "AIE::DeviceOp"> {
+  let constructor = "xilinx::AIEX::createAIESeparateBlockwritesPass()";
+}
+
+def AIECoalesceWrite32s : Pass<"aie-coalesce-write32s", "AIE::DeviceOp"> {
+  let constructor = "xilinx::AIEX::createAIECoalesceWrite32sPass()";
+}
+
+def AIEEliminateDeadWrite32s : Pass<"aie-eliminate-dead-write32s", "AIE::DeviceOp"> {
+  let constructor = "xilinx::AIEX::createAIEEliminateDeadWrite32sPass()";
+}
+
 #endif

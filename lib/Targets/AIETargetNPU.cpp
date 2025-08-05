@@ -79,14 +79,7 @@ void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
 
   // XAIE_IO_WRITE
   words[0] = TXN_OPC_WRITE;
-  words[2] = op.getAddress();
-  auto col = op.getColumn();
-  auto row = op.getRow();
-  if (col && row) {
-    const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
-    words[2] = ((*col & 0xff) << tm.getColumnShift()) |
-               ((*row & 0xff) << tm.getRowShift()) | (words[2] & 0xFFFFF);
-  }
+  words[2] = *op.getAbsoluteAddress();
   words[3] = 0;                               // Extra bits for Reg Offset
   words[4] = op.getValue();                   // Value
   words[5] = words.size() * sizeof(uint32_t); // Operation Size
@@ -137,54 +130,21 @@ void appendAddressPatch(std::vector<uint32_t> &instructions,
 }
 
 void appendBlockWrite(std::vector<uint32_t> &instructions, NpuBlockWriteOp op) {
-
-  Value memref = op.getData();
-  DataLayout dataLayout = DataLayout::closest(op);
-  int64_t width = dataLayout.getTypeSizeInBits(cast<MemRefType>(memref.getType()).getElementType());
-  if (width != 32) {
-    op.emitWarning("Only 32-bit data type is supported for now");
-    return;
-  }
-
-  memref::GetGlobalOp getGlobal = memref.getDefiningOp<memref::GetGlobalOp>();
-  if (!getGlobal) {
-    op.emitError("Only MemRefs from memref.get_global are supported");
-    return;
-  }
-
-  auto global = dyn_cast_if_present<memref::GlobalOp>(
-      op->getParentOfType<AIE::DeviceOp>().lookupSymbol(getGlobal.getName()));
-  if (!global) {
-    op.emitError("Global symbol not found");
-    return;
-  }
-
-  auto initVal = global.getInitialValue();
-  if (!initVal) {
-    op.emitError("Global symbol has no initial value");
-    return;
-  }
-
-  auto data = dyn_cast<DenseIntElementsAttr>(*initVal);
-  if (!data) {
-    op.emitError("Global symbol initial value is not a dense int array");
-    return;
-  }
-
   unsigned payload_start = 4;
+
+  std::optional<uint32_t> address = op.getAbsoluteAddress();
+  DenseIntElementsAttr data = op.getDataWords();
+
   auto words = reserveAndGetTail(instructions, data.size() + payload_start);
 
   // XAIE_IO_BLOCKWRITE
   words[0] = TXN_OPC_BLOCKWRITE;
-  words[2] = op.getAddress();
   auto col = op.getColumn();
   auto row = op.getRow();
   if (col && row) {
     words[1] = (*col & 0xff) | ((*row & 0xff) << 8);
-    const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
-    words[2] = ((*col & 0xff) << tm.getColumnShift()) |
-               ((*row & 0xff) << tm.getRowShift()) | (words[2] & 0xFFFFF);
   }
+  words[2] = *address;
   words[3] = words.size() * sizeof(uint32_t); // Operation Size
 
   unsigned i = payload_start;
