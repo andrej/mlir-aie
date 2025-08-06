@@ -12,11 +12,12 @@
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
-#include "aie/Dialect/AIEX/Utils/AIEUtils.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include <algorithm>
+#include <iterator>
 #include <cstdint>
 
 using namespace mlir;
@@ -57,6 +58,19 @@ struct SeparateBlockwritesPattern : OpConversionPattern<NpuBlockWriteOp> {
         nullptr,
         nullptr
       );
+    }
+
+    memref::GetGlobalOp referencedMemrefOp = op.getData().getDefiningOp<memref::GetGlobalOp>();
+    if (referencedMemrefOp && referencedMemrefOp.getResult().hasOneUse()) {
+      Operation *memrefDefinitionOp = SymbolTable::lookupNearestSymbolFrom(referencedMemrefOp.getOperation(), referencedMemrefOp.getNameAttr());
+      if (memrefDefinitionOp) {
+        AIE::DeviceOp parentDeviceOp = memrefDefinitionOp->getParentOfType<AIE::DeviceOp>();
+        std::optional<SymbolTable::UseRange> uses = SymbolTable::getSymbolUses(memrefDefinitionOp, parentDeviceOp);
+        if (uses && 1 == std::distance(uses->begin(), uses->end())) {
+          rewriter.eraseOp(memrefDefinitionOp);
+        }
+      }
+      rewriter.eraseOp(referencedMemrefOp);
     }
 
     rewriter.eraseOp(op.getOperation());
