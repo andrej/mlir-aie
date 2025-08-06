@@ -12,6 +12,7 @@
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -623,11 +624,11 @@ public:
 
     memref::GlobalOp global = nullptr;
     {
-      OpBuilder::InsertionGuard guard(builder);
-      builder.setInsertionPoint(op->getParentOfType<AIEX::RuntimeSequenceOp>());
-      global = getOrCreateDataMemref(rewriter, loc, words);
+      OpBuilder::InsertionGuard guard(rewriter);
+      rewriter.setInsertionPoint(op->getParentOfType<AIEX::RuntimeSequenceOp>());
+      global = getOrCreateDataMemref(rewriter, dev, op.getLoc(), words);
     }
-    auto memref = builder.create<memref::GetGlobalOp>(loc, memrefType,
+    auto memref = rewriter.create<memref::GetGlobalOp>(op.getLoc(), global.getType(),
                                                        global.getName());
 
     (void)rewriter.replaceOpWithNewOp<NpuBlockWriteOp>(
@@ -636,8 +637,6 @@ public:
     return success();
   }
 };
-
-int WriteBdToBlockWritePattern::cachedId = 0;
 
 struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
 

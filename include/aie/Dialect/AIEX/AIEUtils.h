@@ -9,11 +9,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
+
+using namespace mlir;
 
 namespace xilinx {
 namespace AIEX {
 
-memref::GlobalOp getOrCreateDataMemref(OpBuilder &builder, mlir::Location loc, ArrayRef<uint32_t> words);
+memref::GlobalOp getOrCreateDataMemref(OpBuilder &builder, AIE::DeviceOp dev, mlir::Location loc, ArrayRef<uint32_t> words);
 
 }
 }

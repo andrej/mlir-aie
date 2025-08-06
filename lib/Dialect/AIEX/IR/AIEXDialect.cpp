@@ -555,8 +555,8 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
 //===----------------------------------------------------------------------===//
 
 template<typename T>
-std::optional<uint32_t> getAbsoluteAddress<T>(T *op) {
-  AIE::DeviceOp device = op->getOperation()->getParentOfType<AIE::DeviceOp>();
+std::optional<uint32_t> getAbsoluteAddress(T *op) {
+  AIE::DeviceOp device = op->getOperation()->template getParentOfType<AIE::DeviceOp>();
   if (!device) {
     op->emitError("Must be inside a device.");
     return std::nullopt;
@@ -570,7 +570,7 @@ std::optional<uint32_t> getAbsoluteAddress<T>(T *op) {
   // If blockwrite references a buffer, the given address is understood to be
   // relative to the buffer's start address.
   if (op->getBuffer()) {
-    AIE::BufferOp buffer = device.lookupSymbol<AIE::BufferOp>(*getBuffer());
+    AIE::BufferOp buffer = device.lookupSymbol<AIE::BufferOp>(*op->getBuffer());
     if (!buffer) {
       op->emitError() << "buffer '" << *op->getBuffer() << "' not found in device";
       return std::nullopt;
@@ -584,13 +584,13 @@ std::optional<uint32_t> getAbsoluteAddress<T>(T *op) {
 
     col = buffer.getTileOp().getCol();
     row = buffer.getTileOp().getRow();
-    address = static_cast<uint32_t>(*buffer.getAddress()) + getAddress() * sizeof(uint32_t);
+    address = static_cast<uint32_t>(*buffer.getAddress()) + op->getAddress() * sizeof(uint32_t);
   } else { // otherwise, the given address is absolute
     if (op->getColumn().has_value()) {
       col = *op->getColumn();
     }
     if (op->getRow().has_value()) {
-      row = *o->getRow();
+      row = *op->getRow();
     }
     address = op->getAddress();
   }
@@ -603,7 +603,7 @@ std::optional<uint32_t> getAbsoluteAddress<T>(T *op) {
 }
 
 std::optional<uint32_t> AIEX::NpuWrite32Op::getAbsoluteAddress() {
-  return getAbsoluteAddress(this);
+  return ::getAbsoluteAddress(this);
 }
 
 //===----------------------------------------------------------------------===//
@@ -611,7 +611,7 @@ std::optional<uint32_t> AIEX::NpuWrite32Op::getAbsoluteAddress() {
 //===----------------------------------------------------------------------===//
 
 std::optional<uint32_t> AIEX::NpuBlockWriteOp::getAbsoluteAddress() {
-  return getAbsoluteAddress(this);
+  return ::getAbsoluteAddress(this);
 }
 
 DenseIntElementsAttr AIEX::NpuBlockWriteOp::getDataWords() {
