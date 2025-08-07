@@ -31,17 +31,17 @@ inline bool isCoalescingBarrier(Operation *op) {
   return llvm::isa<NpuPushQueueOp, NpuAddressPatchOp, NpuDmaWaitOp, NpuSyncOp>(op);
 }
 
-struct AIEWrite32SequenceAnalysis {
+struct Write32SequenceAnalysis {
   AnalysisManager &analysisManager;
   
   std::vector<std::vector<NpuWrite32Op>> writeSequences;
 
-  AIEWrite32SequenceAnalysis(Operation *op, AnalysisManager &am) 
+  Write32SequenceAnalysis(Operation *op, AnalysisManager &am) 
   : analysisManager(am) 
   {
     RuntimeSequenceOp runtimeSequenceOp = llvm::dyn_cast<RuntimeSequenceOp>(op);
     if (!runtimeSequenceOp) {
-      op->emitError("AIEWrite32SequenceAnalysis can only be called on aiex.runtime_sequence operations.");
+      op->emitError("Write32SequenceAnalysis can only be called on aiex.runtime_sequence operations.");
       return;
     }
 
@@ -107,7 +107,7 @@ struct AIECoalesceWrite32sPass : AIECoalesceWrite32sBase<AIECoalesceWrite32sPass
 
     for (RuntimeSequenceOp runtimeSequenceOp : deviceOp.getOps<RuntimeSequenceOp>()) {
       AnalysisManager am = getAnalysisManager().nest(runtimeSequenceOp);
-      AIEWrite32SequenceAnalysis sa = am.getAnalysis<AIEWrite32SequenceAnalysis>();
+      Write32SequenceAnalysis sa = am.getAnalysis<Write32SequenceAnalysis>();
       for (std::vector<NpuWrite32Op> &writeSequence : sa.writeSequences) {
         if (writeSequence.size() < 2) {
           continue; // Nothing to coalesce

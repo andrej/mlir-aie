@@ -123,14 +123,7 @@ void appendMaskWrite32(std::vector<uint32_t> &instructions,
 
   // XAIE_IO_MASKWRITE
   words[0] = XAIE_IO_MASKWRITE;
-  words[2] = op.getAddress();
-  auto col = op.getColumn();
-  auto row = op.getRow();
-  if (col && row) {
-    const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
-    words[2] = ((*col & 0xff) << tm.getColumnShift()) |
-               ((*row & 0xff) << tm.getRowShift()) | (words[2] & 0xFFFFF);
-  }
+  words[2] = *op.getAbsoluteAddress();
   words[3] = 0;
   words[4] = op.getValue();                   // Value
   words[5] = op.getMask();                    // Mask
