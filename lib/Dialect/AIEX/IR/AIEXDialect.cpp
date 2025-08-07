@@ -564,8 +564,6 @@ std::optional<uint32_t> getAbsoluteAddress(T *op) {
   const AIE::AIETargetModel &tm = device.getTargetModel();
 
   uint32_t address = 0;
-  int col = 0;
-  int row = 0;
 
   // If blockwrite references a buffer, the given address is understood to be
   // relative to the buffer's start address.
@@ -582,22 +580,24 @@ std::optional<uint32_t> getAbsoluteAddress(T *op) {
       return std::nullopt;
     }
 
-    col = buffer.getTileOp().getCol();
-    row = buffer.getTileOp().getRow();
+    uint32_t col = buffer.getTileOp().getCol();
+    uint32_t row = buffer.getTileOp().getRow();
     address = static_cast<uint32_t>(*buffer.getAddress()) + op->getAddress() * sizeof(uint32_t);
+    address = ((col & 0xff) << tm.getColumnShift()) |
+              ((row & 0xff) << tm.getRowShift()) | 
+              (address & 0xfffff);
   } else { // otherwise, the given address is absolute
-    if (op->getColumn().has_value()) {
-      col = *op->getColumn();
-    }
-    if (op->getRow().has_value()) {
-      row = *op->getRow();
-    }
     address = op->getAddress();
+    std::optional<uint32_t> col = op->getColumn();
+    std::optional<uint32_t> row = op->getRow();
+    if (col && row) {
+      // If col and row are set, only the lower 20 bits of the address are
+      // used, and col and row dictate the upper bits (ignored)
+      address = ((*col & 0xff) << tm.getColumnShift()) |
+                ((*row & 0xff) << tm.getRowShift()) | 
+                (address & 0xfffff);
+    }
   }
-
-  address = ((col & 0xff) << tm.getColumnShift()) |
-            ((row & 0xff) << tm.getRowShift()) | 
-            (address & 0xFFFFF);
   
   return address;
 }
