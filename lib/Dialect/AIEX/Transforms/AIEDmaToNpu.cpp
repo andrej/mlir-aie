@@ -84,27 +84,14 @@ struct MaskWrite32SymToAddr : OpConversionPattern<NpuMaskWrite32Op> {
 
     if (!op.getBuffer())
       return failure();
-
-    auto device = op->getParentOfType<AIE::DeviceOp>();
-
-    auto buffer = device.lookupSymbol<AIE::BufferOp>(*op.getBuffer());
-    if (!buffer)
-      return op->emitError("buffer '" + *op.getBuffer() +
-                           "' not found in device");
-
-    if (!buffer.getAddress())
-      return op->emitError("buffer must have address assigned");
-
-    const AIE::AIETargetModel &tm = device.getTargetModel();
-    uint32_t address = static_cast<uint32_t>(*buffer.getAddress()) +
-                       op.getAddress() * sizeof(uint32_t);
-    auto col = buffer.getTileOp().getCol();
-    auto row = buffer.getTileOp().getRow();
-    address |= ((col & 0xff) << tm.getColumnShift()) |
-               ((row & 0xff) << tm.getRowShift()) | (address & 0xFFFFF);
+    
+    std::optional<uint32_t> absoluteAddress = op.getAbsoluteAddress();
+    if (!absoluteAddress.has_value()) {
+      return failure();
+    }
 
     rewriter.replaceOpWithNewOp<NpuMaskWrite32Op>(
-        op, address, op.getValue(), op.getMask(), nullptr, nullptr, nullptr);
+        op, *absoluteAddress, op.getValue(), op.getMask(), nullptr, nullptr, nullptr);
     return success();
   }
 };

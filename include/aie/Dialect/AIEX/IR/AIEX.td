@@ -852,6 +852,9 @@ def AIE_NpuMaskWrite32Op: AIEX_Op<"npu.maskwrite32", []> {
     If 'buffer' is not present and 'column' and 'row' are not present then
     'address' is interpreted as a full 32-bit address in the AIE array.
   }];
+  let extraClassDeclaration = [{
+    std::optional<uint32_t> getAbsoluteAddress();
+  }];
 }
 
 // BLOCKWRITE
