@@ -48,13 +48,9 @@ struct kernel {
   xrt::xclbin xclbin;
   xrt::kernel xrt_kernel;
   xrt::hw_context hw_context;
-  xrt::bo bo_instr;
-  xrt::bo bo_inout;
-  void *buf_instr;
-  DTYPE *buf_inout;
 };
 
-struct kernel load_xclbin(xrt::device &device, std::string &path, size_t max_instr_size) {
+struct kernel load_xclbin(xrt::device &device, std::string &path) {
   log(std::cout << "Loading xclbin: " << path << std::endl);
   auto xclbin = xrt::xclbin(path);
   std::string kernelName = KERNEL;
@@ -65,20 +61,10 @@ struct kernel load_xclbin(xrt::device &device, std::string &path, size_t max_ins
 
   xrt::kernel kernel = xrt::kernel(context, kernelName);
 
-  xrt::bo bo_instr = xrt::bo(device, max_instr_size * sizeof(uint32_t), XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  xrt::bo bo_inout = xrt::bo(device, BUF_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-
-  void *buf_instr = bo_instr.map<void *>();
-  DTYPE *buf_inout = bo_inout.map<DTYPE *>();
-
   return {
     std::move(xclbin),
     std::move(kernel),
     std::move(context),
-    std::move(bo_instr),
-    std::move(bo_inout),
-    buf_instr,
-    buf_inout
   };
 }
 
@@ -155,12 +141,25 @@ int main(int argc, const char *argv[]) {
   std::map<std::string, struct kernel> kernels;
   for (int i = 1; i < argc; i += 2) {
     std::string xclbin_path = argv[i];
-    std::string instr_path = argv[i + 1];
     struct kernel &kernel = kernels[xclbin_path];
-    kernel = load_xclbin(device, xclbin_path, max_instr_size);
+    kernel = load_xclbin(device, xclbin_path);
+  }
+
+  // set up buffer objects
+  // we assume that all kernels use the same group_id(3) for the inout buffer, so we can reuse the same buffer object
+  xrt::bo bo_inout = xrt::bo(device, BUF_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernels.begin()->second.xrt_kernel.group_id(3));
+  DTYPE *buf_inout = bo_inout.map<DTYPE *>();
+  std::vector<xrt::bo> bo_instrs;
+  std::vector<void*> buf_instrs;
+  for (int i = 1; i < argc; i += 2) {
+    std::string xclbin_path = argv[i];
+    std::string instr_path = argv[i + 1];
     std::vector<uint32_t> &instr_v = instr_vectors[instr_path];
-    memcpy(kernel.buf_instr, instr_v.data(), instr_v.size() * sizeof(int));
-    kernel.bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+    xrt::bo &bo_instr = bo_instrs.emplace_back(device, instr_v.size() * sizeof(uint32_t), XCL_BO_FLAGS_CACHEABLE, kernels[xclbin_path].xrt_kernel.group_id(1));
+    void *buf_instr = bo_instr.map<void *>();
+    buf_instrs.push_back(buf_instr);
+    memcpy(buf_instr, instr_v.data(), instr_v.size() * sizeof(int));
+    bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   }
 
   const unsigned int opcode = 3;
@@ -168,7 +167,6 @@ int main(int argc, const char *argv[]) {
   xrt::run run;
 
   // Set up (random) input data for first kernel.
-  DTYPE *buf_inout = kernels[argv[1]].buf_inout;
   std::vector<DTYPE> vec_in(SIZE);
   for (int i = 0; i < SIZE; i++) {
     vec_in[i] = get_random<DTYPE>();
@@ -186,11 +184,12 @@ int main(int argc, const char *argv[]) {
     std::string instr_path = argv[i + 1];
     struct kernel &kernel = kernels[xclbin_path];
     std::vector<uint32_t> &instr_v = instr_vectors[instr_path];
+    xrt::bo &bo_instr = bo_instrs[(i - 1) / 2];
     xrt::run &run = runs.emplace_back(kernel.xrt_kernel);
     run.set_arg(0, opcode);
-    run.set_arg(1, kernel.bo_instr);
+    run.set_arg(1, bo_instr);
     run.set_arg(2, instr_v.size());
-    run.set_arg(3, kernel.bo_inout);
+    run.set_arg(3, bo_inout);
     run.set_arg(4, 0);
     run.set_arg(5, 0);
     run.set_arg(6, 0);
@@ -199,11 +198,12 @@ int main(int argc, const char *argv[]) {
   }
 
   // Run them.
+  bo_inout.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   auto t_start = std::chrono::high_resolution_clock::now();
   runlist.execute();
   runlist.wait();
   auto t_stop = std::chrono::high_resolution_clock::now();
-  kernels[argv[argc-2]].bo_inout.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  bo_inout.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
 #else
 
@@ -215,17 +215,11 @@ int main(int argc, const char *argv[]) {
     std::string instr_path = argv[i + 1];
     struct kernel &kernel = kernels[xclbin_path];
     xrt::kernel &xrt_kernel = kernel.xrt_kernel;
-    xrt::bo &bo_instr = kernel.bo_instr;
-    xrt::bo &bo_inout = kernel.bo_inout;
-    void *buf_instr = kernel.buf_instr;
+    xrt::bo &bo_instr = bo_instrs[(i - 1) / 2];
 
     std::vector<uint32_t> &instr_v = instr_vectors[instr_path];
 
     if (&kernel != last_kernel) {
-      if (last_kernel != nullptr) {
-        log(std::cout << "Copying last kernels results into this kernels." << std::endl);
-        memcpy(kernel.buf_inout, last_kernel->buf_inout, BUF_SIZE);
-      }
       bo_inout.sync(XCL_BO_SYNC_BO_TO_DEVICE);
     }
 
@@ -248,7 +242,6 @@ int main(int argc, const char *argv[]) {
   // Copy out outputs from last kernel run.
   std::vector<DTYPE> vec_out(SIZE);
 
-  buf_inout = kernels[argv[argc-2]].buf_inout;
   memcpy(vec_out.data(), buf_inout, BUF_SIZE);
 
   #if VERBOSE
