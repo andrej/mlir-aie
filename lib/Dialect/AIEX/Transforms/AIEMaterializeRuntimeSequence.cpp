@@ -108,7 +108,6 @@ struct InsertResetOpsPattern : RewritePattern {
 
   LogicalResult
   matchAndRewrite(Operation *op, PatternRewriter &rewriter) const override {
-    return failure();
     ConfigureOp configureOp = llvm::dyn_cast<ConfigureOp>(op);
     if (!configureOp) {
       return failure();
@@ -237,7 +236,7 @@ struct InlineRuntimeCallsPattern : RewritePattern {
     }
     AIE::DeviceOp calleeDevice = runOp.getCalleeDeviceOp();
     RuntimeSequenceOp calleeRuntimeSequence = runOp.getCalleeRuntimeSequenceOp();
-    if (!calleeDevice, !calleeRuntimeSequence) {
+    if (!calleeDevice || !calleeRuntimeSequence) {
       return failure();
     }
     if (!calleeRuntimeSequence.getOps<RunOp>().empty()) {

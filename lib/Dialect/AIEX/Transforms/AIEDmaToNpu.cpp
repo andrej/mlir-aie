@@ -477,12 +477,8 @@ public:
 struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
   using OpConversionPattern::OpConversionPattern;
 
-private:
-  static int cachedId;
-
 public:
-  WriteBdToBlockWritePattern(MLIRContext *context, int &cachedId,
-                             PatternBenefit benefit = 1)
+  WriteBdToBlockWritePattern(MLIRContext *context, PatternBenefit benefit = 1)
       : OpConversionPattern(context, benefit) {}
 
   LogicalResult

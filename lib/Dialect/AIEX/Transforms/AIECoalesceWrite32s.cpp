@@ -13,6 +13,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "aie/Dialect/AIEX/AIEUtils.h"
+#include "aie/Dialect/AIEX/AIEWrite32SequenceAnalysis.h"
 
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -22,50 +23,6 @@
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
-
-// We should not coalesce writes across the following operations, because
-// these operations will cause the NPU to execute for some time and execution 
-// could thus see older writes. If we coalesce the older writes with the newer 
-// ones, this would violate the intended semantics of the program.
-inline bool isCoalescingBarrier(Operation *op) {
-  return llvm::isa<NpuPushQueueOp, NpuAddressPatchOp, NpuDmaWaitOp, NpuSyncOp>(op);
-}
-
-struct Write32SequenceAnalysis {
-  AnalysisManager &analysisManager;
-  
-  std::vector<std::vector<NpuWrite32Op>> writeSequences;
-
-  Write32SequenceAnalysis(Operation *op, AnalysisManager &am) 
-  : analysisManager(am) 
-  {
-    RuntimeSequenceOp runtimeSequenceOp = llvm::dyn_cast<RuntimeSequenceOp>(op);
-    if (!runtimeSequenceOp) {
-      op->emitError("Write32SequenceAnalysis can only be called on aiex.runtime_sequence operations.");
-      return;
-    }
-
-    // This implementation is simple because we assume that the runtime 
-    // sequence is sequential/linear with just a single block.
-    writeSequences.emplace_back();
-    for (Operation &op : runtimeSequenceOp.getOps()) {
-        if (isCoalescingBarrier(&op)) {
-            writeSequences.emplace_back();
-        } else if (NpuWrite32Op writeOp = llvm::dyn_cast<NpuWrite32Op>(op))  {
-            writeSequences.back().push_back(writeOp);
-        }
-    }
-
-    for (std::vector<NpuWrite32Op> &seq : writeSequences) {
-       std::sort(seq.begin(), seq.end(),
-          [](NpuWrite32Op a, NpuWrite32Op b) {
-            return a.getAbsoluteAddress() < b.getAbsoluteAddress();
-          });
-    }
-
-  }
-
-};
 
 // Assumes the vector of input write32s passed in is contiguous, and ordered
 // in order of increasing address.
@@ -107,7 +64,7 @@ struct AIECoalesceWrite32sPass : AIECoalesceWrite32sBase<AIECoalesceWrite32sPass
 
     for (RuntimeSequenceOp runtimeSequenceOp : deviceOp.getOps<RuntimeSequenceOp>()) {
       AnalysisManager am = getAnalysisManager().nest(runtimeSequenceOp);
-      Write32SequenceAnalysis sa = am.getAnalysis<Write32SequenceAnalysis>();
+      AIEWrite32SequenceAnalysis sa = am.getAnalysis<AIEWrite32SequenceAnalysis>();
       for (std::vector<NpuWrite32Op> &writeSequence : sa.writeSequences) {
         if (writeSequence.size() < 2) {
           continue; // Nothing to coalesce
