@@ -108,6 +108,7 @@ struct InsertResetOpsPattern : RewritePattern {
 
   LogicalResult
   matchAndRewrite(Operation *op, PatternRewriter &rewriter) const override {
+    return failure();
     ConfigureOp configureOp = llvm::dyn_cast<ConfigureOp>(op);
     if (!configureOp) {
       return failure();
@@ -117,14 +118,14 @@ struct InsertResetOpsPattern : RewritePattern {
       // Insert reset ops before each write op
       mlir::OpBuilder::InsertionGuard guard(rewriter);
       rewriter.setInsertionPoint(configureOp);
-      rewriter.create<NpuWrite32Op>(configureOp.getLoc(), writeOp.getAbsoluteAddress().value(), 0, nullptr, nullptr, nullptr);
+      rewriter.create<NpuWrite32Op>(configureOp.getLoc(), *writeOp.getAbsoluteAddress(), 0, nullptr, nullptr, nullptr);
       nInsertedResetOps++;
     }
     for (NpuMaskWrite32Op maskWriteOp : writtenRegs.writtenMaskedRegistersUpto[configureOp]) {
       // Insert reset ops before each mask write op
       mlir::OpBuilder::InsertionGuard guard(rewriter);
       rewriter.setInsertionPoint(configureOp);
-      rewriter.create<NpuMaskWrite32Op>(configureOp.getLoc(), maskWriteOp.getAbsoluteAddress().value(), 0, maskWriteOp.getMask(), nullptr, nullptr, nullptr);
+      rewriter.create<NpuMaskWrite32Op>(configureOp.getLoc(), *maskWriteOp.getAbsoluteAddress(), 0, maskWriteOp.getMask(), nullptr, nullptr, nullptr);
       nInsertedResetOps++;
     }
     if (nInsertedResetOps > 0) {
