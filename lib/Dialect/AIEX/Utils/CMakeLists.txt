@@ -7,6 +7,7 @@
 
 add_mlir_dialect_library(AIEXUtils
   AIETokenAnalysis.cpp
+  AIEWrite32SequenceAnalysis.cpp
   AIEUtils.cpp
 
   ADDITIONAL_HEADER_DIRS
