@@ -46,6 +46,22 @@ build/%.xclbin: aie.mlir
 				--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 				$(<:%=../%)
 
+build/combined_xclbin.xclbin: aie.mlir
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py -v --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
+	            --xclbin-kernel-name=add_two --xclbin-kernel-id=0x901 --xclbin-instance-name=add_two_inst \
+				--device-name add_two \
+				--no-aiesim --aie-generate-xclbin --no-compile-host \
+				--xclbin-name=intermediate.xclbin \
+				${<:%=../%}
+	cd ${@D} && aiecc.py -v --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
+	            --xclbin-kernel-name=subtract_three --xclbin-kernel-id=0x902 --xclbin-instance-name=subtract_three_inst \
+				--device-name subtract_three \
+				--no-aiesim --aie-generate-xclbin --no-compile-host \
+				--xclbin-input=intermediate.xclbin --xclbin-name=${@F} \
+				${<:%=../%}
+	
+
 build/config_%_insts.mlir: aie.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py -v --no-unified --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
@@ -72,12 +88,13 @@ build/npu_insts_main_rt.bin: aie.mlir
 	            --aie-generate-txn --txn-name=txns.mlir \
 				--aie-generate-npu-insts ${<:%=../%}
 
+
 VERBOSE?=0
 
 # Host-side code (runs on the CPU) that loads and starts our design onto the NPU using the XRT (Xilinx runtime) library.
 build/test: test.cpp 
 	mkdir -p ${@D}
-	g++ -std=c++20 -DVERBOSE=${VERBOSE} -I${XRT_INC_DIR} -L${XRT_LIB_DIR} ${FLAGS} -o $@ $^ -lxrt_coreutil
+	g++ -std=c++20 -g -DVERBOSE=${VERBOSE} -I${XRT_INC_DIR} -L${XRT_LIB_DIR} ${FLAGS} -o $@ $^ -lxrt_coreutil
 
 build/test-runlist: test.cpp
 	mkdir -p ${@D}

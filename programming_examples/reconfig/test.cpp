@@ -45,28 +45,10 @@
 constexpr size_t BUF_SIZE = SIZE * sizeof(DTYPE);
 
 struct kernel {
-  xrt::xclbin xclbin;
-  xrt::kernel xrt_kernel;
-  xrt::hw_context hw_context;
+  xrt::xclbin &xclbin;
+  xrt::hw_context &hw_context;
+  xrt::kernel &xrt_kernel;
 };
-
-struct kernel load_xclbin(xrt::device &device, std::string &path) {
-  log(std::cout << "Loading xclbin: " << path << std::endl);
-  auto xclbin = xrt::xclbin(path);
-  std::string kernelName = KERNEL;
-  log(std::cout << "Registering xclbin: " << path << std::endl);
-  device.register_xclbin(xclbin);
-  log(std::cout << "Getting hardware context." << std::endl);
-  xrt::hw_context context(device, xclbin.get_uuid());
-
-  xrt::kernel kernel = xrt::kernel(context, kernelName);
-
-  return {
-    std::move(xclbin),
-    std::move(kernel),
-    std::move(context),
-  };
-}
 
 std::vector<uint32_t> load_instr_binary(std::string instr_path) {
   // Open file in binary mode
@@ -123,48 +105,71 @@ int main(int argc, const char *argv[]) {
     exit(1);
   }
 
+  // Parse input arguments
+  std::vector<std::string> xclbin_paths;
+  std::vector<std::string> kernel_names;
+  std::vector<std::string> instr_paths;
+  for (int i = 1; i < argc; i += 2) {
+    // separate argv[i] by : colon character if present, otherwise give whole string
+    std::string xclbin_path = argv[i];
+    std::string kernel_name = KERNEL;
+    size_t pos = xclbin_path.find(':');
+    if (pos != std::string::npos) {
+      kernel_name = xclbin_path.substr(pos + 1);
+      xclbin_path = xclbin_path.substr(0, pos);
+    }
+    xclbin_paths.push_back(xclbin_path);
+    kernel_names.push_back(kernel_name);
+    instr_paths.push_back(argv[i + 1]);
+  }
+
+  // XRT setup
+  unsigned int device_index = 0;
+  xrt::device device = xrt::device(device_index);
+
+  // pre-load all xclbins and kernels
+  std::map<std::string, xrt::xclbin> xclbins;
+  std::map<std::string, xrt::hw_context> hw_contexts;
+  std::vector<xrt::kernel> kernels;
+  for (int i = 0; i < xclbin_paths.size(); i++) {
+    std::string xclbin_path = xclbin_paths[i];
+    std::string kernel_name = kernel_names[i];
+    if (xclbins.find(xclbin_path) == xclbins.end()) {
+      log(std::cout << "Loading xclbin: " << xclbin_path << std::endl);
+      xclbins[xclbin_path] = xrt::xclbin(xclbin_path);
+      log(std::cout << "Registering xclbin: " << xclbin_path << std::endl);
+      device.register_xclbin(xclbins[xclbin_path]);
+      log(std::cout << "Getting hardware context." << std::endl);
+      hw_contexts[xclbin_path] = xrt::hw_context(device, xclbins[xclbin_path].get_uuid());
+    }
+    log(std::cout << "Adding kernel: " << kernel_name << std::endl);
+    kernels.emplace_back(hw_contexts[xclbin_path], kernel_name);
+  }
+
   // pre-load all insts.bins
   std::map<std::string, std::vector<uint32_t>> instr_vectors;
   size_t max_instr_size = 0;
-  for(int i = 2; i < argc; i += 2) {
-    std::string instr_path = argv[i];
+  for(std::string &instr_path : instr_paths) {
     instr_vectors[instr_path] = load_instr_binary(instr_path);
     max_instr_size = std::max(max_instr_size, instr_vectors[instr_path].size());
   }
   log(std::cout << "Max sequence instr count: " << max_instr_size << std::endl);
 
-  // XRT setup: load instruction sequence and xclbin, find kernel in xclbin, initialize buffers, finally call the kernel.
-  unsigned int device_index = 0;
-  xrt::device device = xrt::device(device_index);
-
-  // pre-load all xclbins and copy in insts.bins
-  std::map<std::string, struct kernel> kernels;
-  for (int i = 1; i < argc; i += 2) {
-    std::string xclbin_path = argv[i];
-    struct kernel &kernel = kernels[xclbin_path];
-    kernel = load_xclbin(device, xclbin_path);
-  }
-
   // set up buffer objects
   // we assume that all kernels use the same group_id(3) for the inout buffer, so we can reuse the same buffer object
-  xrt::bo bo_inout = xrt::bo(device, BUF_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernels.begin()->second.xrt_kernel.group_id(3));
+  xrt::bo bo_inout = xrt::bo(device, BUF_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernels.begin()->group_id(3));
   DTYPE *buf_inout = bo_inout.map<DTYPE *>();
   std::vector<xrt::bo> bo_instrs;
-  std::vector<void*> buf_instrs;
-  for (int i = 1; i < argc; i += 2) {
-    std::string xclbin_path = argv[i];
-    std::string instr_path = argv[i + 1];
+  std::vector<void *> buf_instrs;
+  for (int i = 0; i < kernels.size(); i++) {
+    std::string &instr_path = instr_paths[i];
     std::vector<uint32_t> &instr_v = instr_vectors[instr_path];
-    xrt::bo &bo_instr = bo_instrs.emplace_back(device, instr_v.size() * sizeof(uint32_t), XCL_BO_FLAGS_CACHEABLE, kernels[xclbin_path].xrt_kernel.group_id(1));
+    xrt::bo &bo_instr = bo_instrs.emplace_back(device, instr_v.size() * sizeof(uint32_t), XCL_BO_FLAGS_CACHEABLE, kernels[i].group_id(1));
     void *buf_instr = bo_instr.map<void *>();
     buf_instrs.push_back(buf_instr);
     memcpy(buf_instr, instr_v.data(), instr_v.size() * sizeof(int));
     bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   }
-
-  const unsigned int opcode = 3;
-  ert_cmd_state r;
-  xrt::run run;
 
   // Set up (random) input data for first kernel.
   std::vector<DTYPE> vec_in(SIZE);
@@ -177,15 +182,13 @@ int main(int argc, const char *argv[]) {
 
   // Add kernels to runlist.
   std::vector<xrt::run> runs;
-  std::string first_xclbin = argv[1];
-  xrt::runlist runlist = xrt::runlist(kernels[first_xclbin].hw_context);
-  for (int i = 1; i < argc; i += 2) {
-    std::string xclbin_path = argv[i];
-    std::string instr_path = argv[i + 1];
-    struct kernel &kernel = kernels[xclbin_path];
+  xrt::runlist runlist = xrt::runlist(hw_contexts[xclbin_paths[0]]);
+  for (int i = 0; i < kernels.size(); i++) {
+    std::string &instr_path = instr_paths[i];
     std::vector<uint32_t> &instr_v = instr_vectors[instr_path];
-    xrt::bo &bo_instr = bo_instrs[(i - 1) / 2];
-    xrt::run &run = runs.emplace_back(kernel.xrt_kernel);
+    xrt::bo &bo_instr = bo_instrs[i];
+    xrt::run &run = runs.emplace_back(kernels[i]);
+    constexpr unsigned opcode = 3;
     run.set_arg(0, opcode);
     run.set_arg(1, bo_instr);
     run.set_arg(2, instr_v.size());
@@ -208,40 +211,34 @@ int main(int argc, const char *argv[]) {
 #else
 
   // Run each of the kernels.
+  bo_inout.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   auto t_start = std::chrono::high_resolution_clock::now();
-  struct kernel *last_kernel = nullptr;
-  for (int i = 1; i < argc; i += 2) {
-    std::string xclbin_path = argv[i];
-    std::string instr_path = argv[i + 1];
-    struct kernel &kernel = kernels[xclbin_path];
-    xrt::kernel &xrt_kernel = kernel.xrt_kernel;
-    xrt::bo &bo_instr = bo_instrs[(i - 1) / 2];
-
+  for (int i = 0; i < kernels.size(); i++) {
+    xrt::kernel &kernel = kernels[i];
+    std::string instr_path = instr_paths[i];
+    xrt::bo &bo_instr = bo_instrs[i];
     std::vector<uint32_t> &instr_v = instr_vectors[instr_path];
-
-    if (&kernel != last_kernel) {
+    if (i > 0) {
       bo_inout.sync(XCL_BO_SYNC_BO_TO_DEVICE);
     }
 
     log(std::cout << "Running Kernel." << std::endl);
-    run = xrt_kernel(opcode, bo_instr, instr_v.size(), bo_inout);
-    r = run.wait();
+    constexpr unsigned opcode = 3;
+    xrt::run run = kernel(opcode, bo_instr, instr_v.size(), bo_inout);
+    ert_cmd_state r = run.wait();
     if (r != ERT_CMD_STATE_COMPLETED) {
       std::cout << "Kernel did not complete. Returned status: " << r << std::endl;
       return 1;
     }
     log(std::cout << "Kernel completed." << std::endl);
-
-    last_kernel = &kernel;
   }
   auto t_stop = std::chrono::high_resolution_clock::now();
+  bo_inout.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
 #endif
 
-
   // Copy out outputs from last kernel run.
   std::vector<DTYPE> vec_out(SIZE);
-
   memcpy(vec_out.data(), buf_inout, BUF_SIZE);
 
   #if VERBOSE
