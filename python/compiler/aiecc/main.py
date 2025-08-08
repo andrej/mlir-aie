@@ -117,7 +117,7 @@ NPU_LOWERING_PIPELINE_MATERIALIZE = Pipeline().Nested(
 NPU_LOWERING_PIPELINE_AFTER_MATERIALIZATION = Pipeline().Nested(
     "aie.device",
     Pipeline()
-    .add_pass("aie-eliminate-dead-write32s")
+    #.add_pass("aie-eliminate-dead-write32s")
     .add_pass("aie-coalesce-write32s")
 )
 

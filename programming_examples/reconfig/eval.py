@@ -15,9 +15,9 @@ def parse_output(path):
 
 separate_xclbins = parse_output("run_0.txt")
 
-runlist = parse_output("run_3.txt")
+runlist = parse_output("run_1.txt")
 
-fused_txns = parse_output("run_1.txt")
+fused_txns = parse_output("run_2.txt")
 
 import numpy as np
 
