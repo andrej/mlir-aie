@@ -48,6 +48,6 @@ for x, bar in zip(xs, bars):
 ax.set_xticks(xs)
 ax.set_xticklabels([bar["label"] for bar in bars])
 ax.set_ylabel("Total runtime (μs)")
-ax.set_title("Running add two, subtract three (commit ?)")
+ax.set_title("Running add two, subtract three (commit c5a5555491)")
 
 plt.savefig("eval.png")
