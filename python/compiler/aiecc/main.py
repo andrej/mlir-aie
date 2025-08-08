@@ -96,7 +96,7 @@ AIE_LOWER_TO_LLVM = (
 )
 
 # pipeline to lower and legalize runtime sequence for NPU
-NPU_LOWERING_PIPELINE = Pipeline().Nested(
+NPU_LOWERING_PIPELINE_BEFORE_MATERIALIZATION = Pipeline().Nested(
     "aie.device",
     Pipeline()
     .add_pass("aie-materialize-bd-chains")
@@ -105,8 +105,21 @@ NPU_LOWERING_PIPELINE = Pipeline().Nested(
     .add_pass("aie-dma-tasks-to-npu")
     .add_pass("aie-dma-to-npu")
     .add_pass("aie-lower-set-lock")
+    .add_pass("aie-separate-blockwrites")
 )
 
+NPU_LOWERING_PIPELINE_MATERIALIZE = Pipeline().Nested(
+    "aie.device",
+    Pipeline()
+    .add_pass("aie-materialize-runtime-sequence")
+)
+
+NPU_LOWERING_PIPELINE_AFTER_MATERIALIZATION = Pipeline().Nested(
+    "aie.device",
+    Pipeline()
+    .add_pass("aie-eliminate-dead-write32s")
+    .add_pass("aie-coalesce-write32s")
+)
 
 async def read_file_async(file_path: str) -> str:
     async with aiofiles.open(file_path, mode="r") as f:
@@ -824,18 +837,26 @@ class FlowRunner:
     async def process_elf(self, module_str, device_name):
         with Context(), Location.unknown():
             module = Module.parse(module_str)
-            pass_pipeline = NPU_LOWERING_PIPELINE.materialize(module=True)
+            pass_pipeline_first = NPU_LOWERING_PIPELINE_BEFORE_MATERIALIZATION.materialize(module=True)
+            pass_pipeline_second = NPU_LOWERING_PIPELINE_MATERIALIZE.materialize(module=True)
+            pass_pipeline_third = NPU_LOWERING_PIPELINE_AFTER_MATERIALIZATION.materialize(module=True)
             npu_insts_mlir = (
                 self.prepend_tmp(f"{device_name}_elf_insts.mlir") if self.opts.verbose else None
             )
             npu_insts_module = run_passes_module(
-                pass_pipeline,
+                pass_pipeline_first,
                 module,
                 None,
                 self.opts.verbose,
             )
             npu_insts_module = run_passes_module(
-                "builtin.module(aie.device(aie-materialize-runtime-sequence))",
+                pass_pipeline_second,
+                npu_insts_module,
+                None,
+                self.opts.verbose
+            )
+            npu_insts_module = run_passes_module(
+                pass_pipeline_third,
                 npu_insts_module,
                 npu_insts_mlir,
                 self.opts.verbose
@@ -1434,18 +1455,26 @@ class FlowRunner:
                 input_physical_with_elfs_module = Module.parse(
                     await read_file_async(input_physical_with_elfs)
                 )
-                pass_pipeline = NPU_LOWERING_PIPELINE.materialize(module=True)
+                pass_pipeline_first = NPU_LOWERING_PIPELINE_BEFORE_MATERIALIZATION.materialize(module=True)
+                pass_pipeline_second = NPU_LOWERING_PIPELINE_MATERIALIZE.materialize(module=True)
+                pass_pipeline_third = NPU_LOWERING_PIPELINE_AFTER_MATERIALIZATION.materialize(module=True)
                 npu_insts_file = (
                     self.prepend_tmp(f"npu_insts_{device_name}.mlir")
                 )
                 npu_insts_module = run_passes_module(
-                    pass_pipeline,
+                    pass_pipeline_first,
                     input_physical_with_elfs_module,
                     None,
                     self.opts.verbose,
                 )
                 npu_insts_module = run_passes_module(
-                    "builtin.module(aie.device(aie-materialize-runtime-sequence))",
+                    pass_pipeline_second,
+                    npu_insts_module,
+                    None,
+                    self.opts.verbose
+                )
+                npu_insts_module = run_passes_module(
+                    pass_pipeline_third,
                     npu_insts_module,
                     npu_insts_file,
                     self.opts.verbose
