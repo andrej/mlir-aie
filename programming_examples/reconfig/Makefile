@@ -30,8 +30,14 @@ XRT_LIB_DIR=/opt/xilinx/xrt/lib
 # Targets
 # --------------------------------------------------------------------------
 
+INPUT_MLIR=another-test/aie.mlir
+
 .PHONY: all
 all: build/empty.xclbin build/config_subtract_three_insts.bin build/run_subtract_three_insts.bin build/test
+
+build/%.o: another-test/%.o
+	mkdir -p ${@D}
+	cp $< $@
 
 # Intermediate lowering of our NPU design.
 build/design.mlir: design.py
@@ -39,52 +45,52 @@ build/design.mlir: design.py
 
 # Complete binary for loading onto the NPU.
 # The following target generates both build/final.xclbin AND build/insts.txt
-build/%.xclbin: aie.mlir
+build/%.xclbin: ${INPUT_MLIR}
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py -v --no-unified --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py -v  --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 	            --device-name ${*F} \
 				--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 				$(<:%=../%)
 
-build/combined_xclbin.xclbin: aie.mlir
+build/combined_xclbin.xclbin: ${INPUT_MLIR}
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py -v --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
-	            --xclbin-kernel-name=add_two --xclbin-kernel-id=0x901 --xclbin-instance-name=add_two_inst \
-				--device-name add_two \
+	            --xclbin-kernel-name=mm --xclbin-kernel-id=0x901 --xclbin-instance-name=mm_inst \
+				--device-name mm \
 				--no-aiesim --aie-generate-xclbin --no-compile-host \
-				--xclbin-name=intermediate.xclbin \
+				--xclbin-name=mm.xclbin \
 				${<:%=../%}
 	cd ${@D} && aiecc.py -v --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
-	            --xclbin-kernel-name=subtract_three --xclbin-kernel-id=0x902 --xclbin-instance-name=subtract_three_inst \
-				--device-name subtract_three \
+	            --xclbin-kernel-name=transpose --xclbin-kernel-id=0x902 --xclbin-instance-name=transpose_inst \
+				--device-name rms_norm \
 				--no-aiesim --aie-generate-xclbin --no-compile-host \
-				--xclbin-input=intermediate.xclbin --xclbin-name=${@F} \
+				--xclbin-input=mm.xclbin --xclbin-name=${@F} \
 				${<:%=../%}
 	
 
-build/config_%_insts.mlir: aie.mlir
+build/config_%_insts.mlir: ${INPUT_MLIR}
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py -v --no-unified --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
+	cd ${@D} && aiecc.py -v  --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 				--aie-generate-txn --txn-name=${@F} ${<:%=../%}
 
 build/config_%_insts.bin: build/config_%_insts.mlir
 	aie-translate --aie-device-name=${*F} --aie-sequence-name=configure --aie-npu-to-binary $< -o $@
 
-build/run_%_insts.mlir: aie.mlir
+build/run_%_insts.mlir: ${INPUT_MLIR}
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py -v --no-unified --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
+	cd ${@D} && aiecc.py -v  --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 	            --aie-generate-txn --txn-name=txns.mlir \
 				--aie-generate-npu-insts --sequence-name=rt --npu-insts-name=${@F} $(<:%=../%)
 	aie-opt --pass-pipeline="builtin.module(aie.device(aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-assign-runtime-sequence-bd-ids,aie-dma-tasks-to-npu,aie-dma-to-npu,aie-lower-set-lock))" \
-		build/aie.mlir.prj/input_with_addresses.mlir -o $@
+		build/${INPUT_MLIR}.prj/input_with_addresses.mlir -o $@
 
 build/run_%_insts.bin: build/run_%_insts.mlir
 	mkdir -p ${@D}
 	aie-translate --aie-npu-to-binary --aie-device-name=${*F} --aie-sequence-name=rt $< -o $@
 
-build/npu_insts_main_rt.bin: aie.mlir
+build/npu_insts_main_rt.bin: ${INPUT_MLIR}
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py -v --no-unified --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
+	cd ${@D} && aiecc.py -v  --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 	            --aie-generate-txn --txn-name=txns.mlir \
 				--aie-generate-npu-insts ${<:%=../%}
 
@@ -94,11 +100,11 @@ VERBOSE?=0
 # Host-side code (runs on the CPU) that loads and starts our design onto the NPU using the XRT (Xilinx runtime) library.
 build/test: test.cpp 
 	mkdir -p ${@D}
-	g++ -std=c++20 -g -DVERBOSE=${VERBOSE} -I${XRT_INC_DIR} -L${XRT_LIB_DIR} ${FLAGS} -o $@ $^ -lxrt_coreutil
+	g++-13 -std=c++23 -g -DVERBOSE=${VERBOSE} -I${XRT_INC_DIR} -L${XRT_LIB_DIR} ${FLAGS} -o $@ $^ -lxrt_coreutil
 
 build/test-runlist: test.cpp
 	mkdir -p ${@D}
-	g++ -std=c++20 -g -DVERBOSE=${VERBOSE} -DUSE_RUNLIST=1 -I${XRT_INC_DIR} -L${XRT_LIB_DIR} ${FLAGS} -o $@ $^ -lxrt_coreutil
+	g++=13 -std=c++23 -g -DVERBOSE=${VERBOSE} -DUSE_RUNLIST=1 -I${XRT_INC_DIR} -L${XRT_LIB_DIR} ${FLAGS} -o $@ $^ -lxrt_coreutil
 
 
 # Remove all build artifacts.

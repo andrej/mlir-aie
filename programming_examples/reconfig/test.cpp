@@ -14,6 +14,7 @@
 #include <cmath>
 #include <iomanip>
 #include <chrono>
+#include <stdfloat>
 
 
 #if USE_RUNLIST
@@ -23,7 +24,7 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-#define DTYPE int32_t
+#define DTYPE std::bfloat16_t
 
 // So logging to stdout doesn't affect measurements, disable it during benchmarking.
 #if VERBOSE
@@ -81,6 +82,11 @@ static inline T get_random();
 template <>
 int32_t get_random<int32_t>() {
   return (int32_t)rand();
+}
+
+template <>
+std::bfloat16_t get_random<std::bfloat16_t>() {
+  return std::bfloat16_t(rand()) / std::bfloat16_t(RAND_MAX);
 }
 
 void print_matrix(std::vector<DTYPE> matrix) {
