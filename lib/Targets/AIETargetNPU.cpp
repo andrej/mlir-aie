@@ -104,7 +104,7 @@ void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
   }
 
   // XAIE_IO_WRITE
-  words[0] = XAIE_IO_WRITE;
+	words[0] = XAIE_IO_WRITE;
   words[2] = *op.getAbsoluteAddress();
   words[3] = 0;                               // Extra bits for Reg Offset
   words[4] = op.getValue();                   // Value
