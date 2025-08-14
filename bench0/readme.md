@@ -4,10 +4,12 @@
 
 Benchmarked commit: `b9b700e`
  
-Benchmarked command:
+Benchmarked commands:
 ```
+make run length=16777216 cols=4 chans=2 bypass=True
+for i in $(seq 100); do ./memcpy.exe -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -l 16777216 >> res_4col.txt; done
 make run length=16777216 cols=8 chans=2 bypass=True
-for i in $(seq 100); do ./memcpy.exe -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -l 16777216 >> res.txt; done
+for i in $(seq 100); do ./memcpy.exe -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -l 16777216 >> res_8col.txt; done
 ```
 
 Results:
@@ -19,6 +21,8 @@ Krackan (8): 25.21 GB/s
 ```
 
 ![](eval_memcpy.png)
+
+`(8)` vs `(4)` denotes number of columns used.
 
 ## GEMV
 
