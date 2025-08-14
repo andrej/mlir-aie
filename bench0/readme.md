@@ -2,7 +2,7 @@
 
 ## `memcpy`
 
-Benchmarked commit: `b9b700e`
+Benchmarked commit: `10b917a9c73a37860aa4f6e6a56db6a97538e3ae`
  
 Benchmarked commands:
 ```
@@ -23,6 +23,28 @@ Krackan (8): 46.15 GB/s
 ![](eval_memcpy.png)
 
 `(8)` vs `(4)` denotes number of columns used.
+
+## `memcpy` (no bypass)
+
+Benchmarked commit: `10b917a9c73a37860aa4f6e6a56db6a97538e3ae`
+ 
+Benchmarked commands:
+```
+make run length=16777216 cols=4 chans=2 bypass=False
+for i in $(seq 100); do ./memcpy.exe -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -l 16777216 >> res_4col.txt; done
+make run length=16777216 cols=8 chans=2 bypass=False
+for i in $(seq 100); do ./memcpy.exe -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -l 16777216 >> res_8col.txt; done
+```
+
+Results:
+```
+Strix (4): 54.38 GB/s
+Krackan (4): 54.73 GB/s
+Strix (8): 53.68 GB/s
+Krackan (8): 67.51 GB/s
+```
+
+![](eval_memcpy_nobypass.png)
 
 ## GEMV
 

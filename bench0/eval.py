@@ -22,6 +22,10 @@ def parse_mv_output(path):
                 out.append(float(match.group(1)))
     return out
 
+
+# --------------------------------------------------------------------------
+# memcpy
+
 bars = [
     {
         "label": "Strix (4)",
@@ -55,6 +59,48 @@ ax.set_ylabel("Memory throughput (GB/s)")
 ax.set_title("memcpy benchmark (commit 10b917a9)")
 
 plt.savefig("eval_memcpy.png")
+
+
+# --------------------------------------------------------------------------
+# memcpy (no bypass)
+
+bars = [
+    {
+        "label": "Strix (4)",
+        "values": parse_memcpy_output("memcpy_4col_nobypass_stx.txt")
+    },
+    {
+        "label": "Krackan (4)",
+        "values": parse_memcpy_output("memcpy_4col_nobypass_krk.txt")
+    },
+    {
+        "label": "Strix (8)",
+        "values": parse_memcpy_output("memcpy_8col_nobypass_stx.txt")
+    },
+    {
+        "label": "Krackan (8)",
+        "values": parse_memcpy_output("memcpy_8col_nobypass_krk.txt")
+    },
+]
+for bar in bars:
+    print(f"{bar['label']}: {np.mean(bar['values']):0.2f} GB/s")
+
+xs = list(range(len(bars)))
+fig, ax = plt.subplots()
+for x, bar in zip(xs, bars):
+    ax.bar(x, np.mean(bar["values"]), label=bar["label"])
+    ax.boxplot(positions=[x], x=bar["values"], medianprops={"color" : "black"})
+
+ax.set_xticks(xs)
+ax.set_xticklabels([bar["label"] for bar in bars])
+ax.set_ylabel("Memory throughput (GB/s)")
+ax.set_title("memcpy benchmark (no bypass) (commit 10b917a9)")
+
+plt.savefig("eval_memcpy_nobypass.png")
+
+
+# --------------------------------------------------------------------------
+# GEMV
 
 bars = [
     {
