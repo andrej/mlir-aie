@@ -18,7 +18,7 @@ module {
       // CHECK: 06040100
       // CHECK: 00000108
       // CHECK: 00000007
-      // CHECK: 000000DC
+      // CHECK: 000000D0
 
       // CHECK: 00000000
       // CHECK: 00000000
@@ -81,9 +81,6 @@ module {
       aiex.npu.sync { column = 3 : i32, row = 4 : i32, direction = 1 : i32, channel = 5 : i32, column_num = 1 : i32, row_num = 2 : i32 }
 
       // CHECK: 00000306
-      // CHECK: 00000000
-      // CHECK: 00000000
-      // CHECK: 00000000
       aiex.npu.preempt { level = 3 : ui8 }
     }
   }
