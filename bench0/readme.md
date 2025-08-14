@@ -1,6 +1,46 @@
 # Memory Bandwidth / GEMV Performance
 
+## `memcpy`
+
+Benchmarked commit: `b9b700e`
+ 
+Benchmarked command:
+```
+make run length=16777216 cols=8 chans=2 bypass=True
+for i in $(seq 100); do ./memcpy.exe -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -l 16777216 >> res.txt; done
+```
+
+Results:
+```
+Strix (4): 26.16 GB/s
+Krackan (4): 25.36 GB/s
+Strix (8): 25.65 GB/s
+Krackan (8): 25.21 GB/s
+```
+
+![](eval_memcpy.png)
+
+## GEMV
+
+Benchmarked commit: `e17dcbc`
+
+Benchmarked command:
+```
+make run
+for i in $(seq 100); do ./matrix_vector.exe -x build/final_4096x4096x1.xclbin -i build/insts_4096x4096x1.txt -k MLIR_AIE -M 4096 -K 4096 -N 1 -v 2 --warmup 20 --iters 2 >> res.txt; done
+```
+
+Results:
+```
+Strix: 0.74 GFLOP/s
+Krackan: 0.74 GFLOP/s
+```
+
+![](eval_mv.png)
+
 ## Strix System Configuration
+* Configured into turbo `--pmode`. 
+
 ```
 System Configuration
   OS Name              : Linux
@@ -34,6 +74,7 @@ aie-opt 37a64106110ef79c0fbe7408b66242dd3af028e9
 ```
 
 ## Krackan System Configuration
+* Configured into turbo `--pmode`. 
 
 ```
 $ xrt-smi examine
