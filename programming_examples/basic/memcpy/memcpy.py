@@ -110,6 +110,7 @@ def my_memcpy(dev, size, num_columns, num_channels, bypass):
         # Start the workers if not bypass
         if not bypass:
             rt.start(*my_workers)
+        tg_out = rt.task_group()
         # Fill the input objectFIFOs with data
         for i in range(num_columns):
             for j in range(num_channels):
@@ -127,6 +128,7 @@ def my_memcpy(dev, size, num_columns, num_channels, bypass):
                     taps[i * num_channels + j],
                     wait=True,  # wait for the transfer to complete and data to be available
                 )
+        rt.finish_task_group(tg_out)
 
     # Place components (assign them resources on the device) and generate an MLIR module
     return Program(dev, rt).resolve_program(SequentialPlacer())
