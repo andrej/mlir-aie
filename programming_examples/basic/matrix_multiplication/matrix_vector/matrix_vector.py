@@ -13,11 +13,7 @@ from aie.dialects.aiex import *
 from aie.helpers.dialects.ext.scf import _for as range_
 
 
-def my_matmul(dev):
-    M = 288
-    K = 288
-    m = 32
-    k = 32
+def my_matmul(dev, M, K, m, k):
 
     n_cores = 1
 
@@ -184,6 +180,10 @@ if __name__ == "__main__":
         prog="AIE Matrix Vector Multiplication MLIR Design",
     )
     argparser.add_argument("--dev", type=str, choices=["npu", "npu2"], default="npu")
+    argparser.add_argument("-M", type=int)
+    argparser.add_argument("-K", type=int)
+    argparser.add_argument("-m", type=int)
+    argparser.add_argument("-k", type=int)
     args, _ = argparser.parse_known_args()  # <- ignore the rest args in makefile-common
     dev = args.dev
-    my_matmul(dev)
+    my_matmul(dev, args.M, args.K, args.m, args.k)
