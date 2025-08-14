@@ -1,0 +1,800 @@
+Name: MLIR_AIE
+
+Latency (us): 5262
+
+Effective Bandwidth: 25.507 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5303
+
+Effective Bandwidth: 25.3098 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5327
+
+Effective Bandwidth: 25.1957 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5432
+
+Effective Bandwidth: 24.7087 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5198
+
+Effective Bandwidth: 25.821 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5346
+
+Effective Bandwidth: 25.1062 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5175
+
+Effective Bandwidth: 25.9358 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5319
+
+Effective Bandwidth: 25.2336 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5282
+
+Effective Bandwidth: 25.4104 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5304
+
+Effective Bandwidth: 25.305 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5329
+
+Effective Bandwidth: 25.1863 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5227
+
+Effective Bandwidth: 25.6778 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5428
+
+Effective Bandwidth: 24.7269 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5313
+
+Effective Bandwidth: 25.2621 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5224
+
+Effective Bandwidth: 25.6925 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5326
+
+Effective Bandwidth: 25.2005 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5263
+
+Effective Bandwidth: 25.5021 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5249
+
+Effective Bandwidth: 25.5702 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5276
+
+Effective Bandwidth: 25.4393 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5383
+
+Effective Bandwidth: 24.9336 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5275
+
+Effective Bandwidth: 25.4441 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5314
+
+Effective Bandwidth: 25.2574 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5284
+
+Effective Bandwidth: 25.4008 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5261
+
+Effective Bandwidth: 25.5118 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5253
+
+Effective Bandwidth: 25.5507 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5302
+
+Effective Bandwidth: 25.3145 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5242
+
+Effective Bandwidth: 25.6043 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5274
+
+Effective Bandwidth: 25.4489 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5243
+
+Effective Bandwidth: 25.5994 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5328
+
+Effective Bandwidth: 25.191 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5192
+
+Effective Bandwidth: 25.8509 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5317
+
+Effective Bandwidth: 25.2431 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5322
+
+Effective Bandwidth: 25.2194 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5202
+
+Effective Bandwidth: 25.8012 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5215
+
+Effective Bandwidth: 25.7369 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5270
+
+Effective Bandwidth: 25.4683 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5296
+
+Effective Bandwidth: 25.3432 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5217
+
+Effective Bandwidth: 25.727 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5325
+
+Effective Bandwidth: 25.2052 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5230
+
+Effective Bandwidth: 25.663 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5255
+
+Effective Bandwidth: 25.541 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5234
+
+Effective Bandwidth: 25.6434 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5384
+
+Effective Bandwidth: 24.929 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5256
+
+Effective Bandwidth: 25.5361 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5236
+
+Effective Bandwidth: 25.6336 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5254
+
+Effective Bandwidth: 25.5458 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5213
+
+Effective Bandwidth: 25.7467 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5257
+
+Effective Bandwidth: 25.5312 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5214
+
+Effective Bandwidth: 25.7418 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5180
+
+Effective Bandwidth: 25.9108 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5279
+
+Effective Bandwidth: 25.4248 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5462
+
+Effective Bandwidth: 24.573 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5389
+
+Effective Bandwidth: 24.9059 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5375
+
+Effective Bandwidth: 24.9707 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5348
+
+Effective Bandwidth: 25.0968 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5388
+
+Effective Bandwidth: 24.9105 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5488
+
+Effective Bandwidth: 24.4566 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5228
+
+Effective Bandwidth: 25.6729 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5228
+
+Effective Bandwidth: 25.6729 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5234
+
+Effective Bandwidth: 25.6434 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5314
+
+Effective Bandwidth: 25.2574 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5328
+
+Effective Bandwidth: 25.191 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5261
+
+Effective Bandwidth: 25.5118 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5460
+
+Effective Bandwidth: 24.582 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5303
+
+Effective Bandwidth: 25.3098 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5322
+
+Effective Bandwidth: 25.2194 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5284
+
+Effective Bandwidth: 25.4008 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5330
+
+Effective Bandwidth: 25.1816 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5252
+
+Effective Bandwidth: 25.5555 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5281
+
+Effective Bandwidth: 25.4152 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5285
+
+Effective Bandwidth: 25.396 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5302
+
+Effective Bandwidth: 25.3145 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5248
+
+Effective Bandwidth: 25.575 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5264
+
+Effective Bandwidth: 25.4973 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5269
+
+Effective Bandwidth: 25.4731 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5329
+
+Effective Bandwidth: 25.1863 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5287
+
+Effective Bandwidth: 25.3864 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5290
+
+Effective Bandwidth: 25.372 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5315
+
+Effective Bandwidth: 25.2526 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5360
+
+Effective Bandwidth: 25.0406 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5369
+
+Effective Bandwidth: 24.9986 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5305
+
+Effective Bandwidth: 25.3002 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5314
+
+Effective Bandwidth: 25.2574 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5323
+
+Effective Bandwidth: 25.2147 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5257
+
+Effective Bandwidth: 25.5312 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5290
+
+Effective Bandwidth: 25.372 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5335
+
+Effective Bandwidth: 25.158 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5284
+
+Effective Bandwidth: 25.4008 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5356
+
+Effective Bandwidth: 25.0593 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5258
+
+Effective Bandwidth: 25.5264 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5405
+
+Effective Bandwidth: 24.8321 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5335
+
+Effective Bandwidth: 25.158 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5214
+
+Effective Bandwidth: 25.7418 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5273
+
+Effective Bandwidth: 25.4538 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5311
+
+Effective Bandwidth: 25.2716 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5311
+
+Effective Bandwidth: 25.2716 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5297
+
+Effective Bandwidth: 25.3384 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5294
+
+Effective Bandwidth: 25.3528 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5198
+
+Effective Bandwidth: 25.821 GB/s
+
+PASS!
+
+Name: MLIR_AIE
+
+Latency (us): 5354
+
+Effective Bandwidth: 25.0687 GB/s
+
+PASS!
+
