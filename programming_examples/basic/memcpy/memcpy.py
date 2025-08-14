@@ -127,6 +127,7 @@ def my_memcpy(dev, size, num_columns, num_channels, bypass):
                     b_out,
                     taps[i * num_channels + j],
                     wait=True,  # wait for the transfer to complete and data to be available
+                    task_group=tg_out
                 )
         rt.finish_task_group(tg_out)
 
