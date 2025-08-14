@@ -52,7 +52,7 @@ for x, bar in zip(xs, bars):
 ax.set_xticks(xs)
 ax.set_xticklabels([bar["label"] for bar in bars])
 ax.set_ylabel("Memory throughput (GB/s)")
-ax.set_title("memcpy benchmark (commit b9b700e)")
+ax.set_title("memcpy benchmark (commit 10b917a9)")
 
 plt.savefig("eval_memcpy.png")
 

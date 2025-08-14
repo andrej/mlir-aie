@@ -14,10 +14,10 @@ for i in $(seq 100); do ./memcpy.exe -x build/final.xclbin -i build/insts.bin -k
 
 Results:
 ```
-Strix (4): 26.16 GB/s
-Krackan (4): 25.36 GB/s
-Strix (8): 25.65 GB/s
-Krackan (8): 25.21 GB/s
+Strix (4): 54.84 GB/s
+Krackan (4): 55.13 GB/s
+Strix (8): 40.09 GB/s
+Krackan (8): 46.15 GB/s
 ```
 
 ![](eval_memcpy.png)
