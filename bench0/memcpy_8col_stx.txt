@@ -799,3 +799,1103 @@ Effective Bandwidth: 24.6407 GB/s
 
 PASS!
 
+Name: MLIR_AIE
+
+Latency (us): 2416
+
+Effective Bandwidth: 55.5537 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2498
+
+Effective Bandwidth: 53.7301 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2429
+
+Effective Bandwidth: 55.2564 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2431
+
+Effective Bandwidth: 55.2109 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2534
+
+Effective Bandwidth: 52.9667 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2414
+
+Effective Bandwidth: 55.5997 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2511
+
+Effective Bandwidth: 53.4519 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2527
+
+Effective Bandwidth: 53.1135 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2522
+
+Effective Bandwidth: 53.2188 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2506
+
+Effective Bandwidth: 53.5586 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2418
+
+Effective Bandwidth: 55.5077 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2507
+
+Effective Bandwidth: 53.5372 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2518
+
+Effective Bandwidth: 53.3033 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2518
+
+Effective Bandwidth: 53.3033 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2430
+
+Effective Bandwidth: 55.2336 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2520
+
+Effective Bandwidth: 53.261 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2424
+
+Effective Bandwidth: 55.3703 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2541
+
+Effective Bandwidth: 52.8208 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2529
+
+Effective Bandwidth: 53.0715 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2432
+
+Effective Bandwidth: 55.1882 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2515
+
+Effective Bandwidth: 53.3669 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2519
+
+Effective Bandwidth: 53.2821 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2407
+
+Effective Bandwidth: 55.7614 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2436
+
+Effective Bandwidth: 55.0976 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2407
+
+Effective Bandwidth: 55.7614 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2434
+
+Effective Bandwidth: 55.1429 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2439
+
+Effective Bandwidth: 55.0298 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2423
+
+Effective Bandwidth: 55.3932 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2433
+
+Effective Bandwidth: 55.1655 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2429
+
+Effective Bandwidth: 55.2564 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2445
+
+Effective Bandwidth: 54.8948 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2443
+
+Effective Bandwidth: 54.9397 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2518
+
+Effective Bandwidth: 53.3033 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2407
+
+Effective Bandwidth: 55.7614 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2423
+
+Effective Bandwidth: 55.3932 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2438
+
+Effective Bandwidth: 55.0524 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2430
+
+Effective Bandwidth: 55.2336 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2435
+
+Effective Bandwidth: 55.1202 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2436
+
+Effective Bandwidth: 55.0976 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2525
+
+Effective Bandwidth: 53.1555 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2396
+
+Effective Bandwidth: 56.0174 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2549
+
+Effective Bandwidth: 52.6551 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2509
+
+Effective Bandwidth: 53.4945 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2513
+
+Effective Bandwidth: 53.4094 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2512
+
+Effective Bandwidth: 53.4306 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2433
+
+Effective Bandwidth: 55.1655 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2429
+
+Effective Bandwidth: 55.2564 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2519
+
+Effective Bandwidth: 53.2821 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2420
+
+Effective Bandwidth: 55.4619 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2424
+
+Effective Bandwidth: 55.3703 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2438
+
+Effective Bandwidth: 55.0524 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2425
+
+Effective Bandwidth: 55.3475 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2540
+
+Effective Bandwidth: 52.8416 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2437
+
+Effective Bandwidth: 55.075 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2513
+
+Effective Bandwidth: 53.4094 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2422
+
+Effective Bandwidth: 55.4161 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2507
+
+Effective Bandwidth: 53.5372 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2421
+
+Effective Bandwidth: 55.439 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2527
+
+Effective Bandwidth: 53.1135 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2509
+
+Effective Bandwidth: 53.4945 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2418
+
+Effective Bandwidth: 55.5077 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2517
+
+Effective Bandwidth: 53.3245 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2394
+
+Effective Bandwidth: 56.0642 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2514
+
+Effective Bandwidth: 53.3881 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2517
+
+Effective Bandwidth: 53.3245 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2561
+
+Effective Bandwidth: 52.4083 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2499
+
+Effective Bandwidth: 53.7086 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2430
+
+Effective Bandwidth: 55.2336 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2424
+
+Effective Bandwidth: 55.3703 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2435
+
+Effective Bandwidth: 55.1202 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2517
+
+Effective Bandwidth: 53.3245 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2448
+
+Effective Bandwidth: 54.8275 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2449
+
+Effective Bandwidth: 54.8051 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2475
+
+Effective Bandwidth: 54.2294 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2421
+
+Effective Bandwidth: 55.439 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2407
+
+Effective Bandwidth: 55.7614 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2528
+
+Effective Bandwidth: 53.0925 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2498
+
+Effective Bandwidth: 53.7301 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2400
+
+Effective Bandwidth: 55.9241 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2431
+
+Effective Bandwidth: 55.2109 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2424
+
+Effective Bandwidth: 55.3703 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2426
+
+Effective Bandwidth: 55.3247 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2446
+
+Effective Bandwidth: 54.8723 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2397
+
+Effective Bandwidth: 55.994 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2421
+
+Effective Bandwidth: 55.439 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2409
+
+Effective Bandwidth: 55.7151 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2435
+
+Effective Bandwidth: 55.1202 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2437
+
+Effective Bandwidth: 55.075 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2423
+
+Effective Bandwidth: 55.3932 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2439
+
+Effective Bandwidth: 55.0298 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2422
+
+Effective Bandwidth: 55.4161 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2411
+
+Effective Bandwidth: 55.6689 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2441
+
+Effective Bandwidth: 54.9847 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2541
+
+Effective Bandwidth: 52.8208 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2431
+
+Effective Bandwidth: 55.2109 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2531
+
+Effective Bandwidth: 53.0295 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2501
+
+Effective Bandwidth: 53.6656 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2417
+
+Effective Bandwidth: 55.5307 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2447
+
+Effective Bandwidth: 54.8499 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
+Name: MLIR_AIE
+
+Latency (us): 2539
+
+Effective Bandwidth: 52.8624 GB/s
+
+15728640 mismatches.
+
+
+fail.
+
