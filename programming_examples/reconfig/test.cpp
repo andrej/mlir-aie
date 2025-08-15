@@ -15,6 +15,10 @@
 #include <iomanip>
 #include <chrono>
 #include <stdfloat>
+#include <iostream>
+#include <string>
+#include <sstream>
+#include <map>
 
 
 #if USE_RUNLIST
@@ -24,7 +28,9 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-#define DTYPE std::bfloat16_t
+#include "empty_pdi.h"
+
+#define DTYPE int32_t //std::bfloat16_t
 
 // So logging to stdout doesn't affect measurements, disable it during benchmarking.
 #if VERBOSE
@@ -76,6 +82,59 @@ std::vector<uint32_t> load_instr_binary(std::string instr_path) {
   return instr_v;
 }
 
+void store_instr_binary(std::vector<uint32_t> instr_vector, std::string path) {
+  std::ofstream instr_file(path, std::ios::binary);
+  if (!instr_file.is_open()) {
+    throw std::runtime_error("Unable to open instruction file for writing\n");
+  }
+  instr_file.write(reinterpret_cast<const char *>(instr_vector.data()), instr_vector.size() * sizeof(uint32_t));
+}
+
+std::map<std::string, uint32_t> load_patch_map(std::string patch_map_path) {
+  std::ifstream patch_map_file(patch_map_path);
+  if (!patch_map_file.is_open()) {
+    throw std::runtime_error("Unable to open patch map file\n");
+  }
+
+  std::map<std::string, uint32_t> patchMap;
+  // read file line by line
+  // lines will look like "some_string 123"; split into string and number and add string as key in to map and nubmer as value
+  std::string line;
+  while (std::getline(patch_map_file, line)) {
+    std::istringstream iss(line);
+    std::string key;
+    uint32_t value;
+    if (iss >> key >> value) {
+      patchMap[key] = value;
+    }
+  }
+  return patchMap;
+}
+
+#define XAIE_IO_LOADPDI 8
+void patch_instr_vector(std::vector<uint32_t> &instrs, std::map<std::string, uint32_t> patch_map, uint64_t pdi_addr) {
+  for (const auto &patch : patch_map) {
+    //const std::string &ident = patch.first;
+    uint32_t offset = patch.second / sizeof(uint32_t);
+
+    uint32_t &word0 = instrs[offset];
+    uint32_t &word1 = instrs[offset + 1];
+    uint32_t &word2 = instrs[offset + 2];
+    uint32_t &word3 = instrs[offset + 3];
+
+    if((word0 & 0xFFFF) != XAIE_IO_LOADPDI) {
+      throw std::runtime_error("can only patch loadpdi instructions");
+    }
+
+    word0 |= 1 << 16;
+    uint16_t pdi_id = (instrs[offset] >> 16) & 0xFFFF;
+
+    word1 = empty_pdi_len;
+    word2 = pdi_addr & 0xFFFFFFFF;
+    word3 = pdi_addr >> 32;
+  }
+}
+
 template <typename T>
 static inline T get_random();
 
@@ -107,7 +166,7 @@ int main(int argc, const char *argv[]) {
   srand(1726250518); // srand(time(NULL));
 
   if (argc < 3) {
-    std::cerr << "Usage: " << argv[0] << " [<xclbin> <insts.bin>] ..\n";
+    std::cerr << "Usage: " << argv[0] << " [<xclbin>:<kernel> <insts.bin>:<patch_map.txt>] ..\n";
     exit(1);
   }
 
@@ -115,8 +174,8 @@ int main(int argc, const char *argv[]) {
   std::vector<std::string> xclbin_paths;
   std::vector<std::string> kernel_names;
   std::vector<std::string> instr_paths;
+  std::map<std::string, std::string> patch_map_paths;
   for (int i = 1; i < argc; i += 2) {
-    // separate argv[i] by : colon character if present, otherwise give whole string
     std::string xclbin_path = argv[i];
     std::string kernel_name = KERNEL;
     size_t pos = xclbin_path.find(':');
@@ -126,7 +185,15 @@ int main(int argc, const char *argv[]) {
     }
     xclbin_paths.push_back(xclbin_path);
     kernel_names.push_back(kernel_name);
-    instr_paths.push_back(argv[i + 1]);
+
+    std::string instr_path = argv[i + 1];
+    pos = instr_path.find(':');
+    if (pos != std::string::npos) {
+      std::string patch_map_path = instr_path.substr(pos + 1);
+      instr_path = instr_path.substr(0, pos);
+      patch_map_paths[instr_path] = patch_map_path;
+    }
+    instr_paths.push_back(instr_path);
   }
 
   // XRT setup
@@ -154,9 +221,13 @@ int main(int argc, const char *argv[]) {
 
   // pre-load all insts.bins
   std::map<std::string, std::vector<uint32_t>> instr_vectors;
+  std::map<std::string, std::map<std::string, uint32_t>> patch_maps;
   size_t max_instr_size = 0;
   for(std::string &instr_path : instr_paths) {
     instr_vectors[instr_path] = load_instr_binary(instr_path);
+    if(patch_map_paths.find(instr_path) != patch_map_paths.end()) {
+      patch_maps[instr_path] = load_patch_map(patch_map_paths[instr_path]);
+    }
     max_instr_size = std::max(max_instr_size, instr_vectors[instr_path].size());
   }
   log(std::cout << "Max sequence instr count: " << max_instr_size << std::endl);
@@ -170,10 +241,16 @@ int main(int argc, const char *argv[]) {
   for (int i = 0; i < kernels.size(); i++) {
     std::string &instr_path = instr_paths[i];
     std::vector<uint32_t> &instr_v = instr_vectors[instr_path];
-    xrt::bo &bo_instr = bo_instrs.emplace_back(device, instr_v.size() * sizeof(uint32_t), XCL_BO_FLAGS_CACHEABLE, kernels[i].group_id(1));
+    xrt::bo &bo_instr = bo_instrs.emplace_back(device, instr_v.size() * sizeof(uint32_t) + empty_pdi_len, XCL_BO_FLAGS_CACHEABLE, kernels[i].group_id(1));
     void *buf_instr = bo_instr.map<void *>();
     buf_instrs.push_back(buf_instr);
-    memcpy(buf_instr, instr_v.data(), instr_v.size() * sizeof(int));
+
+    if (patch_maps.find(instr_path) != patch_maps.end()) {
+      patch_instr_vector(instr_v, patch_maps[instr_path], (uint64_t)(bo_instr.address()) + (uint64_t)(instr_v.size() * sizeof(uint32_t)));
+      // store_instr_binary(instr_v, "after_patching.bin"); // for debugging purposes
+    }
+    memcpy(buf_instr, instr_v.data(), instr_v.size() * sizeof(uint32_t));
+    memcpy(buf_instr + instr_v.size() * sizeof(uint32_t), empty_pdi, empty_pdi_len);
     bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   }
 

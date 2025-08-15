@@ -40,14 +40,18 @@ bars = [
 
 xs = list(range(len(bars)))
 
-fig, ax = plt.subplots()
-for x, bar in zip(xs, bars):
-    ax.bar(x, np.mean(bar["values"]), label=bar["label"])
-    ax.boxplot(positions=[x], x=bar["values"], medianprops={"color" : "black"})
+for zoomed_out in [True, False]:
+    fig, ax = plt.subplots()
+    for x, bar in zip(xs, bars):
+        ax.bar(x, np.mean(bar["values"]), label=bar["label"])
+        ax.boxplot(positions=[x], x=bar["values"], medianprops={"color" : "black"})
 
-ax.set_xticks(xs)
-ax.set_xticklabels([bar["label"] for bar in bars])
-ax.set_ylabel("Total runtime (μs)")
-ax.set_title("Running add two, subtract three (commit c5a5555491)")
+    if not zoomed_out:
+        ax.set_ylim([0.9*min(np.min(bar["values"]) for bar in bars), 1.01*max(np.max(bar["values"]) for bar in bars)])
 
-plt.savefig("eval.png")
+    ax.set_xticks(xs)
+    ax.set_xticklabels([bar["label"] for bar in bars])
+    ax.set_ylabel("Total runtime (μs)")
+    ax.set_title("1024x1024x1024 GEMM, followed by 1024x1024 RMS Norm (commit ??)")
+
+    plt.savefig("eval.png" if not zoomed_out else "eval_zoomed_out.png")
