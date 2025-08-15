@@ -22,6 +22,9 @@ MLIR_CAPI_EXPORTED MlirStringRef aieTranslateAIEVecToCpp(MlirOperation op,
                                                          bool aie2);
 MLIR_CAPI_EXPORTED MlirStringRef aieTranslateModuleToLLVMIR(MlirOperation op);
 MLIR_CAPI_EXPORTED MlirStringRef aieTranslateNpuToBinary(MlirOperation op,
+                                                        uint32_t *patchMapSizePtr,
+                                                        char ***patchMapIdsPtr,
+                                                        uint32_t **patchMapOffsetsPtr,
                                                          MlirStringRef deviceName,
                                                          MlirStringRef sequenceName);
 MLIR_CAPI_EXPORTED MlirStringRef

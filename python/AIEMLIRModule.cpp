@@ -19,12 +19,14 @@
 #include "llvm/ADT/Twine.h"
 
 #include <nanobind/nanobind.h>
+#include <nanobind/stl/map.h>
 
 #include <cstdlib>
 #include <stdexcept>
 #include <string>
 #include <unicodeobject.h>
 #include <vector>
+#include <map>
 
 using namespace mlir::python;
 namespace nb = nanobind;
@@ -135,16 +137,26 @@ NB_MODULE(_aie, m) {
   m.def(
       "translate_npu_to_binary",
       [](MlirOperation op, const std::string &device_name, const std::string &sequence_name) {
+        uint32_t patchMapSize = 0;
+        char **patchMapIds;
+        uint32_t *patchMapOffsets;
         MlirStringRef instStr = aieTranslateNpuToBinary(
             op,
+            &patchMapSize,
+            &patchMapIds,
+            &patchMapOffsets,
             {device_name.data(), device_name.size()},
             {sequence_name.data(), sequence_name.size()});
         size_t num_insts = instStr.length / sizeof(uint32_t);
         std::vector<uint32_t> vec(
             reinterpret_cast<const uint32_t *>(instStr.data),
             reinterpret_cast<const uint32_t *>(instStr.data) + num_insts);
+        std::map<std::string, uint32_t> patchMap;
+        for(uint32_t i = 0; i < patchMapSize; i++) {
+          patchMap[patchMapIds[i]] = patchMapOffsets[i];
+        }
         free((void *)instStr.data);
-        return vec;
+        return std::make_pair(vec, patchMap);
       },
       "module"_a, "device_name"_a = "", "sequence_name"_a = "");
 

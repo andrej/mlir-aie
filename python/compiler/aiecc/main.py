@@ -836,7 +836,7 @@ class FlowRunner:
 
     async def process_elf(self, npu_insts_module, device_name):
         # translate npu instructions to binary and write to file
-        npu_insts = aiedialect.translate_npu_to_binary(npu_insts_module.operation, device_name, opts.sequence_name)
+        npu_insts, npu_patch_map = aiedialect.translate_npu_to_binary(npu_insts_module.operation, device_name, opts.sequence_name)
 
         npu_insts_bin = self.prepend_tmp(f"{device_name}_elf_insts.bin")
         with open(npu_insts_bin, "wb") as f:
@@ -1459,7 +1459,7 @@ class FlowRunner:
             # write each runtime sequence binary into its own file
             runtime_sequences = generate_runtime_sequences_list(device_op)
             for seq_op, seq_name in runtime_sequences:
-                npu_insts = aiedialect.translate_npu_to_binary(
+                npu_insts, npu_patch_map = aiedialect.translate_npu_to_binary(
                     npu_insts_module.operation,
                     device_name,
                     seq_name
@@ -1467,6 +1467,10 @@ class FlowRunner:
                 npu_insts_path = opts.insts_name.format(device_name, seq_name)
                 with open(npu_insts_path, "wb") as f:
                     f.write(struct.pack("I" * len(npu_insts), *npu_insts))
+                npu_patch_map_path = opts.patch_map_name.format(device_name, seq_name)
+                with open(npu_patch_map_path, "w") as f:
+                    for ident in npu_patch_map:
+                        f.write(f"{ident} {npu_patch_map[ident]}")
 
         if opts.progress:
             pb.update(pb.task, advance=0, visible=False)

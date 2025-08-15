@@ -234,6 +234,12 @@ def parse_args(args=None):
         help="Output instructions filename for NPU target. `{0}` is replaced with device name, `{1}` with the selected runtime sequence.",
     )
     parser.add_argument(
+        "--npu-patch-map-name",
+        dest="patch_map_name",
+        default="npu_insts_patch_map_{0}_{1}.txt",
+        help="Output filename for NPU patch map. `{0}` is replaced with device name, `{1}` with the selected runtime sequence.",
+    )
+    parser.add_argument(
         "--aie-generate-cdo",
         dest="cdo",
         default=False,

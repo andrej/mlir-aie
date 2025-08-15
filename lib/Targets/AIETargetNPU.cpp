@@ -179,11 +179,21 @@ void appendPreempt(std::vector<uint32_t> &instructions,
   words[0] = XAIE_IO_PREEMPT | (op.getLevel() << 8);
 }
 
+void appendLoadPdi(std::vector<uint32_t> &instructions,
+                   NpuLoadPdiOp op) {
+  auto words = reserveAndGetTail(instructions, 4);
+  words[0] = XAIE_IO_LOADPDI | (op.getId() & 0xFFFF << 16);
+  words[1] = op.getSize();
+  words[2] = (op.getAddress() & 0xFFFFFFFF);
+  words[3] = (op.getAddress() >> 32);
+}
+
 } // namespace
 
 LogicalResult
 xilinx::AIE::AIETranslateNpuToBinary(mlir::ModuleOp moduleOp,
                                      std::vector<uint32_t> &instructions,
+                                     std::map<std::string, uint32_t> &patchMap,
                                      StringRef deviceName,
                                      StringRef sequenceName) {
 
@@ -239,6 +249,13 @@ xilinx::AIE::AIETranslateNpuToBinary(mlir::ModuleOp moduleOp,
           .Case<NpuPreemptOp>([&](auto op) {
             count++;
             appendPreempt(instructions, op);
+          })
+          .Case<NpuLoadPdiOp>([&](auto op) {
+            count++;
+            appendLoadPdi(instructions, op);
+          })
+          .Case<NpuPatchMarkerOp>([&](auto op) {
+            patchMap[op.getId().str()] = instructions.size() * sizeof(instructions[0]);
           });
     }
   }

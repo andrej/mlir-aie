@@ -36,6 +36,8 @@
 #include "llvm/Support/JSON.h"
 
 #include <set>
+#include <iostream>
+#include <fstream>
 
 #define DEBUG_TYPE "aie-targets"
 
@@ -163,6 +165,12 @@ void registerAIETranslations() {
       llvm::cl::desc(
           "Select binary (true) or text (false) output for supported "
           "translations. e.g. aie-npu-to-binary, aie-ctrlpkt-to-bin"));
+  
+  static llvm::cl::opt<std::string> outputPatchMap(
+      "aie-output-patch-map", llvm::cl::init(""),
+      llvm::cl::desc(
+        "Only for `-aie-npu-to-binary` pass. Store patch address map to the "
+        "specified file.")); 
   
   static llvm::cl::opt<std::string> deviceName(
     "aie-device-name", llvm::cl::init(""),
@@ -373,7 +381,8 @@ void registerAIETranslations() {
       "aie-npu-to-binary", "Translate npu instructions to binary",
       [](ModuleOp module, raw_ostream &output) {
         std::vector<uint32_t> instructions;
-        auto r = AIETranslateNpuToBinary(module, instructions, deviceName, sequenceName);
+        std::map<std::string, uint32_t> patchMap;
+        auto r = AIETranslateNpuToBinary(module, instructions, patchMap, deviceName, sequenceName);
         if (failed(r))
           return r;
         if (outputBinary) {
@@ -382,6 +391,14 @@ void registerAIETranslations() {
         } else {
           for (auto w : instructions)
             output << llvm::format("%08X\n", w);
+        }
+        if (!outputPatchMap.empty()) {
+          std::ofstream patchMapFileStream;
+          patchMapFileStream.open(outputPatchMap);
+          for (const auto &entry : patchMap) {
+            patchMapFileStream << entry.first << " " << entry.second << "\n";
+          }
+          patchMapFileStream.close();
         }
         return success();
       },

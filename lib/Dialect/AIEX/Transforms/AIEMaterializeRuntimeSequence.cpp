@@ -140,6 +140,8 @@ struct InsertResetOpsPattern : RewritePattern {
       return failure();
     }
 
+    return failure();
+
 #if 1
     AIE::DeviceOp device = configureOp.getOperation()->getParentOfType<AIE::DeviceOp>();
     const AIE::AIETargetModel &targetModel = (const AIE::AIETargetModel &)device.getTargetModel();
