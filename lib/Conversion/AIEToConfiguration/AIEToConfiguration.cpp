@@ -339,7 +339,7 @@ namespace AIE {
 LogicalResult convertTransactionOpsToMLIR(
     OpBuilder builder, AIE::DeviceOp device, OutputType outputType,
     std::vector<TransactionBinaryOperation> &operations,
-    AIEX::RuntimeSequenceOp seq = nullptr) {
+    AIEX::RuntimeSequenceOp seq) {
 
   auto loc = builder.getUnknownLoc();
 
