@@ -11,6 +11,8 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+#include "aie/Targets/AIERT.h"
+#include "aie/Conversion/AIEToConfiguration/AIEToConfiguration.h"
 
 #include "mlir/Pass/Pass.h"
 #include "mlir/IR/PatternMatch.h"
@@ -99,6 +101,31 @@ struct WrittenRegistersAnalysis {
 
 };
 
+constexpr uint32_t do_not_reset[] = {
+  0x1D204, // noc tile DMA_S2MM_0_Task_Queue,
+  0x1D20C, // noc tile DMA_S2MM_1_Task_Queue,
+  0x1D214, // noc tile DMA_MM2S_0_Task_Queue,
+  0x1D21C, // noc tile DMA_MM2S_1_Task_Queue,
+
+  0x1DE00, // core tile DMA_S2MM_0_Ctrl,
+  0x1DE08, // core tile DMA_S2MM_1_Ctrl,
+  0x1DE10, // core tile DMA_MM2S_0_Ctrl,
+  0x1DE18, // core tile DMA_MM2S_1_Ctrl,
+
+  // 0xA0600, // mem tile DMA_S2MM_0_Ctrl
+  // 0xA0608, // mem tile DMA_S2MM_1_Ctrl
+  // 0xA0610, // mem tile DMA_S2MM_2_Ctrl
+  // 0xA0618, // mem tile DMA_S2MM_3_Ctrl
+  // 0xA0620, // mem tile DMA_S2MM_4_Ctrl
+  // 0xA0628, // mem tile DMA_S2MM_5_Ctrl
+  // 0xA0630, // mem tile DMA_MM2S_0_Ctrl
+  // 0xA0638, // mem tile DMA_MM2S_1_Ctrl
+  // 0xA0640, // mem tile DMA_MM2S_2_Ctrl
+  // 0xA0648, // mem tile DMA_MM2S_3_Ctrl
+  // 0xA0650, // mem tile DMA_MM2S_4_Ctrl
+  // 0xA0658, // mem tile DMA_MM2S_5_Ctrl
+};
+
 struct InsertResetOpsPattern : RewritePattern {
 
   WrittenRegistersAnalysis &writtenRegs;
@@ -112,25 +139,82 @@ struct InsertResetOpsPattern : RewritePattern {
     if (!configureOp) {
       return failure();
     }
+
+#if 1
+    AIE::DeviceOp device = configureOp.getOperation()->getParentOfType<AIE::DeviceOp>();
+    const AIE::AIETargetModel &targetModel = (const AIE::AIETargetModel &)device.getTargetModel();
+    AIE::AIERTControl ctl(targetModel);
+    ctl.startTransaction();
+
+    // Insert reset operations
+    for (NpuWrite32Op writeOp : writtenRegs.writtenRegistersUpto[configureOp]) {
+      uint32_t addr = *writeOp.getAbsoluteAddress();
+      int col = (addr >> targetModel.getColumnShift()) & 0xFF;
+      int row = (addr >> targetModel.getRowShift()) & 0xFF;
+      if (targetModel.isShimNOCTile(col, row)) {
+
+      } else if (targetModel.isMemTile(col, row)) {
+        ctl.resetDMA(col, row, false);
+      } else if (targetModel.isCoreTile(col, row)) {
+        ctl.resetCore(col, row);
+        ctl.resetDMA(col, row, false);
+      }
+    }
+
+    for (NpuWrite32Op writeOp : writtenRegs.writtenRegistersUpto[configureOp]) {
+      uint32_t addr = *writeOp.getAbsoluteAddress();
+      int col = (addr >> targetModel.getColumnShift()) & 0xFF;
+      int row = (addr >> targetModel.getRowShift()) & 0xFF;
+      ctl.resetSwitch(col, row);
+    }
+
+    ctl.resetPartition();
+
+    std::vector<uint8_t> resetTxns = ctl.exportSerializedTransaction();
+    std::vector<AIE::TransactionBinaryOperation> resetOperations;
+    if (!parseTransactionBinary(resetTxns, resetOperations)) {
+      llvm::errs() << "Failed to parse binary\n";
+      return failure();
+    }
+
+    std::vector<memref::GlobalOp> globalData;
+    rewriter.setInsertionPoint(configureOp);
+    //emitTransactionOps(rewriter, resetOperations, globalData);
+    AIEX::RuntimeSequenceOp seq = configureOp.getOperation()->getParentOfType<AIEX::RuntimeSequenceOp>();
+    convertTransactionOpsToMLIR(rewriter, device, xilinx::AIE::OutputType::Transaction, resetOperations, seq);
+    return success();
+
+#else 
+
     int nInsertedResetOps = 0;
     for (NpuWrite32Op writeOp : writtenRegs.writtenRegistersUpto[configureOp]) {
       // Insert reset ops before each write op
       mlir::OpBuilder::InsertionGuard guard(rewriter);
+      uint32_t addr = *writeOp.getAbsoluteAddress();
+      if(std::find(std::begin(do_not_reset), std::end(do_not_reset), addr & 0xFFFFF) != std::end(do_not_reset)) {
+        continue;
+      }
       rewriter.setInsertionPoint(configureOp);
-      rewriter.create<NpuWrite32Op>(configureOp.getLoc(), *writeOp.getAbsoluteAddress(), 0, nullptr, nullptr, nullptr);
+      rewriter.create<NpuWrite32Op>(configureOp.getLoc(), addr, 0, nullptr, nullptr, nullptr);
       nInsertedResetOps++;
     }
     for (NpuMaskWrite32Op maskWriteOp : writtenRegs.writtenMaskedRegistersUpto[configureOp]) {
       // Insert reset ops before each mask write op
       mlir::OpBuilder::InsertionGuard guard(rewriter);
+      uint32_t addr = *maskWriteOp.getAbsoluteAddress();
+      if(std::find(std::begin(do_not_reset), std::end(do_not_reset), addr & 0xFFFFF) != std::end(do_not_reset)) {
+        continue;
+      }
       rewriter.setInsertionPoint(configureOp);
-      rewriter.create<NpuMaskWrite32Op>(configureOp.getLoc(), *maskWriteOp.getAbsoluteAddress(), 0, maskWriteOp.getMask(), nullptr, nullptr, nullptr);
+      rewriter.create<NpuMaskWrite32Op>(configureOp.getLoc(), addr, 0, maskWriteOp.getMask(), nullptr, nullptr, nullptr);
       nInsertedResetOps++;
     }
     if (nInsertedResetOps > 0) {
       return success();
     }
     return failure();
+
+  #endif
   }
 };
 

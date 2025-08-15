@@ -27,15 +27,19 @@ struct AIERTControl {
   AIERTControl(const xilinx::AIE::AIETargetModel &tm);
   ~AIERTControl();
 
+  mlir::LogicalResult resetPartition();
   mlir::LogicalResult setIOBackend(bool aieSim, bool xaieDebug);
   mlir::LogicalResult pushToBdQueueAndEnable(mlir::Operation &op, int col,
                                              int row, int chNum,
                                              const DMAChannelDir &channelDir,
                                              int bdId, int repeatCount);
   mlir::LogicalResult configureLocksAndBd(mlir::Block &block, int col, int row);
+  // Disable (on=false) or re-enable (on = true) all DMA channels on the given tile 
+  mlir::LogicalResult resetDMA(int col, int row, bool on = false);
   mlir::LogicalResult initLocks(DeviceOp &targetOp);
   mlir::LogicalResult initBuffers(DeviceOp &targetOp);
   mlir::LogicalResult configureSwitches(DeviceOp &targetOp);
+  mlir::LogicalResult resetSwitch(int col, int row);
   mlir::LogicalResult addInitConfig(DeviceOp &targetOp);
   mlir::LogicalResult addCoreEnable(DeviceOp &targetOp);
   mlir::LogicalResult addAieElf(uint8_t col, uint8_t row,
@@ -43,6 +47,7 @@ struct AIERTControl {
   mlir::LogicalResult addAieElfs(DeviceOp &targetOp,
                                  const mlir::StringRef workDirPath,
                                  bool aieSim);
+  mlir::LogicalResult resetCore(int col, int row);
   void startTransaction();
   void dmaUpdateBdAddr(int col, int row, size_t addr, size_t bdId);
   std::vector<uint8_t> exportSerializedTransaction();

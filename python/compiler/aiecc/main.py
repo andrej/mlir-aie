@@ -834,35 +834,9 @@ class FlowRunner:
                 "ctrlpkt_dma_seq.bin", "ctrlpkt_dma_seq.elf", "ctrlpkt.bin"
             )
 
-    async def process_elf(self, module_str, device_name):
-        with Context(), Location.unknown():
-            module = Module.parse(module_str)
-            pass_pipeline_first = NPU_LOWERING_PIPELINE_BEFORE_MATERIALIZATION.materialize(module=True)
-            pass_pipeline_second = NPU_LOWERING_PIPELINE_MATERIALIZE.materialize(module=True)
-            pass_pipeline_third = NPU_LOWERING_PIPELINE_AFTER_MATERIALIZATION.materialize(module=True)
-            npu_insts_mlir = (
-                self.prepend_tmp(f"{device_name}_elf_insts.mlir") if self.opts.verbose else None
-            )
-            npu_insts_module = run_passes_module(
-                pass_pipeline_first,
-                module,
-                None,
-                self.opts.verbose,
-            )
-            npu_insts_module = run_passes_module(
-                pass_pipeline_second,
-                npu_insts_module,
-                None,
-                self.opts.verbose
-            )
-            npu_insts_module = run_passes_module(
-                pass_pipeline_third,
-                npu_insts_module,
-                npu_insts_mlir,
-                self.opts.verbose
-            )
-            # translate npu instructions to binary and write to file
-            npu_insts = aiedialect.translate_npu_to_binary(npu_insts_module.operation, device_name, opts.sequence_name)
+    async def process_elf(self, npu_insts_module, device_name):
+        # translate npu instructions to binary and write to file
+        npu_insts = aiedialect.translate_npu_to_binary(npu_insts_module.operation, device_name, opts.sequence_name)
 
         npu_insts_bin = self.prepend_tmp(f"{device_name}_elf_insts.bin")
         with open(npu_insts_bin, "wb") as f:
@@ -1438,58 +1412,61 @@ class FlowRunner:
             if opts.txn and opts.execute:
                 input_physical_with_elfs_str = await read_file_async(input_physical_with_elfs)
                 input_physical_with_elfs = await self.process_txn(input_physical_with_elfs_str)
+            
+            npu_insts_module = None
+            if opts.npu or opts.elf:
+                with Context(), Location.unknown():
+                    input_physical_with_elfs_module = Module.parse(
+                        await read_file_async(input_physical_with_elfs)
+                    )
+                    pass_pipeline_first = NPU_LOWERING_PIPELINE_BEFORE_MATERIALIZATION.materialize(module=True)
+                    pass_pipeline_second = NPU_LOWERING_PIPELINE_MATERIALIZE.materialize(module=True)
+                    pass_pipeline_third = NPU_LOWERING_PIPELINE_AFTER_MATERIALIZATION.materialize(module=True)
+                    npu_insts_file = (
+                        self.prepend_tmp(f"npu_insts.mlir")
+                    )
+                    npu_insts_module = run_passes_module(
+                        pass_pipeline_first,
+                        input_physical_with_elfs_module,
+                        None,
+                        self.opts.verbose,
+                    )
+                    npu_insts_module = run_passes_module(
+                        pass_pipeline_second,
+                        npu_insts_module,
+                        None,
+                        self.opts.verbose
+                    )
+                    npu_insts_module = run_passes_module(
+                        pass_pipeline_third,
+                        npu_insts_module,
+                        npu_insts_file,
+                        self.opts.verbose
+                    )
 
             # 3.) Generate compilation artifacts for each device
 
             # create other artifacts for each device
             for (device_op, device_name) in devices:
                 aie_target, aie_peano_target = await self.get_aie_target_for_device(input_physical, device_name)
-                await self.run_flow_for_device(input_physical, input_physical_with_elfs, device_op, device_name, aie_target, aie_peano_target)
+                await self.run_flow_for_device(input_physical, input_physical_with_elfs, npu_insts_module, device_op, device_name, aie_target, aie_peano_target)
 
-    async def run_flow_for_device(self, input_physical, input_physical_with_elfs, device_op, device_name, aie_target, aie_peano_target):
+    async def run_flow_for_device(self, input_physical, input_physical_with_elfs, npu_insts_module, device_op, device_name, aie_target, aie_peano_target):
         pb = self.progress_bar
 
         # Optionally generate insts.bin for NPU instruction stream
         if opts.npu:
-            with Context(), Location.unknown():
-                input_physical_with_elfs_module = Module.parse(
-                    await read_file_async(input_physical_with_elfs)
+            # write each runtime sequence binary into its own file
+            runtime_sequences = generate_runtime_sequences_list(device_op)
+            for seq_op, seq_name in runtime_sequences:
+                npu_insts = aiedialect.translate_npu_to_binary(
+                    npu_insts_module.operation,
+                    device_name,
+                    seq_name
                 )
-                pass_pipeline_first = NPU_LOWERING_PIPELINE_BEFORE_MATERIALIZATION.materialize(module=True)
-                pass_pipeline_second = NPU_LOWERING_PIPELINE_MATERIALIZE.materialize(module=True)
-                pass_pipeline_third = NPU_LOWERING_PIPELINE_AFTER_MATERIALIZATION.materialize(module=True)
-                npu_insts_file = (
-                    self.prepend_tmp(f"npu_insts_{device_name}.mlir")
-                )
-                npu_insts_module = run_passes_module(
-                    pass_pipeline_first,
-                    input_physical_with_elfs_module,
-                    None,
-                    self.opts.verbose,
-                )
-                npu_insts_module = run_passes_module(
-                    pass_pipeline_second,
-                    npu_insts_module,
-                    None,
-                    self.opts.verbose
-                )
-                npu_insts_module = run_passes_module(
-                    pass_pipeline_third,
-                    npu_insts_module,
-                    npu_insts_file,
-                    self.opts.verbose
-                )
-                # write each runtime sequence binary into its own file
-                runtime_sequences = generate_runtime_sequences_list(device_op)
-                for seq_op, seq_name in runtime_sequences:
-                        npu_insts = aiedialect.translate_npu_to_binary(
-                            npu_insts_module.operation,
-                            device_name,
-                            seq_name
-                        )
-                        npu_insts_path = opts.insts_name.format(device_name, seq_name)
-                        with open(npu_insts_path, "wb") as f:
-                            f.write(struct.pack("I" * len(npu_insts), *npu_insts))
+                npu_insts_path = opts.insts_name.format(device_name, seq_name)
+                with open(npu_insts_path, "wb") as f:
+                    f.write(struct.pack("I" * len(npu_insts), *npu_insts))
 
         if opts.progress:
             pb.update(pb.task, advance=0, visible=False)
@@ -1540,7 +1517,7 @@ class FlowRunner:
             processes.append(self.process_ctrlpkt(input_physical_with_elfs_str, device_name))
 
         if opts.elf and opts.execute:
-            processes.append(self.process_elf(input_physical_with_elfs_str, device_name))
+            processes.append(self.process_elf(npu_insts_module, device_name))
 
         await asyncio.gather(*processes)
 

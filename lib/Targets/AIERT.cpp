@@ -25,6 +25,7 @@ extern "C" {
 #include "xaiengine/xaie_txn.h"
 #include "xaiengine/xaiegbl.h"
 #include "xaiengine/xaiegbl_defs.h"
+#include "xaiengine/xaie_reset.h"
 }
 
 #include <filesystem>
@@ -250,6 +251,11 @@ xilinx::AIE::AIERTControl::AIERTControl(const AIE::AIETargetModel &tm)
   TRY_XAIE_API_FATAL_ERROR(XAie_CfgInitialize, &aiert->devInst,
                            &aiert->configPtr);
   TRY_XAIE_API_FATAL_ERROR(XAie_UpdateNpiAddr, &aiert->devInst, NPI_ADDR);
+}
+
+LogicalResult xilinx::AIE::AIERTControl::resetPartition() {
+  TRY_XAIE_API_FATAL_ERROR(XAie_ResetPartition, &aiert->devInst);
+  return success();
 }
 
 LogicalResult xilinx::AIE::AIERTControl::setIOBackend(bool aieSim,
@@ -528,6 +534,15 @@ LogicalResult xilinx::AIE::AIERTControl::configureLocksAndBd(Block &block,
   return success();
 }
 
+LogicalResult xilinx::AIE::AIERTControl::resetDMA(int col, int row, bool on) {
+  auto tileLoc = XAie_TileLoc(col, row);
+  XAie_DmaDesc dmaTileBd;
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaDescInit, &aiert->devInst, &dmaTileBd, tileLoc);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaDisableBd, &dmaTileBd);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelResetAll, &aiert->devInst, tileLoc, on ? XAie_DmaChReset::DMA_CHANNEL_UNRESET : XAie_DmaChReset::DMA_CHANNEL_RESET);
+  return success();
+}
+
 LogicalResult xilinx::AIE::AIERTControl::initLocks(DeviceOp &targetOp) {
   for (auto tileOp : targetOp.getOps<TileOp>()) {
     auto tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());
@@ -738,6 +753,75 @@ LogicalResult xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp) {
   return success();
 }
 
+LogicalResult xilinx::AIE::AIERTControl::resetSwitch(int col, int row) {
+
+  XAie_LocType tileLoc = XAie_TileLoc(col, row);
+
+  // Reset all combinations of input/output routing in the switchbox
+  for (auto endpoint_a : WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE) {
+    for (auto endpoint_b : WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE) {
+      unsigned n_a_connections = targetModel.getNumSourceSwitchboxConnections(col, row, endpoint_a.first);
+      unsigned n_b_connections = targetModel.getNumDestSwitchboxConnections(col, row, endpoint_b.first);
+      for (unsigned a_index = 0; a_index < n_a_connections; a_index++) {
+        for (unsigned b_index = 0; b_index < n_b_connections; b_index++) {
+          if (!targetModel.isLegalTileConnection(col, row, endpoint_a.first, a_index, endpoint_b.first, b_index)) {
+            continue;
+          }
+          TRY_XAIE_API_FATAL_ERROR(XAie_StrmConnCctDisable, &aiert->devInst, tileLoc, endpoint_a.second, a_index, endpoint_b.second, b_index);
+        }
+      }
+    }
+  }
+
+  // for (auto muxOp : targetOp.getOps<ShimMuxOp>()) {
+  //   // NOTE ShimMux always connects from the south as directions are
+  //   // defined relative to the tile stream switch.
+  //   auto tileLoc =
+  //       XAie_TileLoc(muxOp.getTileOp().getCol(), muxOp.getTileOp().getRow());
+  //   Block &b = muxOp.getConnections().front();
+  //   for (auto connectOp : b.getOps<ConnectOp>()) {
+  //     // demux!
+  //     if (connectOp.getSourceBundle() == WireBundle::North)
+  //       TRY_XAIE_API_EMIT_ERROR(muxOp, XAie_EnableAieToShimDmaStrmPort,
+  //                               &aiert->devInst, tileLoc,
+  //                               connectOp.sourceIndex());
+  //     // mux
+  //     if (connectOp.getDestBundle() == WireBundle::North)
+  //       TRY_XAIE_API_EMIT_ERROR(muxOp, XAie_EnableShimDmaToAieStrmPort,
+  //                               &aiert->devInst, tileLoc,
+  //                               connectOp.destIndex());
+  //   }
+  // }
+
+  // for (auto switchboxOp : targetOp.getOps<ShimSwitchboxOp>()) {
+  //   Block &b = switchboxOp.getConnections().front();
+  //   auto tileLoc = XAie_TileLoc(switchboxOp.getCol(), 0);
+  //   for (auto connectOp : b.getOps<ConnectOp>())
+  //     TRY_XAIE_API_EMIT_ERROR(
+  //         switchboxOp, XAie_StrmConnCctEnable, &aiert->devInst, tileLoc,
+  //         WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
+  //         connectOp.sourceIndex(),
+  //         WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
+  //         connectOp.destIndex());
+  // }
+
+  // // Cascade configuration
+  // if (isa<AIE2TargetModel>(targetModel)) {
+  //   for (auto configOp : targetOp.getOps<ConfigureCascadeOp>()) {
+  //     TileOp tile = cast<TileOp>(configOp.getTile().getDefiningOp());
+  //     auto tileLoc = XAie_TileLoc(tile.getCol(), tile.getRow());
+  //     TRY_XAIE_API_EMIT_ERROR(
+  //         targetOp, XAie_CoreConfigAccumulatorControl, &aiert->devInst, tileLoc,
+  //         WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
+  //             static_cast<WireBundle>(configOp.getInputDir())),
+  //         WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
+  //             static_cast<WireBundle>(configOp.getOutputDir())));
+  //   }
+  // }
+
+  return success();
+}
+
 LogicalResult xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp) {
 
   if (failed(initLocks(targetOp))) {
@@ -868,6 +952,13 @@ LogicalResult xilinx::AIE::AIERTControl::addAieElfs(DeviceOp &targetOp,
           return failure();
       }
     }
+  return success();
+}
+
+LogicalResult xilinx::AIE::AIERTControl::resetCore(int col, int row) {
+  auto tileLoc = XAie_TileLoc(col, row);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_CoreDisable, &aiert->devInst, tileLoc);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_CoreReset, &aiert->devInst, tileLoc);
   return success();
 }
 

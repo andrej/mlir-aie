@@ -41,4 +41,6 @@ add_mlir_dialect_library(AIEXTransforms
   MLIRSupport
   MLIRTransformUtils
   AIEXUtils
+  AIERT
+  MLIRAIEToConfiguration
   )

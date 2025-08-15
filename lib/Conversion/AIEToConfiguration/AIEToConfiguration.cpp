@@ -17,41 +17,18 @@
 
 #include "llvm/Support/Debug.h"
 
-extern "C" {
-#include "xaiengine/xaiegbl_defs.h"
-// above needs to go first for u32, u64 typedefs
-#include "xaiengine/xaie_txn.h"
-}
-
-#include <vector>
-
 #define DEBUG_TYPE "aie-convert-to-config"
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-namespace {
-
-// An TransactionBinaryOperation encapulates an aie-rt TnxCmd struct
-struct TransactionBinaryOperation {
-  struct XAie_TxnCmd cmd;
-  TransactionBinaryOperation(XAie_TxnOpcode opc, uint32_t mask, uint64_t addr,
-                             uint32_t value, const uint8_t *data,
-                             uint32_t size) {
-    cmd.Opcode = opc;
-    cmd.Mask = mask;
-    cmd.RegOff = addr;
-    cmd.Value = value;
-    cmd.DataPtr = reinterpret_cast<uint64_t>(data);
-    cmd.Size = size;
-  }
-};
-} // namespace
+namespace xilinx {
+namespace AIE {
 
 // Parse a TXN binary blob. On success return the number of columns from the
 // header and a vector of parsed operations. On failure return std::nullopt.
-static std::optional<int>
+std::optional<int>
 parseTransactionBinary(const std::vector<uint8_t> &data,
                        std::vector<TransactionBinaryOperation> &ops) {
 
@@ -193,6 +170,9 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
   return num_cols;
 }
 
+} // namespace AIE
+} // namepsace xilinx
+
 static LogicalResult generateTransactions(AIERTControl &ctl,
                                           const StringRef workDirPath,
                                           DeviceOp &targetOp, bool aieSim,
@@ -209,9 +189,12 @@ static LogicalResult generateTransactions(AIERTControl &ctl,
   return success();
 }
 
+namespace xilinx {
+namespace AIE {
+
 // Translate vector of TransactionBinaryOperation to a sequence of transaction
 // ops (npu.write32, npu.maskwrite32, npu.blockwrite).
-static LogicalResult
+LogicalResult
 emitTransactionOps(OpBuilder &builder,
                    std::vector<TransactionBinaryOperation> &operations,
                    std::vector<memref::GlobalOp> &global_data) {
@@ -305,6 +288,9 @@ emitControlPacketOps(OpBuilder &builder,
   return success();
 }
 
+} // namespace AIE
+} // namespace xilinx
+
 // Perform bitwise or on consecutive control packets operating on the same
 // address, to resolve the lack of mask write in control packets.
 LogicalResult orConsecutiveWritesOnSameAddr(Block *body) {
@@ -347,15 +333,13 @@ LogicalResult orConsecutiveWritesOnSameAddr(Block *body) {
   return success();
 }
 
-// an enum to represent the output type of the transaction binary
-enum OutputType {
-  Transaction,
-  ControlPacket,
-};
+namespace xilinx {
+namespace AIE {
 
-static LogicalResult convertTransactionOpsToMLIR(
+LogicalResult convertTransactionOpsToMLIR(
     OpBuilder builder, AIE::DeviceOp device, OutputType outputType,
-    std::vector<TransactionBinaryOperation> &operations) {
+    std::vector<TransactionBinaryOperation> &operations,
+    AIEX::RuntimeSequenceOp seq = nullptr) {
 
   auto loc = builder.getUnknownLoc();
 
@@ -384,16 +368,18 @@ static LogicalResult convertTransactionOpsToMLIR(
   }
 
   // create aiex.runtime_sequence
-  int id = 0;
-  std::string seq_name = "configure";
-  while (device.lookupSymbol(seq_name))
-    seq_name = "configure" + std::to_string(id++);
-  StringAttr seq_sym_name = builder.getStringAttr(seq_name);
-  auto seq = builder.create<AIEX::RuntimeSequenceOp>(loc, seq_sym_name);
-  seq.getBody().push_back(new Block);
+  if (!seq) {
+    int id = 0;
+    std::string seq_name = "configure";
+    while (device.lookupSymbol(seq_name))
+      seq_name = "configure" + std::to_string(id++);
+    StringAttr seq_sym_name = builder.getStringAttr(seq_name);
+    seq = builder.create<AIEX::RuntimeSequenceOp>(loc, seq_sym_name);
+    seq.getBody().push_back(new Block);
+    builder.setInsertionPointToStart(&seq.getBody().front());
+  }
 
   // create the txn ops
-  builder.setInsertionPointToStart(&seq.getBody().front());
   if (outputType == OutputType::Transaction) {
     if (failed(emitTransactionOps(builder, operations, global_data)))
       return failure();
@@ -409,6 +395,9 @@ static LogicalResult convertTransactionOpsToMLIR(
 
   return success();
 }
+
+} // namespace AIE
+} // namespace xilinx
 
 // Convert (disassemble) a transaction binary to MLIR. On success return a new
 // ModuleOp containing a DeviceOp containing a runtime sequence with the
