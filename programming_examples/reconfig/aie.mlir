@@ -1,18 +1,18 @@
 module {
-  aie.device(npu2_1col) @empty {
+  aie.device(npu2) @empty {
   }
 
-  aie.device(npu2_1col) @add_two {
+  aie.device(npu2) @add_two {
     %t00 = aie.tile(0, 0)
     %t01 = aie.tile(0, 1)
     %t02 = aie.tile(0, 2)
   
-    aie.objectfifo @objFifo_in0(%t00, {%t01}, 3 : i32) : !aie.objectfifo<memref<1024xi32>>
-    aie.objectfifo @objFifo_in1(%t01, {%t02}, 3 : i32) : !aie.objectfifo<memref<8xi32>>
+    aie.objectfifo @objFifo_in0(%t00, {%t01}, 1 : i32) : !aie.objectfifo<memref<1024xi32>>
+    aie.objectfifo @objFifo_in1(%t01, {%t02}, 1 : i32) : !aie.objectfifo<memref<8xi32>>
     aie.objectfifo.link [@objFifo_in0] -> [@objFifo_in1] ([] [])
 
-    aie.objectfifo @objFifo_out1(%t02, {%t01}, 3 : i32) : !aie.objectfifo<memref<8xi32>>
-    aie.objectfifo @objFifo_out0(%t01, {%t00}, 3 : i32) : !aie.objectfifo<memref<1024xi32>>
+    aie.objectfifo @objFifo_out1(%t02, {%t01}, 1 : i32) : !aie.objectfifo<memref<8xi32>>
+    aie.objectfifo @objFifo_out0(%t01, {%t00}, 1 : i32) : !aie.objectfifo<memref<1024xi32>>
     aie.objectfifo.link [@objFifo_out1] -> [@objFifo_out0] ([] [])
   
     aie.core(%t02) {
@@ -59,12 +59,12 @@ module {
     }
   }
 
-  aie.device(npu2_1col) @subtract_three {
+  aie.device(npu2) @subtract_three {
     %t00 = aie.tile(0, 0)
     %t02 = aie.tile(0, 2)
 
     aie.objectfifo @in(%t00, {%t02}, 1 : i32) : !aie.objectfifo<memref<32xi32>>
-    aie.objectfifo @out(%t02, {%t00}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo @out(%t02, {%t00}, 1 : i32) : !aie.objectfifo<memref<32xi32>>
 
     aie.core(%t02) {
       %c_0 = arith.constant 0 : index
@@ -109,44 +109,20 @@ module {
 
   }
 
-  aie.device(npu2_1col) @main {
+  aie.device(npu2) @main {
+    memref.global "private" constant @zeros_4 : memref<4xi32> = dense<0>
+    memref.global "private" constant @zeros_199 : memref<199xi32> = dense<0>
+    memref.global "private" constant @zeros_227 : memref<227xi32> = dense<0>
     aiex.runtime_sequence @rt (%a: memref<1024x1024xi32>) {
+
       %c1 = aiex.configure @add_two
       aiex.run %c1 -> @rt (%a) : (memref<1024x1024xi32>)
+      aiex.run %c1 -> @rt (%a) : (memref<1024x1024xi32>)
 
-      // // Reset module
-      // aiex.npu.write32 {row = 0 : i32, col = 0 : i32, address = 0x00060010 : ui32, value = 7 : ui32}
-      // aiex.npu.write32 {row = 1 : i32, col = 0 : i32, address = 0x00060010 : ui32, value = 7 : ui32}
-      // aiex.npu.write32 {row = 2 : i32, col = 0 : i32, address = 0x00060010 : ui32, value = 7 : ui32}
-
-      // // Reset S2MM_0
-      // //aiex.npu.write32 {row = 0 : i32, col = 0 : i32, address = 0x0001DE00 : ui32, value = 1 : ui32}
-      // aiex.npu.write32 {row = 1 : i32, col = 0 : i32, address = 0x0001DE00 : ui32, value = 1 : ui32}
-      // aiex.npu.write32 {row = 2 : i32, col = 0 : i32, address = 0x0001DE00 : ui32, value = 1 : ui32}
-
-      // // Reset S2MM_1
-      // //aiex.npu.write32 {row = 0 : i32, col = 0 : i32, address = 0x0001DE08 : ui32, value = 1 : ui32}
-      // aiex.npu.write32 {row = 1 : i32, col = 0 : i32, address = 0x0001DE08 : ui32, value = 1 : ui32}
-      // aiex.npu.write32 {row = 2 : i32, col = 0 : i32, address = 0x0001DE08 : ui32, value = 1 : ui32}
-
-      // // Reset MM2S_0
-      // //aiex.npu.write32 {row = 0 : i32, col = 0 : i32, address = 0x0001DE10 : ui32, value = 1 : ui32}
-      // aiex.npu.write32 {row = 1 : i32, col = 0 : i32, address = 0x0001DE10 : ui32, value = 1 : ui32}
-      // aiex.npu.write32 {row = 2 : i32, col = 0 : i32, address = 0x0001DE10 : ui32, value = 1 : ui32}
-
-      // // Reset MM2S_1
-      // //aiex.npu.write32 {row = 0 : i32, col = 0 : i32, address = 0x0001DE18 : ui32, value = 1 : ui32}
-      // aiex.npu.write32 {row = 1 : i32, col = 0 : i32, address = 0x0001DE18 : ui32, value = 1 : ui32}
-      // aiex.npu.write32 {row = 2 : i32, col = 0 : i32, address = 0x0001DE18 : ui32, value = 1 : ui32}
-
-      // aiex.npu.write32 { col = 0 : i32, row = 0 : i32, address = 0x0001D200 : ui32, value = 3 : ui32}
-      // aiex.npu.write32 { col = 0 : i32, row = 0 : i32, address = 0x00060010 : ui32, value = 0 : ui32 }
-      // aiex.npu.write32 { col = 0 : i32, row = 0 : i32, address = 0x00060010 : ui32, value = 1 : ui32 }
-      // aiex.npu.write32 { col = 0 : i32, row = 0 : i32, address = 0x0001D200 : ui32, value = 0 : ui32}
-
-      // aiex.npu.write32 { col = 0 : i32, row = 0 : i32, address = 0x0003F040 : ui32, value = 0 : ui32}
-
+      aiex.npu.patch_marker { id = "loadpdi" }
+      aiex.npu.load_pdi { id = 0x01 : ui16, size = 1 : ui32, address = 2 : ui64 }
       %c2 = aiex.configure @subtract_three
+
       aiex.run %c2 -> @rt (%a) : (memref<1024x1024xi32>)
     }
   }

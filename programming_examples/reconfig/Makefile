@@ -61,7 +61,7 @@ build/combined_xclbin.xclbin: ${INPUT_MLIR}
 				--xclbin-name=mm.xclbin \
 				${<:%=../%}
 	cd ${@D} && aiecc.py -v --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
-	            --xclbin-kernel-name=transpose --xclbin-kernel-id=0x902 --xclbin-instance-name=transpose_inst \
+	            --xclbin-kernel-name=rms_norm --xclbin-kernel-id=0x902 --xclbin-instance-name=rms_norm_inst \
 				--device-name rms_norm \
 				--no-aiesim --aie-generate-xclbin --no-compile-host \
 				--xclbin-input=mm.xclbin --xclbin-name=${@F} \
@@ -104,7 +104,7 @@ build/test: test.cpp
 
 build/test-runlist: test.cpp
 	mkdir -p ${@D}
-	g++=13 -std=c++23 -g -DVERBOSE=${VERBOSE} -DUSE_RUNLIST=1 -I${XRT_INC_DIR} -L${XRT_LIB_DIR} ${FLAGS} -o $@ $^ -lxrt_coreutil
+	g++-13 -std=c++23 -g -DVERBOSE=${VERBOSE} -DUSE_RUNLIST=1 -I${XRT_INC_DIR} -L${XRT_LIB_DIR} ${FLAGS} -o $@ $^ -lxrt_coreutil
 
 
 # Remove all build artifacts.
