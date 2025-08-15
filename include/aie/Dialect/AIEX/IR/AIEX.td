@@ -17,6 +17,7 @@ include "aie/Dialect/AIE/IR/AIEInterfaces.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
+include "mlir/IR/BuiltinAttributes.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/DataLayoutInterfaces.td"
@@ -944,6 +945,39 @@ def AIE_NpuPreemptOp: AIEX_Op<"npu.preempt", []> {
     1: Mem tile.
     2: AIE tile.
     3: AIE registers.
+  }];
+}
+
+def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
+  let summary = "Load PDI operation";
+  let arguments = (
+    ins UI16Attr:$id,
+        UI32Attr:$size,
+        UI64Attr:$address
+  );
+  let assemblyFormat = [{
+    attr-dict
+  }];
+  let description = [{
+    Load a PDI (Programmable Device Image) to configure the NPU.
+    Address must be patched at runtime in the host CPU.
+  }];
+}
+
+def AIE_NpuPatchMarkerOp: AIEX_Op<"npu.patch_marker", []> {
+  let summary = "Load PDI operation";
+  let arguments = (
+    ins StrAttr:$id
+  );
+  let assemblyFormat = [{
+    attr-dict
+  }];
+  let description = [{
+    Marks the current location in the transaction sequence for later patching in the host code.
+    For each patch_marker, a pair of ID (given as attribute here) and 
+    byte-offset into the transaction sequence will be output by the 
+    `aie-translate --aie-npu-to-binary` pass if a `--aie-patch-map` output file 
+    argument is given.
   }];
 }
 

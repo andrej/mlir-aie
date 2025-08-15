@@ -42,6 +42,7 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
                                          llvm::StringRef);
 mlir::LogicalResult AIETranslateNpuToBinary(mlir::ModuleOp,
                                             std::vector<uint32_t> &,
+                                            std::map<std::string, uint32_t> &,
                                             llvm::StringRef deviceName = "",
                                             llvm::StringRef sequenceName = "");
 mlir::LogicalResult

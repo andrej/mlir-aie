@@ -94,17 +94,31 @@ MlirOperation aieTranslateBinaryToTxn(MlirContext ctx, MlirStringRef binary) {
 }
 
 MlirStringRef aieTranslateNpuToBinary(MlirOperation moduleOp,
+                                      uint32_t *patchMapSizePtr,
+                                      char ***patchMapIdsPtr,
+                                      uint32_t **patchMapOffsetsPtr,
                                       MlirStringRef deviceNameMlir,
                                       MlirStringRef sequenceNameMlir) {
   std::vector<uint32_t> insts;
+  std::map<std::string, uint32_t> patchMap;
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
   llvm::StringRef deviceName(deviceNameMlir.data, deviceNameMlir.length);
   llvm::StringRef sequenceName(sequenceNameMlir.data, sequenceNameMlir.length);
-  if (failed(AIETranslateNpuToBinary(mod, insts, deviceName, sequenceName)))
+  if (failed(AIETranslateNpuToBinary(mod, insts, patchMap, deviceName, sequenceName)))
     return mlirStringRefCreate(nullptr, 0);
   size_t insts_size = insts.size() * sizeof(uint32_t);
   char *cStr = static_cast<char *>(malloc(insts_size));
   memcpy(cStr, insts.data(), insts_size);
+  *patchMapSizePtr = patchMap.size();
+  *patchMapIdsPtr = static_cast<char **>(malloc(patchMap.size() * sizeof(char *)));
+  *patchMapOffsetsPtr = static_cast<uint32_t *>(malloc(patchMap.size() * sizeof(uint32_t)));
+  size_t i = 0;
+  for (const auto &entry : patchMap) {
+    (*patchMapIdsPtr)[i] = static_cast<char *>(malloc(entry.first.size()));
+    memcpy((*patchMapIdsPtr)[i], entry.first.data(), entry.first.size());
+    (*patchMapOffsetsPtr)[i] = entry.second;
+    i++;
+  }
   return mlirStringRefCreate(cStr, insts_size);
 }
 
