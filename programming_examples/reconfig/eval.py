@@ -40,6 +40,14 @@ bars = [
 
 xs = list(range(len(bars)))
 
+print(f"Separate XCLBins:   {np.mean(separate_xclbins):6.0f} μs"),
+print(f"Runlist:            {np.mean(runlist):6.0f} μs")
+print(f"Fused Transactions: {np.mean(fused_txns):6.0f} μs")
+print()
+print(f"Runlist vs separate XCLBins:            {np.mean(runlist) - np.mean(separate_xclbins):6.0f} μs")
+print(f"Fused transactions vs runlist:          {np.mean(fused_txns) - np.mean(runlist):6.0f} μs")
+print(f"Fused transactions vs separate XCLBins: {np.mean(fused_txns) - np.mean(separate_xclbins):6.0f} μs")
+
 for zoomed_out in [True, False]:
     fig, ax = plt.subplots()
     for x, bar in zip(xs, bars):
