@@ -30,7 +30,7 @@ XRT_LIB_DIR=/opt/xilinx/xrt/lib
 # Targets
 # --------------------------------------------------------------------------
 
-INPUT_MLIR=another-test/aie.mlir
+INPUT_MLIR?=another-test/aie.mlir
 
 .PHONY: all
 all: build/empty.xclbin build/config_subtract_three_insts.bin build/run_subtract_three_insts.bin build/test

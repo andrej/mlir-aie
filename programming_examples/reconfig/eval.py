@@ -13,44 +13,44 @@ def parse_output(path):
                 out.append(int(match.group(1)))
     return out
 
-separate_xclbins = parse_output("run_0.txt")
+once = parse_output("run_0.txt")
 
-runlist = parse_output("run_1.txt")
+twice_no_reconfig = parse_output("run_1.txt")
 
-fused_txns = parse_output("run_2.txt")
+twice_with_reconfig = parse_output("run_2.txt")
 
 import numpy as np
 
 import matplotlib.pyplot as plt
 
+kernel_time = np.array(twice_no_reconfig) - np.array(once)
+reconfig_time = np.array(twice_with_reconfig) - np.array(twice_no_reconfig)
+
 bars = [
     {
-        "label": "Separate XCLBins",
-        "values": separate_xclbins
+        "label": "Total Time",
+        "values": once
     },
     {
-        "label": "Runlist",
-        "values": runlist
+        "label": "Kernel",
+        "values": kernel_time
     },
     {
-        "label": "Fused Transactions",
-        "values": fused_txns
+        "label": "Intra-kernel reconfig",
+        "values": reconfig_time
     }
 ]
 
 xs = list(range(len(bars)))
 
-mean_separate = np.mean(separate_xclbins)
-mean_runlist = np.mean(runlist)
-mean_fused = np.mean(fused_txns)
+mean_once = np.mean(once)
+mean_kernel = np.mean(kernel_time)
+mean_reconfig = np.mean(reconfig_time)
 
-print(f"Separate XCLBins:   {mean_separate:6.0f} μs"),
-print(f"Runlist:            {mean_runlist:6.0f} μs")
-print(f"Fused Transactions: {mean_fused:6.0f} μs")
+print(f"Total time:                  {mean_once:6.0f} μs"),
+print(f"Kernel time:                 {mean_kernel:6.0f} μs")
+print(f"Intral-kernel reconfig time: {mean_reconfig:6.0f} μs")
 print()
-print(f"Runlist vs separate XCLBins:            {mean_runlist - mean_separate:6.0f} μs ({(mean_runlist - mean_separate) / mean_separate * 100:3.1f}%)")
-print(f"Fused transactions vs runlist:          {mean_fused - mean_runlist:6.0f} μs ({(mean_fused - mean_runlist) / mean_runlist * 100:3.1f}%)")
-print(f"Fused transactions vs separate XCLBins: {mean_fused - mean_separate:6.0f} μs ({(mean_fused - mean_separate) / mean_separate * 100:3.1f}%)")
 
 for zoomed_out in [True, False]:
     fig, ax = plt.subplots()
@@ -64,6 +64,6 @@ for zoomed_out in [True, False]:
     ax.set_xticks(xs)
     ax.set_xticklabels([bar["label"] for bar in bars])
     ax.set_ylabel("Total runtime (μs)")
-    ax.set_title("1024x1024x1024 GEMM, followed by 1024x1024 RMS Norm (07cdf78e63)")
+    ax.set_title("1024x1024x1024 GEMM")
 
     plt.savefig("eval.png" if not zoomed_out else "eval_zoomed_out.png")
