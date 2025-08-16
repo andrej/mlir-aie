@@ -60,6 +60,6 @@ for zoomed_out in [True, False]:
     ax.set_xticks(xs)
     ax.set_xticklabels([bar["label"] for bar in bars])
     ax.set_ylabel("Total runtime (μs)")
-    ax.set_title("1024x1024x1024 GEMM, followed by 1024x1024 RMS Norm (751d674e97)")
+    ax.set_title("1024x1024x1024 GEMM, followed by 1024x1024 RMS Norm (952fac54e1)")
 
     plt.savefig("eval.png" if not zoomed_out else "eval_zoomed_out.png")
