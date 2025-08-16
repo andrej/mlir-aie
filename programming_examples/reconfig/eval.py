@@ -40,13 +40,17 @@ bars = [
 
 xs = list(range(len(bars)))
 
-print(f"Separate XCLBins:   {np.mean(separate_xclbins):6.0f} μs"),
-print(f"Runlist:            {np.mean(runlist):6.0f} μs")
-print(f"Fused Transactions: {np.mean(fused_txns):6.0f} μs")
+mean_separate = np.mean(separate_xclbins)
+mean_runlist = np.mean(runlist)
+mean_fused = np.mean(fused_txns)
+
+print(f"Separate XCLBins:   {mean_separate:6.0f} μs"),
+print(f"Runlist:            {mean_runlist:6.0f} μs")
+print(f"Fused Transactions: {mean_fused:6.0f} μs")
 print()
-print(f"Runlist vs separate XCLBins:            {np.mean(runlist) - np.mean(separate_xclbins):6.0f} μs")
-print(f"Fused transactions vs runlist:          {np.mean(fused_txns) - np.mean(runlist):6.0f} μs")
-print(f"Fused transactions vs separate XCLBins: {np.mean(fused_txns) - np.mean(separate_xclbins):6.0f} μs")
+print(f"Runlist vs separate XCLBins:            {mean_runlist - mean_separate:6.0f} μs ({(mean_runlist - mean_separate) / mean_separate * 100:3.1f}%)")
+print(f"Fused transactions vs runlist:          {mean_fused - mean_runlist:6.0f} μs ({(mean_fused - mean_runlist) / mean_runlist * 100:3.1f}%)")
+print(f"Fused transactions vs separate XCLBins: {mean_fused - mean_separate:6.0f} μs ({(mean_fused - mean_separate) / mean_separate * 100:3.1f}%)")
 
 for zoomed_out in [True, False]:
     fig, ax = plt.subplots()
