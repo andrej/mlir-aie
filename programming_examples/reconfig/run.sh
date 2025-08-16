@@ -40,7 +40,7 @@ if [[ $MODE -eq 2 ]] then
     make build/empty.xclbin
     make build/npu_insts_main_rt.bin
     for i in $(seq $ITERS); do
-        ./build/test ./build/empty.xclbin ./build/npu_insts_main_rt.bin | tee -a run_${MODE}.txt
+        ./build/test ./build/empty.xclbin ./build/npu_insts_main_rt.bin:./build/npu_insts_patch_map_main_rt.txt | tee -a run_${MODE}.txt
     done
 fi
 
