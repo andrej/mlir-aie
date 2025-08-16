@@ -3,7 +3,7 @@
 set -e
 
 MODE=2
-ITERS=20
+ITERS=100
 
 rm -f run_${MODE}.txt
 

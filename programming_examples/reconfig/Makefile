@@ -58,13 +58,13 @@ build/combined_xclbin.xclbin: ${INPUT_MLIR}
 	            --xclbin-kernel-name=mm --xclbin-kernel-id=0x901 --xclbin-instance-name=mm_inst \
 				--device-name mm \
 				--no-aiesim --aie-generate-xclbin --no-compile-host \
-				--xclbin-name=mm.xclbin \
+				--xclbin-name=intermediate_mm.xclbin \
 				${<:%=../%}
 	cd ${@D} && aiecc.py -v --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 	            --xclbin-kernel-name=rms_norm --xclbin-kernel-id=0x902 --xclbin-instance-name=rms_norm_inst \
 				--device-name rms_norm \
 				--no-aiesim --aie-generate-xclbin --no-compile-host \
-				--xclbin-input=mm.xclbin --xclbin-name=${@F} \
+				--xclbin-input=intermediate_mm.xclbin --xclbin-name=${@F} \
 				${<:%=../%}
 	
 
