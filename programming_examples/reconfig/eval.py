@@ -59,7 +59,7 @@ for zoomed_out in [True, False]:
         ax.boxplot(positions=[x], x=bar["values"], medianprops={"color" : "black"})
 
     if not zoomed_out:
-        ax.set_ylim([0.9*min(np.min(bar["values"]) for bar in bars), 1.01*max(np.max(bar["values"]) for bar in bars)])
+        ax.set_ylim([0.9*min(np.min(bar["values"]) for bar in bars[0:2]), 1.01*max(np.max(bar["values"]) for bar in bars)])
 
     ax.set_xticks(xs)
     ax.set_xticklabels([bar["label"] for bar in bars])

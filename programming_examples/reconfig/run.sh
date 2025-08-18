@@ -5,7 +5,7 @@ set -e
 MODE=2
 ITERS=100
 
-rm -f run_${MODE}.txt
+mv run_${MODE}.txt run_${MODE}.txt.old
 
 if [[ $MODE -eq 0 ]] then
     export INPUT_MLIR=another-test/aie-once.mlir
