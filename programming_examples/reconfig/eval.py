@@ -49,6 +49,7 @@ mean_reconfig = np.mean(reconfig_time)
 
 print(f"Total time:                  {mean_once:6.0f} μs"),
 print(f"Kernel time:                 {mean_kernel:6.0f} μs")
+print(f"Difference:                  {mean_once-mean_kernel:6.0f} μs ({(mean_once-mean_kernel)/mean_once*100:3.1f}%)")
 print(f"Intral-kernel reconfig time: {mean_reconfig:6.0f} μs")
 print()
 
