@@ -6,11 +6,6 @@ module {
     aiex.runtime_sequence @rt(%inout : memref<1048576xbf16>) {
       %c1 = aiex.configure @mm
       aiex.run %c1 -> @sequence(%inout, %inout, %inout) : (memref<1048576xbf16>, memref<1048576xbf16>, memref<1048576xbf16>)
-
-      aiex.npu.patch_marker { id = "loadpdi" }
-      aiex.npu.load_pdi { id = 0x01 : ui16, size = 1 : ui32, address = 2 : ui64 }
-      %c2 = aiex.configure @mm
-
       aiex.run %c1 -> @sequence(%inout, %inout, %inout) : (memref<1048576xbf16>, memref<1048576xbf16>, memref<1048576xbf16>)
     }
   }

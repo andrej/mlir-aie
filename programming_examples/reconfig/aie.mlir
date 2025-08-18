@@ -119,6 +119,7 @@ module {
       aiex.run %c1 -> @rt (%a) : (memref<1024x1024xi32>)
       aiex.run %c1 -> @rt (%a) : (memref<1024x1024xi32>)
 
+      aiex.npu.preempt { level = 3 : ui8 }
       aiex.npu.patch_marker { id = "loadpdi" }
       aiex.npu.load_pdi { id = 0x01 : ui16, size = 1 : ui32, address = 2 : ui64 }
       %c2 = aiex.configure @subtract_three

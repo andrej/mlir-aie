@@ -13,44 +13,34 @@ def parse_output(path):
                 out.append(int(match.group(1)))
     return out
 
-once = parse_output("run_0.txt")
+no_preemption = parse_output("run_0.txt")
 
-twice_no_reconfig = parse_output("run_1.txt")
+with_preemption = parse_output("run_1.txt")
 
-twice_with_reconfig = parse_output("run_2.txt")
 
 import numpy as np
 
 import matplotlib.pyplot as plt
 
-kernel_time = np.array(twice_no_reconfig) - np.array(once)
-reconfig_time = np.array(twice_with_reconfig) - np.array(twice_no_reconfig)
-
 bars = [
     {
-        "label": "Total Time",
-        "values": once
+        "label": "No preemption",
+        "values": no_preemption
     },
     {
-        "label": "Kernel",
-        "values": kernel_time
+        "label": "With preemptoin",
+        "values": with_preemption
     },
-    {
-        "label": "Intra-kernel reconfig",
-        "values": reconfig_time
-    }
 ]
 
 xs = list(range(len(bars)))
 
-mean_once = np.mean(once)
-mean_kernel = np.mean(kernel_time)
-mean_reconfig = np.mean(reconfig_time)
+mean_no_preemption = np.mean(no_preemption)
+mean_kernel = np.mean(with_preemption)
 
-print(f"Total time:                  {mean_once:6.0f} μs"),
-print(f"Kernel time:                 {mean_kernel:6.0f} μs")
-print(f"Difference:                  {mean_once-mean_kernel:6.0f} μs ({(mean_once-mean_kernel)/mean_once*100:3.1f}%)")
-print(f"Intral-kernel reconfig time: {mean_reconfig:6.0f} μs")
+print(f"Total time w preemption:     {mean_no_preemption:6.0f} μs"),
+print(f"Total time wo preemption:    {mean_kernel:6.0f} μs")
+print(f"Difference:                  {mean_no_preemption-mean_kernel:6.0f} μs ({(mean_no_preemption-mean_kernel)/mean_no_preemption*100:3.1f}%)")
 print()
 
 for zoomed_out in [True, False]:

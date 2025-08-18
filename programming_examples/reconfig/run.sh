@@ -2,17 +2,16 @@
 
 set -e
 
-MODE=2
+MODE=0
 ITERS=100
 
-mv run_${MODE}.txt run_${MODE}.txt.old
+rm -f run_${MODE}.txt
+#mv run_${MODE}.txt run_${MODE}.txt.old
 
 if [[ $MODE -eq 0 ]] then
-    export INPUT_MLIR=another-test/aie-once.mlir
+    export INPUT_MLIR=another-test/aie-twice-wo-preemption.mlir
 elif [[ $MODE -eq 1 ]] then
-    export INPUT_MLIR=another-test/aie-twice-wo-reconfig.mlir
-elif [[ $MODE -eq 2 ]] then
-    export INPUT_MLIR=another-test/aie-twice-w-reconfig.mlir
+    export INPUT_MLIR=another-test/aie-twice-w-preemption.mlir
 fi
 
 make clean
@@ -20,6 +19,11 @@ make build/mm.o
 make build/test
 make build/empty.xclbin
 make build/npu_insts_main_rt.bin
+sudo /opt/xilinx/xrt/bin/xrt-smi configure --advanced --force-preemption --type layer --action disable
+sudo /opt/xilinx/xrt/bin/xrt-smi configure --advanced --force-preemption --type frame --action disable
+sudo /opt/xilinx/xrt/bin/xrt-smi configure --advanced --force-preemption --type layer --action enable
+sudo /opt/xilinx/xrt/bin/xrt-smi configure --advanced --force-preemption --type frame --action enable
 for i in $(seq $ITERS); do
     ./build/test ./build/empty.xclbin ./build/npu_insts_main_rt.bin:./build/npu_insts_patch_map_main_rt.txt | tee -a run_${MODE}.txt
 done
+xrt-smi examine --advanced --report preemption
