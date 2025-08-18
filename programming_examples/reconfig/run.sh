@@ -2,7 +2,7 @@
 
 set -e
 
-MODE=0
+MODE=1
 ITERS=100
 
 rm -f run_${MODE}.txt
@@ -23,7 +23,8 @@ sudo /opt/xilinx/xrt/bin/xrt-smi configure --advanced --force-preemption --type 
 sudo /opt/xilinx/xrt/bin/xrt-smi configure --advanced --force-preemption --type frame --action disable
 sudo /opt/xilinx/xrt/bin/xrt-smi configure --advanced --force-preemption --type layer --action enable
 sudo /opt/xilinx/xrt/bin/xrt-smi configure --advanced --force-preemption --type frame --action enable
+/scratch/roesti/aiebu/build/Debug/opt/xilinx/aiebu/bin/aiebu-asm -t aie2txn -c build/npu_insts_main_rt.bin -o build/npu_insts_main_rt.elf
 for i in $(seq $ITERS); do
-    ./build/test ./build/empty.xclbin ./build/npu_insts_main_rt.bin:./build/npu_insts_patch_map_main_rt.txt | tee -a run_${MODE}.txt
+    ./build/test ./build/empty.xclbin ./build/npu_insts_main_rt.elf | tee -a run_${MODE}.txt
 done
 xrt-smi examine --advanced --report preemption
