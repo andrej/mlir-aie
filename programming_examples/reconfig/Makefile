@@ -30,7 +30,7 @@ XRT_LIB_DIR=/opt/xilinx/xrt/lib
 # Targets
 # --------------------------------------------------------------------------
 
-INPUT_MLIR=another-test/aie.mlir
+INPUT_MLIR=aie.mlir
 
 .PHONY: all
 all: build/empty.xclbin build/config_subtract_three_insts.bin build/run_subtract_three_insts.bin build/test
@@ -38,10 +38,6 @@ all: build/empty.xclbin build/config_subtract_three_insts.bin build/run_subtract
 build/%.o: another-test/%.o
 	mkdir -p ${@D}
 	cp $< $@
-
-# Intermediate lowering of our NPU design.
-build/design.mlir: design.py
-	python3 $< ${FLAGS} > $@
 
 # Complete binary for loading onto the NPU.
 # The following target generates both build/final.xclbin AND build/insts.txt
@@ -52,19 +48,21 @@ build/%.xclbin: ${INPUT_MLIR}
 				--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 				$(<:%=../%)
 
+KERNEL_1=add_two
+KERNEL_2=subtract_three
 build/combined_xclbin.xclbin: ${INPUT_MLIR}
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py -v --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
-	            --xclbin-kernel-name=mm --xclbin-kernel-id=0x901 --xclbin-instance-name=mm_inst \
-				--device-name mm \
+	            --xclbin-kernel-name=${KERNEL_1} --xclbin-kernel-id=0x901 --xclbin-instance-name=${KERNEL_1}_inst \
+				--device-name ${KERNEL_1} \
 				--no-aiesim --aie-generate-xclbin --no-compile-host \
-				--xclbin-name=intermediate_mm.xclbin \
+				--xclbin-name=intermediate_${KERNEL_1}.xclbin \
 				${<:%=../%}
 	cd ${@D} && aiecc.py -v --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
-	            --xclbin-kernel-name=rms_norm --xclbin-kernel-id=0x902 --xclbin-instance-name=rms_norm_inst \
-				--device-name rms_norm \
+	            --xclbin-kernel-name=${KERNEL_2} --xclbin-kernel-id=0x902 --xclbin-instance-name=${KERNEL_2}_inst \
+				--device-name ${KERNEL_2} \
 				--no-aiesim --aie-generate-xclbin --no-compile-host \
-				--xclbin-input=intermediate_mm.xclbin --xclbin-name=${@F} \
+				--xclbin-input=intermediate_${KERNEL_1}.xclbin --xclbin-name=${@F} \
 				${<:%=../%}
 	
 
@@ -80,15 +78,15 @@ build/run_%_insts.mlir: ${INPUT_MLIR}
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py -v  --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 	            --aie-generate-txn --txn-name=txns.mlir \
-				--aie-generate-npu-insts --sequence-name=rt --npu-insts-name=${@F} $(<:%=../%)
+				--aie-generate-npu-insts --sequence-name=sequence --npu-insts-name=${@F} $(<:%=../%)
 	aie-opt --pass-pipeline="builtin.module(aie.device(aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-assign-runtime-sequence-bd-ids,aie-dma-tasks-to-npu,aie-dma-to-npu,aie-lower-set-lock))" \
 		build/${INPUT_MLIR}.prj/input_with_addresses.mlir -o $@
 
 build/run_%_insts.bin: build/run_%_insts.mlir
 	mkdir -p ${@D}
-	aie-translate --aie-npu-to-binary --aie-device-name=${*F} --aie-sequence-name=rt $< -o $@
+	aie-translate --aie-npu-to-binary --aie-device-name=${*F} --aie-sequence-name=sequence $< -o $@
 
-build/npu_insts_main_rt.bin: ${INPUT_MLIR}
+build/npu_insts_main_sequence.bin: ${INPUT_MLIR}
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py -v  --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 	            --aie-generate-txn --txn-name=txns.mlir \

@@ -9,6 +9,9 @@ add_mlir_conversion_library(MLIRAIEToConfiguration
   PARTIAL_SOURCES_INTENDED
   ENABLE_AGGREGATION
 
+  PARTIAL_SOURCES_INTENDED
+  ENABLE_AGGREGATION
+
   ADDITIONAL_HEADER_DIRS
   $(CMAKE_CURRENT_SRC_DIR)/../../../../include/aie/Conversion/AIEToConfiguration
 

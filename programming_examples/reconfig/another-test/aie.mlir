@@ -4,7 +4,7 @@ module {
   }
 
   aie.device(npu2) @main {
-    aiex.runtime_sequence @rt(%inout : memref<1048576xbf16>) {
+    aiex.runtime_sequence @sequence(%inout : memref<1048576xbf16>) {
       %c1 = aiex.configure @mm
       aiex.run %c1 -> @sequence(%inout, %inout, %inout) : (memref<1048576xbf16>, memref<1048576xbf16>, memref<1048576xbf16>)
 

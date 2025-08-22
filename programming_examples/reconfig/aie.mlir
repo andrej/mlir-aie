@@ -1,5 +1,33 @@
 module {
+  // The empty device is used to generate the xclbin, to satisfy XRT. Nothing
+  // is configured statically.
   aie.device(npu2) @empty {
+  }
+
+  // Our "main" design calls into the two other designs "add_two" and
+  // "subtract_three" below. This runtime sequence incorporates the other
+  // design's runtime sequences by reference and is the one that will be 
+  //executed.
+  aie.device(npu2) @main {
+    aiex.runtime_sequence @sequence (%buf_inout: memref<1024x1024xi32>) {
+
+      // Set up the add_two design (core program memories, stream switches, etc.)
+      %config_add_two = aiex.configure @add_two
+      aiex.run %config_add_two -> @sequence (%buf_inout) : (memref<1024x1024xi32>)
+
+      // We can run the runtime sequence of that design twice, which will result
+      // in adding four (adding two twice).
+      aiex.run %config_add_two -> @sequence (%buf_inout) : (memref<1024x1024xi32>)
+
+      // Reconfiguration. The "patch_marker" and "load_pdi" ops here will be
+      // absorbed into the configure op before the PR is merged. They help
+      // resetting the NPU before reconfiguration.
+      aiex.npu.patch_marker { id = "loadpdi" }
+      aiex.npu.load_pdi { id = 0x01 : ui16, size = 1 : ui32, address = 2 : ui64 }
+      %config_subtract_three = aiex.configure @subtract_three
+
+      aiex.run %config_subtract_three -> @sequence (%buf_inout) : (memref<1024x1024xi32>)
+    }
   }
 
   aie.device(npu2) @add_two {
@@ -44,7 +72,7 @@ module {
       aie.end
     }
 
-    aiex.runtime_sequence @rt(%a : memref<1024x1024xi32>) {
+    aiex.runtime_sequence @sequence(%a : memref<1024x1024xi32>) {
       %t_in = aiex.dma_configure_task_for @objFifo_in0 {
         aie.dma_bd(%a : memref<1024x1024xi32>, 0, 1048576)
         aie.end
@@ -93,7 +121,7 @@ module {
       aie.end
     }
 
-    aiex.runtime_sequence @rt(%a : memref<1024x1024xi32>) {
+    aiex.runtime_sequence @sequence(%a : memref<1024x1024xi32>) {
       %t_in = aiex.dma_configure_task_for @in {
         aie.dma_bd(%a : memref<1024x1024xi32>, 0, 1048576)
         aie.end
@@ -109,21 +137,4 @@ module {
 
   }
 
-  aie.device(npu2) @main {
-    memref.global "private" constant @zeros_4 : memref<4xi32> = dense<0>
-    memref.global "private" constant @zeros_199 : memref<199xi32> = dense<0>
-    memref.global "private" constant @zeros_227 : memref<227xi32> = dense<0>
-    aiex.runtime_sequence @rt (%a: memref<1024x1024xi32>) {
-
-      %c1 = aiex.configure @add_two
-      aiex.run %c1 -> @rt (%a) : (memref<1024x1024xi32>)
-      aiex.run %c1 -> @rt (%a) : (memref<1024x1024xi32>)
-
-      aiex.npu.patch_marker { id = "loadpdi" }
-      aiex.npu.load_pdi { id = 0x01 : ui16, size = 1 : ui32, address = 2 : ui64 }
-      %c2 = aiex.configure @subtract_three
-
-      aiex.run %c2 -> @rt (%a) : (memref<1024x1024xi32>)
-    }
-  }
 }
