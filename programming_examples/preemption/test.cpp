@@ -27,6 +27,8 @@
 #include "cxxopts.hpp"
 #include "test_utils.h"
 
+#define INCLUDE_KERNEL_SETUP_OVERHEAD 1
+
 constexpr int IN_SIZE = 1024*1024;
 constexpr int OUT_SIZE = 1024*1024;
 
@@ -94,10 +96,23 @@ int main(int argc, const char *argv[]) {
     std::cout << "Running Kernel.\n";
   unsigned int opcode = 3;
 
+#if INCLUDE_KERNEL_SETUP_OVERHEAD
   auto t_start = std::chrono::high_resolution_clock::now();
   auto run = kernel(opcode, 0, 0, bo_in, bo_out);
   run.wait2();
   auto t_stop = std::chrono::high_resolution_clock::now();
+#else
+  xrt::run run = xrt::run(kernel);
+  run.set_arg(0, opcode);
+  run.set_arg(1, 0);
+  run.set_arg(2, 0);
+  run.set_arg(3, bo_in);
+  run.set_arg(4, bo_out);
+  auto t_start = std::chrono::high_resolution_clock::now();
+  run.start();
+  run.wait2();
+  auto t_stop = std::chrono::high_resolution_clock::now();
+#endif
 
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
