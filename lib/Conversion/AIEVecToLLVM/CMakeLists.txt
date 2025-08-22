@@ -11,6 +11,7 @@ add_mlir_conversion_library(MLIRAIEVecToLLVM
 
   DEPENDS
   MLIRAIEConversionPassIncGen
+  xaienginecdo_static-headers
 
   LINK_COMPONENTS
   Core
