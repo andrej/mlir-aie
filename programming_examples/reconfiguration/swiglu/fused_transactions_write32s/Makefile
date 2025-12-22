@@ -1,6 +1,6 @@
-MLIR_FILES = build/swiglu_gemv_1.mlir build/swiglu_silu.mlir build/swiglu_eltwise_mul.mlir build/swiglu_gemv_2.mlir
-COMBINED_MLIR = build/aie.mlir
-ELF_FILE = build/aie.elf
+MLIR_FILES = $(BUILD_DIR)/swiglu_gemv_1.mlir $(BUILD_DIR)/swiglu_silu.mlir $(BUILD_DIR)/swiglu_eltwise_mul.mlir $(BUILD_DIR)/swiglu_gemv_2.mlir
+COMBINED_MLIR = $(BUILD_DIR)/combined_aie.mlir
+ELF_FILE = $(BUILD_DIR)/aie.elf
 
 AIECC = aiecc.py
 PEANO_CLANG = $(PEANO_INSTALL_DIR)/bin/clang++
@@ -20,15 +20,6 @@ VARIANT_NAME?=fused_transactions_write32s
 
 all: build/test
 
-build/mv.o: $(KERNEL_DIR)/mv.cc | build
-	$(PEANO_CLANG) $(CLANG_FLAGS) -c $< -o $@
-
-build/mul.o: $(KERNEL_DIR)/mul.cc | build
-	$(PEANO_CLANG) $(CLANG_FLAGS) -c $< -o $@
-
-build/silu.o: $(KERNEL_DIR)/silu.cc | build
-	$(PEANO_CLANG) $(CLANG_FLAGS) -c $< -o $@
-
 $(BUILD_DIR)/mv.o: $(KERNEL_DIR)/mv.cc | $(BUILD_DIR)
 	$(PEANO_CLANG) $(CLANG_FLAGS) -c $< -o $@
 
@@ -38,16 +29,16 @@ $(BUILD_DIR)/mul.o: $(KERNEL_DIR)/mul.cc | $(BUILD_DIR)
 $(BUILD_DIR)/silu.o: $(KERNEL_DIR)/silu.cc | $(BUILD_DIR)
 	$(PEANO_CLANG) $(CLANG_FLAGS) -c $< -o $@
 
-build/swiglu_gemv_1.mlir: $(OPERATOR_DIR)/matrix_vector_mul.py | build
+$(BUILD_DIR)/swiglu_gemv_1.mlir: $(OPERATOR_DIR)/matrix_vector_mul.py | $(BUILD_DIR)
 	python3 -c 'import sys; sys.path.append("$(OPERATOR_DIR)"); from matrix_vector_mul import my_matvec; from aie.iron.device import NPU2; mlir_code = my_matvec(NPU2(), 8, 8192, 2048, 1); print(str(mlir_code))' > $@
 
-build/swiglu_gemv_2.mlir: $(OPERATOR_DIR)/matrix_vector_mul.py | build
+$(BUILD_DIR)/swiglu_gemv_2.mlir: $(OPERATOR_DIR)/matrix_vector_mul.py | $(BUILD_DIR)
 	python3 -c 'import sys; sys.path.append("$(OPERATOR_DIR)"); from matrix_vector_mul import my_matvec; from aie.iron.device import NPU2; mlir_code = my_matvec(NPU2(), 8, 2048, 8192, 1); print(str(mlir_code))' > $@
 
-build/swiglu_silu.mlir: $(OPERATOR_DIR)/silu.py | build
+$(BUILD_DIR)/swiglu_silu.mlir: $(OPERATOR_DIR)/silu.py | $(BUILD_DIR)
 	python3 -c 'import sys; sys.path.append("$(OPERATOR_DIR)"); from silu import my_silu; from aie.iron.device import NPU2; mlir_code = my_silu(NPU2(), 8192, 8, 2, 512, 0); print(str(mlir_code))' > $@
 
-build/swiglu_eltwise_mul.mlir: $(OPERATOR_DIR)/eltwise_mul.py | build
+$(BUILD_DIR)/swiglu_eltwise_mul.mlir: $(OPERATOR_DIR)/eltwise_mul.py | $(BUILD_DIR)
 	python3 -c 'import sys; sys.path.append("$(OPERATOR_DIR)"); from eltwise_mul import my_eltwise_mul; from aie.iron.device import NPU2; mlir_code = my_eltwise_mul(NPU2(), 8192, 8, 2, 1024, 0); print(str(mlir_code))' > $@
 
 $(COMBINED_MLIR): $(MLIR_FILES) combine_mlir.py
@@ -58,16 +49,13 @@ BUILD_DIR?=build
 
 $(BUILD_DIR)/aie.elf: $(COMBINED_MLIR) $(BUILD_DIR)/mv.o $(BUILD_DIR)/mul.o $(BUILD_DIR)/silu.o | $(BUILD_DIR)
 	cp $(COMBINED_MLIR) $(BUILD_DIR)/aie.mlir
-	cd $(BUILD_DIR) && $(AIECC) -v --no-coalesce-write32s --generate-full-elf --expand-load-pdis --reset-mode=$(RESET_MODE) --reset-tiles=core,mem --no-xchesscc --no-xbridge aie.mlir -o aie.elf
+	cd $(BUILD_DIR) && $(AIECC) -v --generate-full-elf --expand-load-pdis --reset-mode=$(RESET_MODE) --reset-tiles=core,mem --no-xchesscc --no-xbridge aie.mlir -o aie.elf
 
 $(BUILD_DIR)/test: test.cpp $(BUILD_DIR)/aie.elf
 	g++-13 $< -o $@ $(HOST_FLAGS) -DVARIANT_NAME=\"$(VARIANT_NAME)\"
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
-
-build:
-	mkdir -p build
 
 # Build all reset mode variants
 all_reset_modes: _build_reset_always _build_reset_ifused _build_reset_ifchanged _build_reset_ifchangedfinegrained _build_reset_never

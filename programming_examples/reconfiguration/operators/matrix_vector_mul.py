@@ -12,7 +12,7 @@ import aie.dialects.index as index
 import aie.dialects.memref as memref
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 from aie.helpers.util import try_convert_np_type_to_mlir_type
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
