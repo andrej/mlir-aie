@@ -46,6 +46,7 @@ add_mlir_library(AIETargets
   AIETargetLdScript.cpp
   AIETargetUcCert.cpp
   AIETargetXAIEV2.cpp
+  AIETargetXclbin.cpp
   AIETargetHSA.cpp
   AIETargetShared.cpp
   AIETargetSimulationFiles.cpp
@@ -93,5 +94,9 @@ target_link_libraries(AIETargets PRIVATE xaienginecdo_static)
 target_include_directories(AIETargets SYSTEM PRIVATE
   ${BOOTGEN_SOURCE_DIR}
   ${AIE_BINARY_DIR}/include/xaienginecdo_static
+  /scratch/roesti/xdna-driver/xrt/src/runtime_src/core/include
 )
-target_include_directories(obj.AIETargets SYSTEM PRIVATE ${BOOTGEN_SOURCE_DIR})
+target_include_directories(obj.AIETargets SYSTEM PRIVATE
+  ${BOOTGEN_SOURCE_DIR}
+  /scratch/roesti/xdna-driver/xrt/src/runtime_src/core/include
+)

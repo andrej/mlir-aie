@@ -409,5 +409,18 @@ void registerAIETranslations() {
         return AIETranslateToUcDma(module, output);
       },
       registerDialects);
+
+  // Translate xclbin binary to MLIR
+  TranslateToMLIRRegistration registrationXclbinToMLIR(
+      "xclbin-to-mlir", "Decompile xclbin binary to MLIR",
+      [](StringRef inputFilename, MLIRContext *context) {
+        auto module =
+            ModuleOp::create(FileLineColLoc::get(context, inputFilename, 0, 0));
+        if (failed(AIETranslateFromXclbin(module, inputFilename))) {
+          return OwningOpRef<ModuleOp>();
+        }
+        return OwningOpRef<ModuleOp>(module);
+      },
+      registerDialects);
 }
 } // namespace xilinx::AIE

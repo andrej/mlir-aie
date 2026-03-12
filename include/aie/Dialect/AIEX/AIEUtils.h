@@ -36,5 +36,5 @@ struct SubviewTraceResult {
 //
 // This function checks that all subviews remain static and contiguous.
 std::optional<SubviewTraceResult> traceSubviewToBlockArgument(Value value);
-}
+} // namespace AIEX
 } // namespace xilinx
