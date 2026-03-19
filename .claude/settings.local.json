@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(source ~/setup_buildenv.sh)",
+      "Bash(./utils-build-mlir-aie-from-wheels.sh)",
+      "Bash(./utils/build-mlir-aie-from-wheels.sh:*)",
+      "Bash(tee:*)",
+      "Bash(ninja:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(find /scratch/roesti/mlir-aie -name *.cpp -path */Targets/* -type f)",
+      "Bash(find /scratch/roesti/mlir-aie -name AIETargets.cpp -o -name *xclbin* -o -name *Targets*.cpp)",
+      "Bash(find /scratch/roesti/mlir-aie -name bootgen* -o -name *xclbin*)",
+      "Bash(find /scratch/roesti/mlir-aie -name *.py -path *xrt* -type f)",
+      "Bash(find /scratch/roesti/mlir-aie -path *compiler/aiecc* -name *.py)",
+      "Bash(find /scratch/roesti/mlir-aie -name *.h -type f -exec grep -l \"struct.*NpuInst\\\\|class.*NpuInst\" {})",
+      "Bash(2)",
+      "Bash(xclbinutil --info --input /scratch/roesti/mlir-aie/test/npu-xrt/add_blockwrite/aie.xclbin)",
+      "Bash(xclbinutil --dump-section AIE_PARTITION:JSON:/tmp/partition.json --input /scratch/roesti/mlir-aie/test/npu-xrt/add_blockwrite/aie.xclbin)",
+      "Read(//tmp/**)",
+      "Bash(xclbinutil --dump-section PDI:RAW:/tmp/test.pdi --input /scratch/roesti/mlir-aie/test/npu-xrt/add_blockwrite/aie.xclbin)",
+      "Bash(xclbinutil --help)",
+      "Bash(xclbinutil --dump-section EMBEDDED_METADATA:HTML:/tmp/metadata.json --input /scratch/roesti/mlir-aie/test/npu-xrt/add_blockwrite/aie.xclbin)",
+      "Bash(xclbinutil --dump-section EMBEDDED_METADATA:RAW:/tmp/metadata.bin --input /scratch/roesti/mlir-aie/test/npu-xrt/add_blockwrite/aie.xclbin)",
+      "Bash(python3 -m json.tool)",
+      "Bash(xclbinutil --dump-section PDI:RAW:/tmp/maybe_pdi.bin --input /scratch/roesti/mlir-aie/test/npu-xrt/add_blockwrite/aie.xclbin)",
+      "Bash(xclbinutil --dump-section IP_LAYOUT:RAW:/tmp/iplayout.bin --input /scratch/roesti/mlir-aie/test/npu-xrt/add_blockwrite/aie.xclbin)",
+      "Bash(/usr/bin/c++ -isystem /scratch/roesti/mlir-aie/xdna-driver/xrt/build/Release/opt/xilinx/xrt/include -E -xc++ -)",
+      "Bash(/usr/bin/c++ -I/scratch/roesti/xdna-driver/xrt/src/runtime_src/core/include -E -xc++ -)",
+      "Bash(cmake .)",
+      "Bash(/usr/bin/c++ -isystem /scratch/roesti/xdna-driver/xrt/src/runtime_src/core/include -E -xc++ /tmp/test_include.cpp)",
+      "Bash(/usr/bin/c++ -D_DEBUG -D_GLIBCXX_ASSERTIONS -D_GLIBCXX_USE_CXX11_ABI=1 -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -I/scratch/roesti/mlir-aie/my_install/mlir/include -I/scratch/roesti/mlir-aie/include -I/scratch/roesti/mlir-aie/build/include -I/scratch/roesti/mlir-aie/build/include/xaienginecdo_static -isystem /scratch/roesti/mlir-aie/third_party/bootgen -isystem /scratch/roesti/mlir-aie/xdna-driver/xrt/src/runtime_src/core/include -E -xc++ /scratch/roesti/mlir-aie/lib/Targets/AIETargetXclbin.cpp)",
+      "Bash(aie-translate --xclbin-to-mlir /scratch/roesti/mlir-aie/test/npu-xrt/add_blockwrite/aie.xclbin)",
+      "Bash(aie-translate --help)",
+      "Bash(./run_test_loop.sh)"
+    ]
+  }
+}

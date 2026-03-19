@@ -1,0 +1,10 @@
+all:
+{
+  id_code = 0x14ca8093
+  extended_id_code = 0x01
+  image
+  {
+    name=aie_image, id=0x1c000000
+    { type=cdo file=/scratch/roesti/mlir-aie/test/npu-xrt/reconfigure_loadpdi/aie.mlir.prj/add_two_aie_cdo_elfs.bin file=/scratch/roesti/mlir-aie/test/npu-xrt/reconfigure_loadpdi/aie.mlir.prj/add_two_aie_cdo_init.bin file=/scratch/roesti/mlir-aie/test/npu-xrt/reconfigure_loadpdi/aie.mlir.prj/add_two_aie_cdo_enable.bin }
+  }
+}

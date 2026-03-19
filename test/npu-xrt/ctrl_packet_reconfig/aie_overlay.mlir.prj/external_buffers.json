@@ -1,0 +1,11 @@
+{
+  "external_buffers": {
+    "buffer_ctrl": {
+      "xrt_id": 2,
+      "logical_id": -1,
+      "size_in_bytes": 1964,
+      "ctrl_pkt_buffer": 1,
+      "name": "runtime_control_packet"
+    }
+  }
+}

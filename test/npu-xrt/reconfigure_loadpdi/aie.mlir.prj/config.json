@@ -1,0 +1,94 @@
+{
+  "xrt-kernels": [
+    {
+      "name": "main",
+      "arguments": [
+        {
+          "name": "arg_0",
+          "type": "char *",
+          "offset": "0x0"
+        }
+      ],
+      "instance": [
+        {
+          "id": "sequence",
+          "TXN_ctrl_code_file": "/scratch/roesti/mlir-aie/test/npu-xrt/reconfigure_loadpdi/aie.mlir.prj/main_sequence.bin"
+        }
+      ],
+      "PDIs": [
+        {
+          "id": 1,
+          "PDI_file": "/scratch/roesti/mlir-aie/test/npu-xrt/reconfigure_loadpdi/aie.mlir.prj/main.pdi"
+        },
+        {
+          "id": 2,
+          "PDI_file": "/scratch/roesti/mlir-aie/test/npu-xrt/reconfigure_loadpdi/aie.mlir.prj/add_two.pdi"
+        },
+        {
+          "id": 3,
+          "PDI_file": "/scratch/roesti/mlir-aie/test/npu-xrt/reconfigure_loadpdi/aie.mlir.prj/add_three.pdi"
+        }
+      ]
+    },
+    {
+      "name": "add_two",
+      "arguments": [
+        {
+          "name": "arg_0",
+          "type": "char *",
+          "offset": "0x0"
+        }
+      ],
+      "instance": [
+        {
+          "id": "add_two_sequence",
+          "TXN_ctrl_code_file": "/scratch/roesti/mlir-aie/test/npu-xrt/reconfigure_loadpdi/aie.mlir.prj/add_two_add_two_sequence.bin"
+        }
+      ],
+      "PDIs": [
+        {
+          "id": 1,
+          "PDI_file": "/scratch/roesti/mlir-aie/test/npu-xrt/reconfigure_loadpdi/aie.mlir.prj/main.pdi"
+        },
+        {
+          "id": 2,
+          "PDI_file": "/scratch/roesti/mlir-aie/test/npu-xrt/reconfigure_loadpdi/aie.mlir.prj/add_two.pdi"
+        },
+        {
+          "id": 3,
+          "PDI_file": "/scratch/roesti/mlir-aie/test/npu-xrt/reconfigure_loadpdi/aie.mlir.prj/add_three.pdi"
+        }
+      ]
+    },
+    {
+      "name": "add_three",
+      "arguments": [
+        {
+          "name": "arg_0",
+          "type": "char *",
+          "offset": "0x0"
+        }
+      ],
+      "instance": [
+        {
+          "id": "add_three_sequence",
+          "TXN_ctrl_code_file": "/scratch/roesti/mlir-aie/test/npu-xrt/reconfigure_loadpdi/aie.mlir.prj/add_three_add_three_sequence.bin"
+        }
+      ],
+      "PDIs": [
+        {
+          "id": 1,
+          "PDI_file": "/scratch/roesti/mlir-aie/test/npu-xrt/reconfigure_loadpdi/aie.mlir.prj/main.pdi"
+        },
+        {
+          "id": 2,
+          "PDI_file": "/scratch/roesti/mlir-aie/test/npu-xrt/reconfigure_loadpdi/aie.mlir.prj/add_two.pdi"
+        },
+        {
+          "id": 3,
+          "PDI_file": "/scratch/roesti/mlir-aie/test/npu-xrt/reconfigure_loadpdi/aie.mlir.prj/add_three.pdi"
+        }
+      ]
+    }
+  ]
+}

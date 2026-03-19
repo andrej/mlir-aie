@@ -1,0 +1,339 @@
+[pid 358270] connect(139, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
+[pid 358270] connect(139, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
+[pid 358270] connect(139, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358272] connect(139, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16 <unfinished ...>
+[pid 358272] <... connect resumed>)     = 0
+[pid 358270] connect(135, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.242.161.191", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358272] connect(140, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.242.161.191", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358270] connect(139, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358270] connect(136, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.242.161.191", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358275] connect(143, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358275] connect(139, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.85.108.33", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358275] connect(143, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358275] connect(139, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.85.130.105", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358268] connect(144, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358268] connect(143, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.85.108.33", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358275] connect(144, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358275] connect(143, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.85.130.105", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358268] connect(145, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358268] connect(144, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.85.130.105", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358308] connect(136, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
+[pid 358308] connect(136, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
+[pid 358308] connect(136, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358308] connect(133, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:140.82.113.21", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358317] connect(153, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358317] connect(154, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:140.82.113.21", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358321] connect(157, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358321] connect(156, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:140.82.112.5", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358310] connect(158, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358310] connect(157, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:140.82.113.21", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358310] connect(159, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358310] connect(158, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:140.82.114.10", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358323] connect(4, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
+[pid 358323] connect(4, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
+[pid 358323] connect(4, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
+[pid 358323] connect(4, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
+[pid 358322] connect(161, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358322] connect(159, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:140.82.112.5", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358322] connect(163, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358322] connect(161, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:140.82.114.10", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358328] connect(4, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
+[pid 358328] connect(4, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
+[pid 358328] connect(4, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
+[pid 358328] connect(4, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
+[pid 358463] connect(7, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
+[pid 358463] connect(7, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
+[pid 358463] connect(7, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358462] connect(5, {sa_family=AF_INET, sin_port=htons(443), sin_addr=inet_addr("140.82.112.4")}, 16) = -1 EINPROGRESS (Operation now in progress)
+[pid 358317] connect(182, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358317] connect(182, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358317] connect(182, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16 <unfinished ...>
+[pid 358317] <... connect resumed>)     = 0
+[pid 358317] connect(182, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16 <unfinished ...>
+[pid 358317] <... connect resumed>)     = 0
+[pid 358317] connect(182, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358317] connect(182, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16 <unfinished ...>
+[pid 358317] <... connect resumed>)     = 0
+[pid 358317] connect(181, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.226.129", &sin6_addr), sin6_scope_id=0}, 28 <unfinished ...>
+[pid 358317] <... connect resumed>)     = -1 EINPROGRESS (Operation now in progress)
+[pid 358306] recvfrom(181, 0x7edfbe491f18, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358306] shutdown(181, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358485] connect(19, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
+[pid 358485] connect(18, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
+[pid 358485] connect(18, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358475] connect(18, {sa_family=AF_INET, sin_port=htons(443), sin_addr=inet_addr("140.82.113.21")}, 16) = -1 EINPROGRESS (Operation now in progress)
+[pid 358483] connect(19, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358483] connect(19, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358483] connect(19, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358483] connect(19, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358483] connect(19, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358483] connect(19, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358475] connect(19, {sa_family=AF_INET, sin_port=htons(443), sin_addr=inet_addr("20.209.226.1")}, 16) = -1 EINPROGRESS (Operation now in progress)
+[pid 358484] connect(19, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358484] connect(19, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358484] connect(19, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358484] connect(19, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358484] connect(19, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358484] connect(19, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358475] connect(19, {sa_family=AF_INET, sin_port=htons(443), sin_addr=inet_addr("20.209.226.129")}, 16) = -1 EINPROGRESS (Operation now in progress)
+[pid 358311] connect(188, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358311] connect(188, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358311] connect(188, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358311] connect(188, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358311] connect(188, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358311] connect(188, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358311] connect(181, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.226.129", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358311] recvfrom(181, 0x7edfc0ec9f30, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358311] shutdown(181, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358309] connect(188, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358309] connect(181, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.227.33", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358309] recvfrom(181, 0x7edfc0ee00a0, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358309] shutdown(181, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358485] connect(19, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358485] connect(19, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358485] connect(19, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358485] connect(19, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358485] connect(19, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358485] connect(19, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358475] connect(19, {sa_family=AF_INET, sin_port=htons(443), sin_addr=inet_addr("20.209.227.33")}, 16) = -1 EINPROGRESS (Operation now in progress)
+[pid 358309] connect(188, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358309] connect(181, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.226.129", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358309] recvfrom(181, 0x7edfc0ee00a0, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358309] shutdown(181, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358317] connect(170, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358317] connect(170, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358317] connect(170, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358317] connect(170, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358317] connect(170, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358317] connect(170, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358317] connect(168, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.226.129", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358309] recvfrom(168, 0x7edfbe5d26e8, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358309] shutdown(168, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358309] connect(170, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358309] connect(170, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358309] connect(170, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358309] connect(170, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358309] connect(170, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358309] connect(170, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358309] connect(168, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.227.33", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358309] recvfrom(168, 0x7edfbe5d26e8, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358309] shutdown(168, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358309] connect(188, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358309] connect(181, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.226.129", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358309] recvfrom(181, 0x7edfbe5d26e8, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358309] shutdown(181, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358317] connect(188, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358317] connect(188, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358317] connect(188, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358317] connect(188, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358317] connect(188, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358317] connect(188, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358317] connect(181, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.227.33", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358317] recvfrom(181, 0x7edfc0cbdaa8, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358317] shutdown(181, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358311] connect(188, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358311] connect(188, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358311] connect(188, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358311] connect(188, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358311] connect(188, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358311] connect(188, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358311] connect(181, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.226.1", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358311] recvfrom(181, 0x7edfbe5ceed8, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358311] shutdown(181, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358309] connect(188, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358309] connect(181, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.226.129", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358309] recvfrom(181, 0x7edfbe5d26e8, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358309] shutdown(181, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358309] connect(188, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358309] connect(188, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358309] connect(181, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.226.1", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358309] recvfrom(181, 0x7edfbe5d26e8, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358309] shutdown(181, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358482] connect(18, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358482] connect(18, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358482] connect(18, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358482] connect(18, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358482] connect(18, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358482] connect(18, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358475] connect(18, {sa_family=AF_INET, sin_port=htons(443), sin_addr=inet_addr("20.209.226.129")}, 16) = -1 EINPROGRESS (Operation now in progress)
+[pid 358321] connect(141, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358321] connect(141, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358321] connect(141, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358321] connect(141, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358321] connect(141, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358321] connect(141, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358321] connect(140, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.226.1", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358321] recvfrom(140, 0x7edfbe1f11b8, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358321] shutdown(140, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358309] connect(142, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358309] connect(141, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.226.1", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358309] recvfrom(141, 0x7edfbe31c520, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358309] shutdown(141, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358309] connect(142, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358309] connect(141, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.227.33", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358309] recvfrom(141, 0x7edfbe31c520, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358309] shutdown(141, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358309] connect(142, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358309] connect(141, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.226.1", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358309] recvfrom(141, 0x7edfbe31c520, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358309] shutdown(141, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358309] connect(142, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358309] connect(141, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.226.129", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358309] recvfrom(141, 0x7edfbe31c520, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358309] shutdown(141, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358321] connect(142, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358321] connect(141, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.226.1", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358321] recvfrom(141, 0x7edfbe1ea710, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358321] shutdown(141, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358311] connect(142, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358311] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358311] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358311] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358311] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358311] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358311] connect(141, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.226.1", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358311] recvfrom(141, 0x7edfbe31a508, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358311] shutdown(141, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358311] connect(142, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358311] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358311] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358311] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358311] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358311] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358311] connect(141, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.227.33", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358311] recvfrom(141, 0x7edfbe31a508, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358311] shutdown(141, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358321] connect(142, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358321] connect(141, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.226.1", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358321] recvfrom(141, 0x7edfbe1ea710, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358321] shutdown(141, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358311] connect(142, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358311] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358311] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358311] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358311] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358311] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358311] connect(141, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.227.33", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358311] recvfrom(141, 0x7edfbe31a508, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358311] shutdown(141, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358321] connect(142, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358321] connect(141, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.226.1", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358321] recvfrom(141, 0x7edfbe1ea710, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358321] shutdown(141, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358309] connect(142, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358309] connect(141, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.227.33", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358309] recvfrom(141, 0x7edfbe31c520, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358309] shutdown(141, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358321] connect(142, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358321] connect(141, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.226.129", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358321] recvfrom(141, 0x7edfbe1ea710, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358321] shutdown(141, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358311] connect(142, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358311] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358311] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358311] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358311] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358311] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358311] connect(141, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.227.33", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358311] recvfrom(141, 0x7edfbe31a508, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358311] shutdown(141, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358309] connect(142, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358309] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358309] connect(141, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.226.1", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358309] recvfrom(141, 0x7edfbe31c520, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358309] shutdown(141, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358321] connect(142, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358321] connect(141, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.227.33", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358321] recvfrom(141, 0x7edfbe1ea710, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358321] shutdown(141, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358321] connect(142, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.129")}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.226.1")}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+[pid 358321] connect(142, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("20.209.227.33")}, 16) = 0
+[pid 358321] connect(141, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.209.226.129", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358321] recvfrom(141, 0x7edfbe1ea710, 8192, 0, NULL, NULL) = -1 ECONNRESET (Connection reset by peer)
+[pid 358321] shutdown(141, SHUT_RDWR)   = -1 ENOTCONN (Transport endpoint is not connected)
+[pid 358596] connect(141, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358596] connect(140, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.85.130.105", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+[pid 358274] connect(155, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+[pid 358274] connect(154, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::ffff:20.85.130.105", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)

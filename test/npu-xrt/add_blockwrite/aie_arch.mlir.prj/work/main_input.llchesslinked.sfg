@@ -1,0 +1,450 @@
+
+// Function: void core_0_2()
+[
+  0 : core_0_2 bnd=e
+  1 : _cst val=1f typ=__i32
+  2 : _cst val=3f typ=__i64
+  3 : _cst val=0f typ=__i64
+  4 : __tmp typ=__i64
+  5 : _cst val=49f typ=__i32
+  6 : _cst val=-1f typ=__i32
+  7 : llvm___aie2p___acquire bnd=e
+  8 : _cst val=0f
+  9 : _cst val=50f typ=__i32
+  10 : _cst val=32f
+  11 : _cst val=4f
+  12 : objFifo_in1_cons_buff_0 typ=__Pvoid bnd=e
+  13 : __tmp typ=__i32
+  14 : constant_buffer typ=__Pvoid bnd=e
+  15 : objFifo_out1_buff_0 typ=__Pvoid bnd=e
+  16 : _cst val=4f typ=__i32
+  17 : __tmp typ=__Pvoid
+  18 : _cst val=8f typ=__i32
+  19 : _cst val=12f typ=__i32
+  20 : _cst val=16f typ=__i32
+  21 : _cst val=20f typ=__i32
+  22 : _cst val=24f typ=__i32
+  23 : _cst val=28f typ=__i32
+  24 : _cst val=48f typ=__i32
+  25 : llvm___aie2p___release bnd=e
+  26 : _cst val=51f typ=__i32
+  27 : objFifo_in1_cons_buff_1 typ=__Pvoid bnd=e
+  28 : objFifo_out1_buff_1 typ=__Pvoid bnd=e
+  29 : _cst val=2f typ=__i64
+  30 : _cst val=6f typ=__i64
+]
+Lcore_0_2
+{
+  { // BB#0
+    ( vreg.1 var=1 ) const ( ) <1>;
+    ( vreg.2 var=2 ) const ( ) <2>;
+    ( vreg.3 var=3 ) const ( ) <3>;
+  } #2
+  // NOTE: GOTO FROM BB#0 TO BB#1 [HIDDEN]
+  do {
+    { // no associated BB
+      ( vreg.162 var=4 ) entry ( vreg.158 vreg.3 ) <162>;
+    } #4
+    {
+      sync {
+        ( vreg.4 var=4 ) sync_link ( vreg.162 ) sid=1 <4>;
+      } #6
+      { // BB#1
+        ( ) chain_tie_loop ( ) <5>;
+        ( vreg.6 var=5 ) const ( ) <6>;
+        ( vreg.7 var=6 ) const ( ) <7>;
+        ( vreg.8 var=7 ) const ( ) <8>;
+        ( vreg.9 var=8 ) const ( ) <9>;
+        ( ) lcall /* llvm___aie2p___acquire */ ( vreg.9 vreg.8 vreg.6 vreg.7 ) <10>;
+        ( vreg.11 var=9 ) const ( ) <11>;
+        ( vreg.12 var=7 ) const ( ) <12>;
+        ( vreg.13 var=8 ) const ( ) <13>;
+        ( ) lcall /* llvm___aie2p___acquire */ ( vreg.13 vreg.12 vreg.11 vreg.7 ) <14>;
+        ( vreg.15 var=10 ) const ( ) <15>;
+        ( vreg.16 var=11 ) const ( ) <16>;
+        ( vreg.17 var=12 ) global ( vreg.15 vreg.16 ) <17>;
+        ( vreg.18 var=13 ) load___i32 ( vreg.17 ) <18>;
+        ( vreg.19 var=10 ) const ( ) <19>;
+        ( vreg.20 var=11 ) const ( ) <20>;
+        ( vreg.21 var=14 ) global ( vreg.19 vreg.20 ) <21>;
+        ( vreg.22 var=13 ) load___i32 ( vreg.21 ) <22>;
+        ( vreg.23 var=13 ) add___i32 ( vreg.22 vreg.18 ) <23>;
+        ( vreg.24 var=10 ) const ( ) <24>;
+        ( vreg.25 var=11 ) const ( ) <25>;
+        ( vreg.26 var=15 ) global ( vreg.24 vreg.25 ) <26>;
+        ( ) store___i32 ( vreg.23 vreg.26 ) <27>;
+        ( vreg.28 var=16 ) const ( ) <28>;
+        ( vreg.29 var=17 ) add___Pvoid ( vreg.17 vreg.28 ) <29>;
+        ( vreg.30 var=13 ) load___i32 ( vreg.29 ) <30>;
+        ( vreg.31 var=17 ) add___Pvoid ( vreg.21 vreg.28 ) <31>;
+        ( vreg.32 var=13 ) load___i32 ( vreg.31 ) <32>;
+        ( vreg.33 var=13 ) add___i32 ( vreg.32 vreg.30 ) <33>;
+        ( vreg.34 var=17 ) add___Pvoid ( vreg.26 vreg.28 ) <34>;
+        ( ) store___i32 ( vreg.33 vreg.34 ) <35>;
+        ( vreg.36 var=18 ) const ( ) <36>;
+        ( vreg.37 var=17 ) add___Pvoid ( vreg.17 vreg.36 ) <37>;
+        ( vreg.38 var=13 ) load___i32 ( vreg.37 ) <38>;
+        ( vreg.39 var=17 ) add___Pvoid ( vreg.21 vreg.36 ) <39>;
+        ( vreg.40 var=13 ) load___i32 ( vreg.39 ) <40>;
+        ( vreg.41 var=13 ) add___i32 ( vreg.40 vreg.38 ) <41>;
+        ( vreg.42 var=17 ) add___Pvoid ( vreg.26 vreg.36 ) <42>;
+        ( ) store___i32 ( vreg.41 vreg.42 ) <43>;
+        ( vreg.44 var=19 ) const ( ) <44>;
+        ( vreg.45 var=17 ) add___Pvoid ( vreg.17 vreg.44 ) <45>;
+        ( vreg.46 var=13 ) load___i32 ( vreg.45 ) <46>;
+        ( vreg.47 var=17 ) add___Pvoid ( vreg.21 vreg.44 ) <47>;
+        ( vreg.48 var=13 ) load___i32 ( vreg.47 ) <48>;
+        ( vreg.49 var=13 ) add___i32 ( vreg.48 vreg.46 ) <49>;
+        ( vreg.50 var=17 ) add___Pvoid ( vreg.26 vreg.44 ) <50>;
+        ( ) store___i32 ( vreg.49 vreg.50 ) <51>;
+        ( vreg.52 var=20 ) const ( ) <52>;
+        ( vreg.53 var=17 ) add___Pvoid ( vreg.17 vreg.52 ) <53>;
+        ( vreg.54 var=13 ) load___i32 ( vreg.53 ) <54>;
+        ( vreg.55 var=17 ) add___Pvoid ( vreg.21 vreg.52 ) <55>;
+        ( vreg.56 var=13 ) load___i32 ( vreg.55 ) <56>;
+        ( vreg.57 var=13 ) add___i32 ( vreg.56 vreg.54 ) <57>;
+        ( vreg.58 var=17 ) add___Pvoid ( vreg.26 vreg.52 ) <58>;
+        ( ) store___i32 ( vreg.57 vreg.58 ) <59>;
+        ( vreg.60 var=21 ) const ( ) <60>;
+        ( vreg.61 var=17 ) add___Pvoid ( vreg.17 vreg.60 ) <61>;
+        ( vreg.62 var=13 ) load___i32 ( vreg.61 ) <62>;
+        ( vreg.63 var=17 ) add___Pvoid ( vreg.21 vreg.60 ) <63>;
+        ( vreg.64 var=13 ) load___i32 ( vreg.63 ) <64>;
+        ( vreg.65 var=13 ) add___i32 ( vreg.64 vreg.62 ) <65>;
+        ( vreg.66 var=17 ) add___Pvoid ( vreg.26 vreg.60 ) <66>;
+        ( ) store___i32 ( vreg.65 vreg.66 ) <67>;
+        ( vreg.68 var=22 ) const ( ) <68>;
+        ( vreg.69 var=17 ) add___Pvoid ( vreg.17 vreg.68 ) <69>;
+        ( vreg.70 var=13 ) load___i32 ( vreg.69 ) <70>;
+        ( vreg.71 var=17 ) add___Pvoid ( vreg.21 vreg.68 ) <71>;
+        ( vreg.72 var=13 ) load___i32 ( vreg.71 ) <72>;
+        ( vreg.73 var=13 ) add___i32 ( vreg.72 vreg.70 ) <73>;
+        ( vreg.74 var=17 ) add___Pvoid ( vreg.26 vreg.68 ) <74>;
+        ( ) store___i32 ( vreg.73 vreg.74 ) <75>;
+        ( vreg.76 var=23 ) const ( ) <76>;
+        ( vreg.77 var=17 ) add___Pvoid ( vreg.17 vreg.76 ) <77>;
+        ( vreg.78 var=13 ) load___i32 ( vreg.77 ) <78>;
+        ( vreg.79 var=17 ) add___Pvoid ( vreg.21 vreg.76 ) <79>;
+        ( vreg.80 var=13 ) load___i32 ( vreg.79 ) <80>;
+        ( vreg.81 var=13 ) add___i32 ( vreg.80 vreg.78 ) <81>;
+        ( vreg.82 var=17 ) add___Pvoid ( vreg.26 vreg.76 ) <82>;
+        ( ) store___i32 ( vreg.81 vreg.82 ) <83>;
+        ( vreg.84 var=24 ) const ( ) <84>;
+        ( vreg.85 var=1 ) const ( ) <85>;
+        ( vreg.86 var=25 ) const ( ) <86>;
+        ( vreg.87 var=8 ) const ( ) <87>;
+        ( ) lcall /* llvm___aie2p___release */ ( vreg.87 vreg.86 vreg.84 vreg.85 ) <88>;
+        ( vreg.89 var=26 ) const ( ) <89>;
+        ( vreg.90 var=25 ) const ( ) <90>;
+        ( vreg.91 var=8 ) const ( ) <91>;
+        ( ) lcall /* llvm___aie2p___release */ ( vreg.91 vreg.90 vreg.89 vreg.85 ) <92>;
+        ( vreg.93 var=7 ) const ( ) <93>;
+        ( vreg.94 var=8 ) const ( ) <94>;
+        ( ) lcall /* llvm___aie2p___acquire */ ( vreg.94 vreg.93 vreg.6 vreg.7 ) <95>;
+        ( vreg.96 var=7 ) const ( ) <96>;
+        ( vreg.97 var=8 ) const ( ) <97>;
+        ( ) lcall /* llvm___aie2p___acquire */ ( vreg.97 vreg.96 vreg.11 vreg.7 ) <98>;
+        ( vreg.99 var=10 ) const ( ) <99>;
+        ( vreg.100 var=11 ) const ( ) <100>;
+        ( vreg.101 var=27 ) global ( vreg.99 vreg.100 ) <101>;
+        ( vreg.102 var=13 ) load___i32 ( vreg.101 ) <102>;
+        ( vreg.103 var=13 ) load___i32 ( vreg.21 ) <103>;
+        ( vreg.104 var=13 ) add___i32 ( vreg.103 vreg.102 ) <104>;
+        ( vreg.105 var=10 ) const ( ) <105>;
+        ( vreg.106 var=11 ) const ( ) <106>;
+        ( vreg.107 var=28 ) global ( vreg.105 vreg.106 ) <107>;
+        ( ) store___i32 ( vreg.104 vreg.107 ) <108>;
+        ( vreg.109 var=17 ) add___Pvoid ( vreg.101 vreg.28 ) <109>;
+        ( vreg.110 var=13 ) load___i32 ( vreg.109 ) <110>;
+        ( vreg.111 var=13 ) load___i32 ( vreg.31 ) <111>;
+        ( vreg.112 var=13 ) add___i32 ( vreg.111 vreg.110 ) <112>;
+        ( vreg.113 var=17 ) add___Pvoid ( vreg.107 vreg.28 ) <113>;
+        ( ) store___i32 ( vreg.112 vreg.113 ) <114>;
+        ( vreg.115 var=17 ) add___Pvoid ( vreg.101 vreg.36 ) <115>;
+        ( vreg.116 var=13 ) load___i32 ( vreg.115 ) <116>;
+        ( vreg.117 var=13 ) load___i32 ( vreg.39 ) <117>;
+        ( vreg.118 var=13 ) add___i32 ( vreg.117 vreg.116 ) <118>;
+        ( vreg.119 var=17 ) add___Pvoid ( vreg.107 vreg.36 ) <119>;
+        ( ) store___i32 ( vreg.118 vreg.119 ) <120>;
+        ( vreg.121 var=17 ) add___Pvoid ( vreg.101 vreg.44 ) <121>;
+        ( vreg.122 var=13 ) load___i32 ( vreg.121 ) <122>;
+        ( vreg.123 var=13 ) load___i32 ( vreg.47 ) <123>;
+        ( vreg.124 var=13 ) add___i32 ( vreg.123 vreg.122 ) <124>;
+        ( vreg.125 var=17 ) add___Pvoid ( vreg.107 vreg.44 ) <125>;
+        ( ) store___i32 ( vreg.124 vreg.125 ) <126>;
+        ( vreg.127 var=17 ) add___Pvoid ( vreg.101 vreg.52 ) <127>;
+        ( vreg.128 var=13 ) load___i32 ( vreg.127 ) <128>;
+        ( vreg.129 var=13 ) load___i32 ( vreg.55 ) <129>;
+        ( vreg.130 var=13 ) add___i32 ( vreg.129 vreg.128 ) <130>;
+        ( vreg.131 var=17 ) add___Pvoid ( vreg.107 vreg.52 ) <131>;
+        ( ) store___i32 ( vreg.130 vreg.131 ) <132>;
+        ( vreg.133 var=17 ) add___Pvoid ( vreg.101 vreg.60 ) <133>;
+        ( vreg.134 var=13 ) load___i32 ( vreg.133 ) <134>;
+        ( vreg.135 var=13 ) load___i32 ( vreg.63 ) <135>;
+        ( vreg.136 var=13 ) add___i32 ( vreg.135 vreg.134 ) <136>;
+        ( vreg.137 var=17 ) add___Pvoid ( vreg.107 vreg.60 ) <137>;
+        ( ) store___i32 ( vreg.136 vreg.137 ) <138>;
+        ( vreg.139 var=17 ) add___Pvoid ( vreg.101 vreg.68 ) <139>;
+        ( vreg.140 var=13 ) load___i32 ( vreg.139 ) <140>;
+        ( vreg.141 var=13 ) load___i32 ( vreg.71 ) <141>;
+        ( vreg.142 var=13 ) add___i32 ( vreg.141 vreg.140 ) <142>;
+        ( vreg.143 var=17 ) add___Pvoid ( vreg.107 vreg.68 ) <143>;
+        ( ) store___i32 ( vreg.142 vreg.143 ) <144>;
+        ( vreg.145 var=17 ) add___Pvoid ( vreg.101 vreg.76 ) <145>;
+        ( vreg.146 var=13 ) load___i32 ( vreg.145 ) <146>;
+        ( vreg.147 var=13 ) load___i32 ( vreg.79 ) <147>;
+        ( vreg.148 var=13 ) add___i32 ( vreg.147 vreg.146 ) <148>;
+        ( vreg.149 var=17 ) add___Pvoid ( vreg.107 vreg.76 ) <149>;
+        ( ) store___i32 ( vreg.148 vreg.149 ) <150>;
+        ( vreg.151 var=25 ) const ( ) <151>;
+        ( vreg.152 var=8 ) const ( ) <152>;
+        ( ) lcall /* llvm___aie2p___release */ ( vreg.152 vreg.151 vreg.84 vreg.85 ) <153>;
+        ( vreg.154 var=25 ) const ( ) <154>;
+        ( vreg.155 var=8 ) const ( ) <155>;
+        ( ) lcall_tail /* llvm___aie2p___release */ ( vreg.155 vreg.154 vreg.89 vreg.85 ) <156>;
+        ( vreg.157 var=29 ) const ( ) <157>;
+        ( vreg.158 var=4 ) add___i64 ( vreg.4 vreg.157 ) <158>;
+        ( vreg.159 var=30 ) const ( ) <159>;
+        ( vreg.160 var=13 ) setult___i64 ( vreg.4 vreg.159 ) <160>;
+      } #7
+      if {
+        { // no associated BB
+          ( ) if_expr ( vreg.160 ) <161>;
+        } #9
+        {
+          // NOTE: GOTO FROM BB#1 TO BB#1 [HIDDEN]
+        } #10
+        {
+          // NOTE: GOTO FROM BB#1 TO BB#2 [HIDDEN]
+        } #11
+        { // no associated BB
+        } #12
+      } #8 // if
+    } #5
+    { // no associated BB
+      ( ) while_expr ( vreg.160 ) <163>;
+      ( ) backedge_taken_count ( vreg.2 ) <164>;
+    } #13
+  } #3// do_while
+  // NOTE: GOTO FROM BB#1 TO BB#2 [HIDDEN]
+  { // BB#2
+    ( ) return ( ) <165>;
+  } #14 nxt=-2
+} #1
+0 : 'core_0_2';
+----------
+0 : (0,0:0,0);
+----------
+==========alias_info
+18 : 1;
+22 : 1;
+27 : 0;
+30 : 1;
+32 : 1;
+35 : 0;
+38 : 1;
+40 : 1;
+43 : 0;
+46 : 1;
+48 : 1;
+51 : 0;
+54 : 1;
+56 : 1;
+59 : 0;
+62 : 1;
+64 : 1;
+67 : 0;
+70 : 1;
+72 : 1;
+75 : 0;
+78 : 1;
+80 : 1;
+83 : 0;
+102 : 1;
+103 : 1;
+108 : 0;
+110 : 1;
+111 : 1;
+114 : 0;
+116 : 1;
+117 : 1;
+120 : 0;
+122 : 1;
+123 : 1;
+126 : 0;
+128 : 1;
+129 : 1;
+132 : 0;
+134 : 1;
+135 : 1;
+138 : 0;
+140 : 1;
+141 : 1;
+144 : 0;
+146 : 1;
+147 : 1;
+150 : 0;
+
+// Function: void llvm___aie2p___acquire(i32 , i32 )
+[
+  0 : llvm___aie2p___acquire bnd=e
+  1 : _cst val=1f typ=__i32
+  2 : __arg0 typ=__i32
+  3 : __arg1 typ=__i32
+  4 : _Z25chess_separator_schedulerv bnd=e
+  5 : _cst val=0f
+  6 : __regcall3__chessintr_void_acquire____uint___uint bnd=e
+]
+Lllvm___aie2p___acquire
+{
+  { // BB#0
+    ( vreg.1 var=1 ) const ( ) <1>;
+    ( vreg.2 var=2 ) inp ( ) <2>;
+    ( vreg.3 var=3 ) inp ( ) <3>;
+    ( ) chain_tie_volatile ( ) <4>;
+    ( vreg.5 var=4 ) const ( ) <5>;
+    ( vreg.6 var=5 ) const ( ) <6>;
+    ( ) lcall /* _Z25chess_separator_schedulerv */ ( vreg.6 vreg.5 ) <7>;
+    ( vreg.8 var=6 ) const ( ) <8>;
+    ( vreg.9 var=5 ) const ( ) <9>;
+    ( ) lcall /* __regcall3__chessintr_void_acquire____uint___uint */ ( vreg.9 vreg.8 vreg.2 vreg.3 ) <10>;
+    ( vreg.11 var=4 ) const ( ) <11>;
+    ( vreg.12 var=5 ) const ( ) <12>;
+    ( ) lcall /* _Z25chess_separator_schedulerv */ ( vreg.12 vreg.11 ) <13>;
+    ( ) chain_tie_volatile ( ) <14>;
+    ( ) return ( ) <15>;
+  } #2 nxt=-2
+} #1
+0 : 'llvm___aie2p___acquire';
+----------
+0 : (0,0:0,0);
+----------
+==========alias_info
+4 :;
+14 :;
+
+// Function: void llvm___aie2p___release(i32 , i32 )
+[
+  0 : llvm___aie2p___release bnd=e
+  1 : _cst val=1f typ=__i32
+  2 : __arg0 typ=__i32
+  3 : __arg1 typ=__i32
+  4 : _Z25chess_separator_schedulerv bnd=e
+  5 : _cst val=0f
+  6 : __regcall3__chessintr_void_release____uint___sint bnd=e
+]
+Lllvm___aie2p___release
+{
+  { // BB#0
+    ( vreg.1 var=1 ) const ( ) <1>;
+    ( vreg.2 var=2 ) inp ( ) <2>;
+    ( vreg.3 var=3 ) inp ( ) <3>;
+    ( ) chain_tie_volatile ( ) <4>;
+    ( vreg.5 var=4 ) const ( ) <5>;
+    ( vreg.6 var=5 ) const ( ) <6>;
+    ( ) lcall /* _Z25chess_separator_schedulerv */ ( vreg.6 vreg.5 ) <7>;
+    ( vreg.8 var=6 ) const ( ) <8>;
+    ( vreg.9 var=5 ) const ( ) <9>;
+    ( ) lcall /* __regcall3__chessintr_void_release____uint___sint */ ( vreg.9 vreg.8 vreg.2 vreg.3 ) <10>;
+    ( vreg.11 var=4 ) const ( ) <11>;
+    ( vreg.12 var=5 ) const ( ) <12>;
+    ( ) lcall /* _Z25chess_separator_schedulerv */ ( vreg.12 vreg.11 ) <13>;
+    ( ) chain_tie_volatile ( ) <14>;
+    ( ) return ( ) <15>;
+  } #2 nxt=-2
+} #1
+0 : 'llvm___aie2p___release';
+----------
+0 : (0,0:0,0);
+----------
+==========alias_info
+4 :;
+14 :;
+
+// Function: void llvm___aie___event0()
+[
+  0 : llvm___aie___event0 bnd=e
+  1 : _cst val=1f typ=__i32
+  2 : _cst val=0f typ=uint2_t
+  3 : __regcall3__chessintr_void_event_uint2_t bnd=e
+  4 : _cst val=0f
+]
+Lllvm___aie___event0
+{
+  { // BB#0
+    ( vreg.1 var=1 ) const ( ) <1>;
+    ( vreg.2 var=2 ) const ( ) <2>;
+    ( vreg.3 var=3 ) const ( ) <3>;
+    ( vreg.4 var=4 ) const ( ) <4>;
+    ( ) lcall_tail /* __regcall3__chessintr_void_event_uint2_t */ ( vreg.4 vreg.3 vreg.2 ) <5>;
+    ( ) return ( ) <6>;
+  } #2 nxt=-2
+} #1
+0 : 'llvm___aie___event0';
+----------
+0 : (0,0:0,0);
+----------
+
+// Function: void llvm___aie___event1()
+[
+  0 : llvm___aie___event1 bnd=e
+  1 : _cst val=1f typ=__i32
+  2 : _cst val=1f typ=uint2_t
+  3 : __regcall3__chessintr_void_event_uint2_t bnd=e
+  4 : _cst val=0f
+]
+Lllvm___aie___event1
+{
+  { // BB#0
+    ( vreg.1 var=1 ) const ( ) <1>;
+    ( vreg.2 var=2 ) const ( ) <2>;
+    ( vreg.3 var=3 ) const ( ) <3>;
+    ( vreg.4 var=4 ) const ( ) <4>;
+    ( ) lcall_tail /* __regcall3__chessintr_void_event_uint2_t */ ( vreg.4 vreg.3 vreg.2 ) <5>;
+    ( ) return ( ) <6>;
+  } #2 nxt=-2
+} #1
+0 : 'llvm___aie___event1';
+----------
+0 : (0,0:0,0);
+----------
+
+[
+1 : _cst val=32f
+2 : _cst val=4f
+3 : constant_buffer typ=__Pvoid bnd=e
+4 : objFifo_out1_buff_1 typ=__Pvoid bnd=e
+5 : objFifo_out1_buff_0 typ=__Pvoid bnd=e
+6 : objFifo_in1_cons_buff_1 typ=__Pvoid bnd=e
+7 : objFifo_in1_cons_buff_0 typ=__Pvoid bnd=e
+]
+llvmgvt
+{ // no associated BB
+( vreg.1 var=1 ) const ( ) <1>;
+( vreg.2 var=2 ) const ( ) <2>;
+( vreg.3 var=3 ) global ( vreg.1 vreg.2 ) <3>;
+( ) out ( vreg.3 ) <4>;
+( vreg.5 var=1 ) const ( ) <5>;
+( vreg.6 var=2 ) const ( ) <6>;
+( vreg.7 var=4 ) global ( vreg.5 vreg.6 ) <7>;
+( ) out ( vreg.7 ) <8>;
+( vreg.9 var=1 ) const ( ) <9>;
+( vreg.10 var=2 ) const ( ) <10>;
+( vreg.11 var=5 ) global ( vreg.9 vreg.10 ) <11>;
+( ) out ( vreg.11 ) <12>;
+( vreg.13 var=1 ) const ( ) <13>;
+( vreg.14 var=2 ) const ( ) <14>;
+( vreg.15 var=6 ) global ( vreg.13 vreg.14 ) <15>;
+( ) out ( vreg.15 ) <16>;
+( vreg.17 var=1 ) const ( ) <17>;
+( vreg.18 var=2 ) const ( ) <18>;
+( vreg.19 var=7 ) global ( vreg.17 vreg.18 ) <19>;
+( ) out ( vreg.19 ) <20>;
+} #0
+0 : './dummy_file';
+----------
+0 : (0,0:0,0);
+----------
+==========debug_type_info
+==========data_init
+	.section	".linker-options","e",@llvm_linker_options

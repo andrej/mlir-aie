@@ -1,0 +1,26 @@
+{
+  "xrt-kernels": [
+    {
+      "name": "add_two",
+      "arguments": [
+        {
+          "name": "arg_0",
+          "type": "char *",
+          "offset": "0x0"
+        }
+      ],
+      "instance": [
+        {
+          "id": "sequence",
+          "TXN_ctrl_code_file": "/scratch/roesti/mlir-aie/test/npu-xrt/loadpdi/aie.mlir.prj/add_two_sequence.bin"
+        }
+      ],
+      "PDIs": [
+        {
+          "id": 1,
+          "PDI_file": "/scratch/roesti/mlir-aie/test/npu-xrt/loadpdi/aie.mlir.prj/add_two.pdi"
+        }
+      ]
+    }
+  ]
+}

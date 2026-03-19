@@ -91,6 +91,10 @@ add_mlir_library(AIETargets
 )
 
 target_link_libraries(AIETargets PRIVATE xaienginecdo_static)
+if(TARGET bootgen-lib)
+  find_package(OpenSSL REQUIRED)
+  target_link_libraries(AIETargets PRIVATE bootgen-lib OpenSSL::SSL OpenSSL::Crypto)
+endif()
 target_include_directories(AIETargets SYSTEM PRIVATE
   ${BOOTGEN_SOURCE_DIR}
   ${AIE_BINARY_DIR}/include/xaienginecdo_static

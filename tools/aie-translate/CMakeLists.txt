@@ -35,3 +35,7 @@ set(LIBS
 )
 
 target_link_libraries(aie-translate PRIVATE ${LIBS})
+
+# For xclbin decompilation (decode_cdo_binary)
+find_package(OpenSSL REQUIRED)
+target_link_libraries(aie-translate PRIVATE bootgen-lib OpenSSL::SSL OpenSSL::Crypto)
