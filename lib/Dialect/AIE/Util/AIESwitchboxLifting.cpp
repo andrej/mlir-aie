@@ -1,0 +1,317 @@
+//===- AIESwitchboxLifting.cpp - Switchbox Semantic Lifting ----*- C++ -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2025, Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
+
+#include "aie/Dialect/AIE/Util/AIESwitchboxLifting.h"
+#include "llvm/Support/Format.h"
+
+using namespace xilinx::AIE;
+
+//===----------------------------------------------------------------------===//
+// SwitchAddressParser - Port Mapping Tables
+//===----------------------------------------------------------------------===//
+
+// Master port mapping (23 ports) - Destinations
+// Computed from: (offset - 0x3F000) / 4
+const SwitchAddressParser::PortMapping
+    SwitchAddressParser::kMasterPortMap[23] = {
+  {WireBundle::Core, 0},        // 0: AIE_Core0 (0x3F000)
+  {WireBundle::DMA, 0},         // 1: DMA0 (0x3F004)
+  {WireBundle::DMA, 1},         // 2: DMA1 (0x3F008)
+  {WireBundle::TileControl, 0}, // 3: Tile_Ctrl (0x3F00C)
+  {WireBundle::FIFO, 0},        // 4: FIFO0 (0x3F010)
+  {WireBundle::South, 0},       // 5: South0 (0x3F014)
+  {WireBundle::South, 1},       // 6: South1 (0x3F018)
+  {WireBundle::South, 2},       // 7: South2 (0x3F01C)
+  {WireBundle::South, 3},       // 8: South3 (0x3F020)
+  {WireBundle::West, 0},        // 9: West0 (0x3F024)
+  {WireBundle::West, 1},        // 10: West1 (0x3F028)
+  {WireBundle::West, 2},        // 11: West2 (0x3F02C)
+  {WireBundle::West, 3},        // 12: West3 (0x3F030)
+  {WireBundle::North, 0},       // 13: North0 (0x3F034)
+  {WireBundle::North, 1},       // 14: North1 (0x3F038)
+  {WireBundle::North, 2},       // 15: North2 (0x3F03C)
+  {WireBundle::North, 3},       // 16: North3 (0x3F040)
+  {WireBundle::North, 4},       // 17: North4 (0x3F044)
+  {WireBundle::North, 5},       // 18: North5 (0x3F048)
+  {WireBundle::East, 0},        // 19: East0 (0x3F04C)
+  {WireBundle::East, 1},        // 20: East1 (0x3F050)
+  {WireBundle::East, 2},        // 21: East2 (0x3F054)
+  {WireBundle::East, 3},        // 22: East3 (0x3F058)
+};
+
+// Slave port mapping (25 ports) - Sources
+// Computed from: (offset - 0x3F100) / 4
+const SwitchAddressParser::PortMapping
+    SwitchAddressParser::kSlavePortMap[25] = {
+  {WireBundle::Core, 0},        // 0: AIE_Core0 (0x3F100)
+  {WireBundle::DMA, 0},         // 1: DMA_0 (0x3F104)
+  {WireBundle::DMA, 1},         // 2: DMA_1 (0x3F108)
+  {WireBundle::TileControl, 0}, // 3: Tile_Ctrl (0x3F10C)
+  {WireBundle::FIFO, 0},        // 4: FIFO_0 (0x3F110)
+  {WireBundle::South, 0},       // 5: South_0 (0x3F114)
+  {WireBundle::South, 1},       // 6: South_1 (0x3F118)
+  {WireBundle::South, 2},       // 7: South_2 (0x3F11C)
+  {WireBundle::South, 3},       // 8: South_3 (0x3F120)
+  {WireBundle::South, 4},       // 9: South_4 (0x3F124)
+  {WireBundle::South, 5},       // 10: South_5 (0x3F128)
+  {WireBundle::West, 0},        // 11: West_0 (0x3F12C)
+  {WireBundle::West, 1},        // 12: West_1 (0x3F130)
+  {WireBundle::West, 2},        // 13: West_2 (0x3F134)
+  {WireBundle::West, 3},        // 14: West_3 (0x3F138)
+  {WireBundle::North, 0},       // 15: North_0 (0x3F13C)
+  {WireBundle::North, 1},       // 16: North_1 (0x3F140)
+  {WireBundle::North, 2},       // 17: North_2 (0x3F144)
+  {WireBundle::North, 3},       // 18: North_3 (0x3F148)
+  {WireBundle::East, 0},        // 19: East_0 (0x3F14C)
+  {WireBundle::East, 1},        // 20: East_1 (0x3F150)
+  {WireBundle::East, 2},        // 21: East_2 (0x3F154)
+  {WireBundle::East, 3},        // 22: East_3 (0x3F158)
+  {WireBundle::Trace, 0},       // 23: AIE_Trace (0x3F15C)
+  {WireBundle::Trace, 1},       // 24: Mem_Trace (0x3F160)
+};
+
+//===----------------------------------------------------------------------===//
+// SwitchAddressParser Implementation
+//===----------------------------------------------------------------------===//
+
+SwitchAddressParser::SwitchAddressParser(int numMemTileRows)
+    : numMemTileRows_(numMemTileRows) {}
+
+SwitchAddressParser::PortMapping
+SwitchAddressParser::getMasterPortMapping(int portIndex) const {
+  if (portIndex < 0 || portIndex >= 23) {
+    return {WireBundle::Core, 0};  // Invalid - return default
+  }
+  return kMasterPortMap[portIndex];
+}
+
+SwitchAddressParser::PortMapping
+SwitchAddressParser::getSlavePortMapping(int portIndex) const {
+  if (portIndex < 0 || portIndex >= 25) {
+    return {WireBundle::Core, 0};  // Invalid - return default
+  }
+  return kSlavePortMap[portIndex];
+}
+
+SwitchConnectionInfo
+SwitchAddressParser::parseMasterConfig(uint32_t addr) const {
+  SwitchConnectionInfo info;
+  info.isValid = false;
+
+  // Extract tile coordinates from address
+  // AIE2 formula: base + (col * 32 + row_offset) * 0x100000
+  uint32_t tileOffset = (addr >> kTileAddrShift) & 0xFFF;
+  uint32_t regOffset = addr & ((1 << kTileAddrShift) - 1);
+
+  int column = tileOffset / 32;
+  int rowPart = tileOffset % 32;
+
+  // Check if this is in the master config range
+  if (regOffset < kMasterConfigBase || regOffset > kMasterConfigEnd) {
+    return info;
+  }
+
+  // Calculate master port index
+  int portOffset = regOffset - kMasterConfigBase;
+  if (portOffset % kRegisterSize != 0) {
+    return info;  // Not aligned to register boundary
+  }
+
+  int masterPortIndex = portOffset / kRegisterSize;
+  if (masterPortIndex < 0 || masterPortIndex >= 23) {
+    return info;  // Out of range
+  }
+
+  // Determine tile type and row
+  // For compute tiles: rowPart = numMemTileRows + 1 + actualRow
+  // For shim tiles: rowPart = 0
+  if (rowPart == 0) {
+    // Shim tile - not supported in initial implementation
+    return info;
+  } else if (rowPart <= numMemTileRows_) {
+    // Memory tile - not supported in initial implementation
+    return info;
+  } else {
+    // Compute tile
+    info.tileType = TileType::Compute;
+    info.row = rowPart - (numMemTileRows_ + 1);
+  }
+
+  // Valid master config register for compute tile
+  info.isValid = true;
+  info.column = column;
+  info.masterPortIndex = masterPortIndex;
+
+  // Get destination port mapping
+  PortMapping destMapping = getMasterPortMapping(masterPortIndex);
+  info.destBundle = destMapping.bundle;
+  info.destChannel = destMapping.channel;
+
+  return info;
+}
+
+bool SwitchAddressParser::isSwitchboxAddress(uint32_t addr) const {
+  uint32_t regOffset = addr & ((1 << kTileAddrShift) - 1);
+
+  // Check master config range
+  if (regOffset >= kMasterConfigBase && regOffset <= kMasterConfigEnd) {
+    return true;
+  }
+
+  // Check slave config range
+  if (regOffset >= kSlaveConfigBase && regOffset <= kSlaveConfigEnd) {
+    return true;
+  }
+
+  return false;
+}
+
+//===----------------------------------------------------------------------===//
+// SwitchboxAccumulator::SwitchboxKey Implementation
+//===----------------------------------------------------------------------===//
+
+bool SwitchboxAccumulator::SwitchboxKey::operator<(
+    const SwitchboxKey &other) const {
+  if (col != other.col) return col < other.col;
+  if (row != other.row) return row < other.row;
+  return static_cast<int>(type) < static_cast<int>(other.type);
+}
+
+//===----------------------------------------------------------------------===//
+// SwitchboxAccumulator Implementation
+//===----------------------------------------------------------------------===//
+
+std::optional<SwitchConnectionInfo>
+SwitchboxAccumulator::addMasterWrite(uint32_t addr, uint32_t value,
+                                     const SwitchAddressParser &parser) {
+  // Parse the address to see if it's a master config register
+  SwitchConnectionInfo connInfo = parser.parseMasterConfig(addr);
+  if (!connInfo.isValid) {
+    return std::nullopt;
+  }
+
+  // Extract configuration bits from the value
+  connInfo.masterEnable = SwitchFieldExtractor::getMasterEnable(value);
+  connInfo.packetMode = SwitchFieldExtractor::getPacketEnable(value);
+  connInfo.dropHeader = SwitchFieldExtractor::getDropHeader(value);
+  connInfo.slavePortId = SwitchFieldExtractor::getSlavePortId(value);
+
+  // Only process enabled connections in circuit mode for now
+  if (!connInfo.masterEnable) {
+    return std::nullopt;
+  }
+
+  if (connInfo.packetMode) {
+    // Packet mode - extract arbiter config
+    connInfo.arbiterId = SwitchFieldExtractor::getArbiterId(value);
+    connInfo.mselEnable = SwitchFieldExtractor::getMselEnable(value);
+    // For now, skip packet mode connections
+    return std::nullopt;
+  }
+
+  // Circuit mode - decode slave port ID to source bundle/channel
+  SwitchAddressParser::PortMapping sourceMapping =
+      parser.getSlavePortMapping(connInfo.slavePortId);
+  connInfo.sourceBundle = sourceMapping.bundle;
+  connInfo.sourceChannel = sourceMapping.channel;
+
+  // Add this connection to the switchbox configuration
+  SwitchboxKey key{connInfo.column, connInfo.row, connInfo.tileType};
+
+  ParsedSwitchboxConfig &config = switchboxes_[key];
+  config.column = connInfo.column;
+  config.row = connInfo.row;
+  config.tileType = connInfo.tileType;
+
+  // Create and add the connection
+  ParsedSwitchboxConfig::Connection conn;
+  conn.sourceBundle = connInfo.sourceBundle;
+  conn.sourceChannel = connInfo.sourceChannel;
+  conn.destBundle = connInfo.destBundle;
+  conn.destChannel = connInfo.destChannel;
+  conn.isPacketMode = connInfo.packetMode;
+
+  config.connections.push_back(conn);
+
+  return connInfo;
+}
+
+ParsedSwitchboxConfig
+SwitchboxAccumulator::getSwitchboxConfig(const SwitchboxKey &key) const {
+  auto it = switchboxes_.find(key);
+  if (it != switchboxes_.end()) {
+    return it->second;
+  }
+  // Return empty config
+  ParsedSwitchboxConfig empty;
+  empty.column = key.col;
+  empty.row = key.row;
+  empty.tileType = key.type;
+  return empty;
+}
+
+std::map<SwitchboxAccumulator::SwitchboxKey, ParsedSwitchboxConfig>
+SwitchboxAccumulator::getAll() const {
+  return switchboxes_;
+}
+
+//===----------------------------------------------------------------------===//
+// SwitchboxPrettyPrinter Implementation
+//===----------------------------------------------------------------------===//
+
+const char* SwitchboxPrettyPrinter::wireBundleToString(WireBundle bundle) {
+  switch (bundle) {
+    case WireBundle::Core: return "Core";
+    case WireBundle::DMA: return "DMA";
+    case WireBundle::FIFO: return "FIFO";
+    case WireBundle::South: return "South";
+    case WireBundle::West: return "West";
+    case WireBundle::North: return "North";
+    case WireBundle::East: return "East";
+    case WireBundle::Trace: return "Trace";
+    case WireBundle::TileControl: return "TileControl";
+  }
+  return "Unknown";
+}
+
+void SwitchboxPrettyPrinter::printConnectionAsComment(
+    llvm::raw_ostream &os, const SwitchConnectionInfo &conn) {
+  os << "// Switchbox(" << conn.column << ", " << conn.row << "): "
+     << wireBundleToString(conn.sourceBundle) << ":" << conn.sourceChannel
+     << " -> "
+     << wireBundleToString(conn.destBundle) << ":" << conn.destChannel;
+
+  if (conn.packetMode) {
+    os << " [packet mode, arbiter=" << conn.arbiterId << "]";
+  }
+
+  os << "\n";
+}
+
+void SwitchboxPrettyPrinter::printSwitchboxConfig(
+    llvm::raw_ostream &os, const ParsedSwitchboxConfig &config) {
+  if (!config.hasConnections()) {
+    return;
+  }
+
+  os << "// Switchbox configuration for tile(" << config.column << ", "
+     << config.row << "):\n";
+
+  for (const auto &conn : config.connections) {
+    os << "//   " << wireBundleToString(conn.sourceBundle) << ":"
+       << conn.sourceChannel << " -> "
+       << wireBundleToString(conn.destBundle) << ":" << conn.destChannel;
+
+    if (conn.isPacketMode) {
+      os << " [packet]";
+    }
+    os << "\n";
+  }
+}
