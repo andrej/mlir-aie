@@ -11,15 +11,17 @@ add_executable(target_model_rtti  target_model_rtti.cpp)
 add_executable(register_database  register_database.cpp)
 add_executable(bd_lifting  bd_lifting.cpp)
 add_executable(switchbox_lifting  switchbox_lifting.cpp)
+add_executable(flow_reconstruction  flow_reconstruction.cpp)
 add_test(NAME TargetModel COMMAND target_model)
 add_test(NAME TargetModelRtti COMMAND target_model_rtti)
 add_test(NAME RegisterDatabase COMMAND register_database WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 add_test(NAME BDLifting COMMAND bd_lifting)
 add_test(NAME SwitchboxLifting COMMAND switchbox_lifting)
+add_test(NAME FlowReconstruction COMMAND flow_reconstruction)
 
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 
-set(EXECUTABLES target_model target_model_rtti register_database bd_lifting switchbox_lifting)
+set(EXECUTABLES target_model target_model_rtti register_database bd_lifting switchbox_lifting flow_reconstruction)
 
 add_custom_target(check-aie-cpp COMMAND ${CMAKE_CTEST_COMMAND} DEPENDS ${EXECUTABLES})
 
