@@ -147,6 +147,13 @@ private:
   static constexpr uint32_t kMasterConfigEnd = 0x3F05C;   // 23 regs * 4 bytes
   static constexpr uint32_t kSlaveConfigBase = 0x3F100;
   static constexpr uint32_t kSlaveConfigEnd = 0x3F164;    // 25 regs * 4 bytes
+
+  // Address region constants (memory tiles)
+  static constexpr uint32_t kMemTileMasterConfigBase = 0xB0000;
+  static constexpr uint32_t kMemTileMasterConfigEnd = 0xB0040;   // 17 regs * 4 bytes
+  static constexpr uint32_t kMemTileSlaveConfigBase = 0xB0100;
+  static constexpr uint32_t kMemTileSlaveConfigEnd = 0xB0144;    // 18 regs * 4 bytes
+
   static constexpr uint32_t kRegisterSize = 4;
   static constexpr uint32_t kTileAddrShift = 20;          // 0x100000 per tile
 
@@ -156,15 +163,21 @@ private:
     int channel;
   };
 
-  // Master ports: 23 total (ports 0-22)
+  // Master ports: 23 total (ports 0-22) for compute tiles
   static const PortMapping kMasterPortMap[23];
 
-  // Slave ports: 25 total (ports 0-24)
+  // Slave ports: 25 total (ports 0-24) for compute tiles
   static const PortMapping kSlavePortMap[25];
 
+  // MemTile master ports: 17 total (ports 0-16)
+  static const PortMapping kMemTileMasterPortMap[17];
+
+  // MemTile slave ports: 18 total (ports 0-17)
+  static const PortMapping kMemTileSlavePortMap[18];
+
   // Helper methods
-  PortMapping getMasterPortMapping(int portIndex) const;
-  PortMapping getSlavePortMapping(int portIndex) const;
+  PortMapping getMasterPortMapping(int portIndex, TileType tileType) const;
+  PortMapping getSlavePortMapping(int portIndex, TileType tileType) const;
 };
 
 //===----------------------------------------------------------------------===//

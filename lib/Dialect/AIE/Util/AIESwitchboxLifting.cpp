@@ -77,6 +77,53 @@ const SwitchAddressParser::PortMapping
   {WireBundle::Trace, 1},       // 24: Mem_Trace (0x3F160)
 };
 
+// MemTile master port mapping (17 ports) - Destinations
+// Computed from: (offset - 0xB0000) / 4
+const SwitchAddressParser::PortMapping
+    SwitchAddressParser::kMemTileMasterPortMap[17] = {
+  {WireBundle::DMA, 0},         // 0: DMA0 (0xB0000)
+  {WireBundle::DMA, 1},         // 1: DMA1 (0xB0004)
+  {WireBundle::DMA, 2},         // 2: DMA2 (0xB0008)
+  {WireBundle::DMA, 3},         // 3: DMA3 (0xB000C)
+  {WireBundle::DMA, 4},         // 4: DMA4 (0xB0010)
+  {WireBundle::DMA, 5},         // 5: DMA5 (0xB0014)
+  {WireBundle::TileControl, 0}, // 6: Tile_Ctrl (0xB0018)
+  {WireBundle::South, 0},       // 7: South0 (0xB001C)
+  {WireBundle::South, 1},       // 8: South1 (0xB0020)
+  {WireBundle::South, 2},       // 9: South2 (0xB0024)
+  {WireBundle::South, 3},       // 10: South3 (0xB0028)
+  {WireBundle::North, 0},       // 11: North0 (0xB002C)
+  {WireBundle::North, 1},       // 12: North1 (0xB0030)
+  {WireBundle::North, 2},       // 13: North2 (0xB0034)
+  {WireBundle::North, 3},       // 14: North3 (0xB0038)
+  {WireBundle::North, 4},       // 15: North4 (0xB003C)
+  {WireBundle::North, 5},       // 16: North5 (0xB0040)
+};
+
+// MemTile slave port mapping (18 ports) - Sources
+// Computed from: (offset - 0xB0100) / 4
+const SwitchAddressParser::PortMapping
+    SwitchAddressParser::kMemTileSlavePortMap[18] = {
+  {WireBundle::DMA, 0},         // 0: DMA_0 (0xB0100)
+  {WireBundle::DMA, 1},         // 1: DMA_1 (0xB0104)
+  {WireBundle::DMA, 2},         // 2: DMA_2 (0xB0108)
+  {WireBundle::DMA, 3},         // 3: DMA_3 (0xB010C)
+  {WireBundle::DMA, 4},         // 4: DMA_4 (0xB0110)
+  {WireBundle::DMA, 5},         // 5: DMA_5 (0xB0114)
+  {WireBundle::TileControl, 0}, // 6: Tile_Ctrl (0xB0118)
+  {WireBundle::South, 0},       // 7: South_0 (0xB011C)
+  {WireBundle::South, 1},       // 8: South_1 (0xB0120)
+  {WireBundle::South, 2},       // 9: South_2 (0xB0124)
+  {WireBundle::South, 3},       // 10: South_3 (0xB0128)
+  {WireBundle::North, 0},       // 11: North_0 (0xB012C)
+  {WireBundle::North, 1},       // 12: North_1 (0xB0130)
+  {WireBundle::North, 2},       // 13: North_2 (0xB0134)
+  {WireBundle::North, 3},       // 14: North_3 (0xB0138)
+  {WireBundle::North, 4},       // 15: North_4 (0xB013C)
+  {WireBundle::North, 5},       // 16: North_5 (0xB0140)
+  {WireBundle::Trace, 0},       // 17: Mem_Trace (0xB0144)
+};
+
 //===----------------------------------------------------------------------===//
 // SwitchAddressParser Implementation
 //===----------------------------------------------------------------------===//
@@ -85,19 +132,35 @@ SwitchAddressParser::SwitchAddressParser(int numMemTileRows)
     : numMemTileRows_(numMemTileRows) {}
 
 SwitchAddressParser::PortMapping
-SwitchAddressParser::getMasterPortMapping(int portIndex) const {
-  if (portIndex < 0 || portIndex >= 23) {
-    return {WireBundle::Core, 0};  // Invalid - return default
+SwitchAddressParser::getMasterPortMapping(int portIndex, TileType tileType) const {
+  if (tileType == TileType::MemoryTile) {
+    if (portIndex < 0 || portIndex >= 17) {
+      return {WireBundle::Core, 0};  // Invalid - return default
+    }
+    return kMemTileMasterPortMap[portIndex];
+  } else {
+    // Compute tile
+    if (portIndex < 0 || portIndex >= 23) {
+      return {WireBundle::Core, 0};  // Invalid - return default
+    }
+    return kMasterPortMap[portIndex];
   }
-  return kMasterPortMap[portIndex];
 }
 
 SwitchAddressParser::PortMapping
-SwitchAddressParser::getSlavePortMapping(int portIndex) const {
-  if (portIndex < 0 || portIndex >= 25) {
-    return {WireBundle::Core, 0};  // Invalid - return default
+SwitchAddressParser::getSlavePortMapping(int portIndex, TileType tileType) const {
+  if (tileType == TileType::MemoryTile) {
+    if (portIndex < 0 || portIndex >= 18) {
+      return {WireBundle::Core, 0};  // Invalid - return default
+    }
+    return kMemTileSlavePortMap[portIndex];
+  } else {
+    // Compute tile
+    if (portIndex < 0 || portIndex >= 25) {
+      return {WireBundle::Core, 0};  // Invalid - return default
+    }
+    return kSlavePortMap[portIndex];
   }
-  return kSlavePortMap[portIndex];
 }
 
 SwitchConnectionInfo
@@ -113,46 +176,77 @@ SwitchAddressParser::parseMasterConfig(uint32_t addr) const {
   int column = tileOffset / 32;
   int rowPart = tileOffset % 32;
 
-  // Check if this is in the master config range
-  if (regOffset < kMasterConfigBase || regOffset > kMasterConfigEnd) {
+  // Check if this is a MemTile master config register
+  if (regOffset >= kMemTileMasterConfigBase && regOffset <= kMemTileMasterConfigEnd) {
+    // Calculate master port index for MemTile
+    int portOffset = regOffset - kMemTileMasterConfigBase;
+    if (portOffset % kRegisterSize != 0) {
+      return info;  // Not aligned to register boundary
+    }
+
+    int masterPortIndex = portOffset / kRegisterSize;
+    if (masterPortIndex < 0 || masterPortIndex >= 17) {
+      return info;  // Out of range
+    }
+
+    // Determine MemTile row
+    if (rowPart >= 1 && rowPart <= numMemTileRows_) {
+      info.tileType = TileType::MemoryTile;
+      info.row = rowPart - 1;  // MemTile rows are 0-based internally
+      info.isValid = true;
+      info.column = column;
+      info.masterPortIndex = masterPortIndex;
+
+      // Get destination port mapping for MemTile
+      PortMapping destMapping = getMasterPortMapping(masterPortIndex, TileType::MemoryTile);
+      info.destBundle = destMapping.bundle;
+      info.destChannel = destMapping.channel;
+
+      return info;
+    }
+    return info;  // Invalid row for MemTile
+  }
+
+  // Check if this is a compute tile master config register
+  if (regOffset >= kMasterConfigBase && regOffset <= kMasterConfigEnd) {
+    // Calculate master port index
+    int portOffset = regOffset - kMasterConfigBase;
+    if (portOffset % kRegisterSize != 0) {
+      return info;  // Not aligned to register boundary
+    }
+
+    int masterPortIndex = portOffset / kRegisterSize;
+    if (masterPortIndex < 0 || masterPortIndex >= 23) {
+      return info;  // Out of range
+    }
+
+    // Determine tile type and row
+    // For compute tiles: rowPart = numMemTileRows + 1 + actualRow
+    // For shim tiles: rowPart = 0
+    if (rowPart == 0) {
+      // Shim tile - not supported in initial implementation
+      return info;
+    } else if (rowPart <= numMemTileRows_) {
+      // Memory tile - but we're in compute tile register range, invalid
+      return info;
+    } else {
+      // Compute tile
+      info.tileType = TileType::Compute;
+      info.row = rowPart - (numMemTileRows_ + 1);
+    }
+
+    // Valid master config register for compute tile
+    info.isValid = true;
+    info.column = column;
+    info.masterPortIndex = masterPortIndex;
+
+    // Get destination port mapping
+    PortMapping destMapping = getMasterPortMapping(masterPortIndex, TileType::Compute);
+    info.destBundle = destMapping.bundle;
+    info.destChannel = destMapping.channel;
+
     return info;
   }
-
-  // Calculate master port index
-  int portOffset = regOffset - kMasterConfigBase;
-  if (portOffset % kRegisterSize != 0) {
-    return info;  // Not aligned to register boundary
-  }
-
-  int masterPortIndex = portOffset / kRegisterSize;
-  if (masterPortIndex < 0 || masterPortIndex >= 23) {
-    return info;  // Out of range
-  }
-
-  // Determine tile type and row
-  // For compute tiles: rowPart = numMemTileRows + 1 + actualRow
-  // For shim tiles: rowPart = 0
-  if (rowPart == 0) {
-    // Shim tile - not supported in initial implementation
-    return info;
-  } else if (rowPart <= numMemTileRows_) {
-    // Memory tile - not supported in initial implementation
-    return info;
-  } else {
-    // Compute tile
-    info.tileType = TileType::Compute;
-    info.row = rowPart - (numMemTileRows_ + 1);
-  }
-
-  // Valid master config register for compute tile
-  info.isValid = true;
-  info.column = column;
-  info.masterPortIndex = masterPortIndex;
-
-  // Get destination port mapping
-  PortMapping destMapping = getMasterPortMapping(masterPortIndex);
-  info.destBundle = destMapping.bundle;
-  info.destChannel = destMapping.channel;
 
   return info;
 }
@@ -160,13 +254,23 @@ SwitchAddressParser::parseMasterConfig(uint32_t addr) const {
 bool SwitchAddressParser::isSwitchboxAddress(uint32_t addr) const {
   uint32_t regOffset = addr & ((1 << kTileAddrShift) - 1);
 
-  // Check master config range
+  // Check compute tile master config range
   if (regOffset >= kMasterConfigBase && regOffset <= kMasterConfigEnd) {
     return true;
   }
 
-  // Check slave config range
+  // Check compute tile slave config range
   if (regOffset >= kSlaveConfigBase && regOffset <= kSlaveConfigEnd) {
+    return true;
+  }
+
+  // Check MemTile master config range
+  if (regOffset >= kMemTileMasterConfigBase && regOffset <= kMemTileMasterConfigEnd) {
+    return true;
+  }
+
+  // Check MemTile slave config range
+  if (regOffset >= kMemTileSlaveConfigBase && regOffset <= kMemTileSlaveConfigEnd) {
     return true;
   }
 
@@ -218,7 +322,7 @@ SwitchboxAccumulator::addMasterWrite(uint32_t addr, uint32_t value,
 
   // Circuit mode - decode slave port ID to source bundle/channel
   SwitchAddressParser::PortMapping sourceMapping =
-      parser.getSlavePortMapping(connInfo.slavePortId);
+      parser.getSlavePortMapping(connInfo.slavePortId, connInfo.tileType);
   connInfo.sourceBundle = sourceMapping.bundle;
   connInfo.sourceChannel = sourceMapping.channel;
 
