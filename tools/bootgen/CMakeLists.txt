@@ -96,12 +96,12 @@ string(REPLACE "#include <malloc.h>" "" FILE_CONTENTS "${FILE_CONTENTS}")
 file(WRITE ${BOOTGEN_SOURCE}/cdo-alloc.c "${FILE_CONTENTS}")
 
 
-find_package(OpenSSL REQUIRED)
+find_package(OpenSSL)
 if (OPENSSL_FOUND)
   message (STATUS "OpenSSL found")
   message (STATUS "OpenSSL include directories:" ${OPENSSL_INCLUDE_DIR})
 else()
-  message (FATAL_ERROR "OpenSSL Not found.")
+  message (WARNING "OpenSSL Not found - bootgen features may be limited")
 endif()
 
 # since we explicitly link OpenSSL::applink
@@ -139,7 +139,11 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   target_compile_definitions(bootgen-lib PRIVATE YY_NO_UNISTD_H)
 endif()
 target_compile_options(bootgen-lib PRIVATE ${bootgen_warning_ignores})
-target_include_directories(bootgen-lib PRIVATE ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR})
+if (OPENSSL_FOUND)
+  target_include_directories(bootgen-lib PRIVATE ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR})
+else()
+  target_include_directories(bootgen-lib PRIVATE ${BOOTGEN_SOURCE})
+endif()
 # Make C API header available publicly
 target_include_directories(bootgen-lib PUBLIC
   $<BUILD_INTERFACE:${BOOTGEN_SOURCE}>
@@ -153,11 +157,17 @@ install(
   DESTINATION include)
 
 add_executable(bootgen ${BOOTGEN_SOURCE}/main.cpp)
-target_include_directories(bootgen PUBLIC ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR}
-  ${CMAKE_CURRENT_BINARY_DIR}/include)
+if (OPENSSL_FOUND)
+  target_include_directories(bootgen PUBLIC ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR}
+    ${CMAKE_CURRENT_BINARY_DIR}/include)
+  target_compile_definitions(bootgen PRIVATE OPENSSL_USE_APPLINK)
+  target_link_libraries(bootgen PRIVATE bootgen-lib OpenSSL::SSL OpenSSL::applink)
+else()
+  target_include_directories(bootgen PUBLIC ${BOOTGEN_SOURCE}
+    ${CMAKE_CURRENT_BINARY_DIR}/include)
+  target_link_libraries(bootgen PRIVATE bootgen-lib)
+endif()
 target_compile_options(bootgen PRIVATE ${bootgen_warning_ignores})
-target_compile_definitions(bootgen PRIVATE OPENSSL_USE_APPLINK)
-target_link_libraries(bootgen PRIVATE bootgen-lib OpenSSL::SSL OpenSSL::applink)
 install(TARGETS bootgen)
 
 add_library(cdo_driver_mlir_aie STATIC ${BOOTGEN_SOURCE}/cdo-driver/cdo_driver.c)

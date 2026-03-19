@@ -21,6 +21,7 @@
 
 #include <array>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <string>
 
@@ -314,6 +315,7 @@ public:
   size_t pendingCount() const { return pendingBDs_.size(); }
 
 private:
+  /// Map of pending BDs being accumulated
   std::map<BDKey, PendingBD> pendingBDs_;
 
   /// Complete a pending BD and return the parsed config

@@ -37,5 +37,11 @@ set(LIBS
 target_link_libraries(aie-translate PRIVATE ${LIBS})
 
 # For xclbin decompilation (decode_cdo_binary)
-find_package(OpenSSL REQUIRED)
-target_link_libraries(aie-translate PRIVATE bootgen-lib OpenSSL::SSL OpenSSL::Crypto)
+find_package(OpenSSL)
+if(OpenSSL_FOUND)
+  target_link_libraries(aie-translate PRIVATE bootgen-lib OpenSSL::SSL OpenSSL::Crypto)
+  target_compile_definitions(aie-translate PRIVATE HAVE_OPENSSL=1)
+else()
+  target_link_libraries(aie-translate PRIVATE bootgen-lib)
+  message(WARNING "OpenSSL not found - xclbin decompilation features may be limited")
+endif()

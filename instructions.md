@@ -10,7 +10,7 @@ source ${BUILDENV}/bin/activate
 
 python3 -m pip install --upgrade pip
 python3 -m pip install llvm-aie -I -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
-python3 -m pip install -I -r /scratch/roesti/mlir-aie/python/requirements_dev.txt
+python3 -m pip install -I -r mlir-aie/python/requirements_dev.txt
 ```
 
 # Setting up an environment in which you can build MLIR-AIE

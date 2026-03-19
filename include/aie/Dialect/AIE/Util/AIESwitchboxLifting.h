@@ -139,6 +139,16 @@ public:
   /// Check if address is any switchbox register
   bool isSwitchboxAddress(uint32_t addr) const;
 
+  // Port mapping structure
+  struct PortMapping {
+    WireBundle bundle;
+    int channel;
+  };
+
+  // Helper methods for port mapping
+  PortMapping getMasterPortMapping(int portIndex, TileType tileType) const;
+  PortMapping getSlavePortMapping(int portIndex, TileType tileType) const;
+
 private:
   int numMemTileRows_;
 
@@ -158,11 +168,6 @@ private:
   static constexpr uint32_t kTileAddrShift = 20;          // 0x100000 per tile
 
   // Port mapping tables
-  struct PortMapping {
-    WireBundle bundle;
-    int channel;
-  };
-
   // Master ports: 23 total (ports 0-22) for compute tiles
   static const PortMapping kMasterPortMap[23];
 
@@ -180,10 +185,6 @@ private:
 
   // Shim tile slave ports: 23 total (ports 0-22)
   static const PortMapping kShimTileSlavePortMap[23];
-
-  // Helper methods
-  PortMapping getMasterPortMapping(int portIndex, TileType tileType) const;
-  PortMapping getSlavePortMapping(int portIndex, TileType tileType) const;
 };
 
 //===----------------------------------------------------------------------===//

@@ -274,21 +274,25 @@ private:
       dimAttrs.push_back(dimAttr);
     }
 
-    ArrayAttr dimensions = dimAttrs.empty() ? nullptr : builder.getArrayAttr(dimAttrs);
+    AIE::BDDimLayoutArrayAttr dimensions = nullptr;
+    if (!dimAttrs.empty()) {
+      SmallVector<AIE::BDDimLayoutAttr> bdDimAttrs;
+      for (auto attr : dimAttrs) {
+        bdDimAttrs.push_back(llvm::cast<AIE::BDDimLayoutAttr>(attr));
+      }
+      dimensions = AIE::BDDimLayoutArrayAttr::get(builder.getContext(), bdDimAttrs);
+    }
 
-    builder.create<AIE::DMABDOp>(
+    auto bdOp = builder.create<AIE::DMABDOp>(
         builder.getUnknownLoc(),
         buffer,
         bd.baseAddress,
-        bd.bufferLength,
-        dimensions,
-        nullptr,  // pad_dimensions
-        0,        // pad_value
-        bd.bdIndex,
-        nullptr,  // packet
-        0,        // burst_length
-        nullptr   // next_bd_id
+        bd.bufferLength
     );
+    if (dimensions)
+      bdOp.setDimensionsAttr(dimensions);
+    if (bd.bdIndex >= 0)
+      bdOp.setBdIdAttr(builder.getI32IntegerAttr(bd.bdIndex));
 
     // Emit lock release if needed
     if (bd.hasLockRelease()) {
@@ -329,7 +333,7 @@ private:
         tile
     );
 
-    Block *switchboxBlock = &switchboxOp.getBody().emplaceBlock();
+    Block *switchboxBlock = &switchboxOp.getRegion().emplaceBlock();
     builder.setInsertionPointToEnd(switchboxBlock);
 
     // Emit all connections
