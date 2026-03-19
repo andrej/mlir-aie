@@ -239,8 +239,39 @@ private:
     // Build dimension attributes if needed
     SmallVector<Attribute> dimAttrs;
     if (bd.hasDimensions()) {
-      // Build dimension layout attributes
-      // For simplicity, we'll emit a comment for now and implement full dimension support later
+      // Build dimension layout attributes from outermost to innermost
+      // Hardware dimension mapping:
+      //   - bd.dimensions[0] = D0 (innermost)
+      //   - bd.dimensions[1] = D1 (middle)
+      //   - bd.dimensions[2] = D2 (outermost)
+
+      // D2 dimension (outermost) - only if D1 has wrap
+      if (bd.dimensions[1].wrap != 0) {
+        auto dimAttr = AIE::BDDimLayoutAttr::get(
+            builder.getContext(),
+            bd.dimensions[1].wrap,      // size
+            bd.dimensions[2].stepSize   // stride
+        );
+        dimAttrs.push_back(dimAttr);
+      }
+
+      // D1 dimension (middle) - only if D0 has wrap
+      if (bd.dimensions[0].wrap != 0) {
+        auto dimAttr = AIE::BDDimLayoutAttr::get(
+            builder.getContext(),
+            bd.dimensions[0].wrap,      // size
+            bd.dimensions[1].stepSize   // stride
+        );
+        dimAttrs.push_back(dimAttr);
+      }
+
+      // D0 dimension (innermost) - always included when dimensions are non-trivial
+      auto dimAttr = AIE::BDDimLayoutAttr::get(
+          builder.getContext(),
+          bd.bufferLength,            // size (in 32-bit words)
+          bd.dimensions[0].stepSize   // stride
+      );
+      dimAttrs.push_back(dimAttr);
     }
 
     ArrayAttr dimensions = dimAttrs.empty() ? nullptr : builder.getArrayAttr(dimAttrs);
