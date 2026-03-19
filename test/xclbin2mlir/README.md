@@ -44,6 +44,7 @@ This mode produces:
 - `lifted_switchbox_output.mlir`: Tests switchbox routing lifting
 - `lifted_complete_output.mlir`: Comprehensive test for all lifted operations
 - `lifted_bd_attributes.mlir`: Tests BD operation attributes (dimensions, locks, chaining)
+- `roundtrip_verification.mlir`: Round-trip verification test that validates decompiled output is semantically equivalent to the original MLIR (tests all lifting features together)
 
 ### C++ Unit Tests (in test/CppTests/)
 - `bd_lifting.cpp`: Unit tests for BDFieldExtractor, BDAddressParser, BDAccumulator
