@@ -18,21 +18,46 @@ The decompiler extracts AIE configuration from xclbin binary files and lifts it 
 aie-translate --xclbin-to-mlir input.xclbin
 ```
 
-## Current Limitations
+## Semantic Lifting Mode
 
-- Phase 1 implementation: basic register write lifting only
-- Scans PDI for CDO magic bytes (assumes standard bootgen PDI format)
-- Only handles single CDO section
-- Only handles embedded PDI (not external PDI file references)
-- Outputs low-level register writes, not semantic AIE operations
+The `--emit-lifted` flag enables semantic lifting of register writes to high-level AIE operations:
 
-## Future Enhancements
+```bash
+aie-translate --xclbin-to-mlir --emit-lifted input.xclbin
+```
 
-- Parse bootgen PDI format properly
-- Support multiple CDO sections (init, elfs, enable)
-- Semantic lifting to `aie.lock`, `aie.dma_bd`, `aie.switchbox` operations
-- Register name resolution using aie_registers_aie2.json
+This mode produces:
+- `aie.tile` - tile references
+- `aie.buffer` - buffer allocations for BDs
+- `aie.lock` - lock declarations
+- `aie.dma_bd` - DMA buffer descriptors with dimensions, locks, iteration
+- `aie.switchbox` - switchbox routing configurations
+- `aie.connect` - stream connections
 
 ## Tests
 
-- `basic_xclbin.mlir`: Decompiles a real xclbin and verifies basic MLIR generation
+### Basic Tests
+- `basic_xclbin.mlir`: Decompiles a real xclbin and verifies both raw and lifted output modes
+
+### Lifted Mode Integration Tests
+- `lifted_bd_output.mlir`: Tests BD lifting (buffers, locks, dma_bd operations)
+- `lifted_switchbox_output.mlir`: Tests switchbox routing lifting
+- `lifted_complete_output.mlir`: Comprehensive test for all lifted operations
+- `lifted_bd_attributes.mlir`: Tests BD operation attributes (dimensions, locks, chaining)
+
+### C++ Unit Tests (in test/CppTests/)
+- `bd_lifting.cpp`: Unit tests for BDFieldExtractor, BDAddressParser, BDAccumulator
+- `switchbox_lifting.cpp`: Unit tests for SwitchAddressParser, SwitchboxAccumulator
+
+## Running Tests
+
+```bash
+# Run all xclbin2mlir tests
+lit test/xclbin2mlir/
+
+# Run a specific test
+lit test/xclbin2mlir/basic_xclbin.mlir
+
+# Run C++ unit tests
+ninja check-aie-cpp
+```
