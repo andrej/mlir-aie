@@ -21,6 +21,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Util/AIEDMABDLifting.h"
 #include "aie/Dialect/AIE/Util/AIERegisterDatabase.h"
+#include "aie/Dialect/AIE/Util/AIESwitchboxLifting.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -136,10 +137,37 @@ public:
     tileBDs[id].push_back(bd);
   }
 
+  /// Record a switchbox connection for later emission
+  void recordSwitchboxConnection(const SwitchConnectionInfo &conn) {
+    SwitchboxAccumulator::SwitchboxKey key{conn.column, conn.row, conn.tileType};
+
+    // Add connection to the switchbox config
+    ParsedSwitchboxConfig &config = switchboxes[key];
+    config.column = conn.column;
+    config.row = conn.row;
+    config.tileType = conn.tileType;
+
+    ParsedSwitchboxConfig::Connection newConn;
+    newConn.sourceBundle = conn.sourceBundle;
+    newConn.sourceChannel = conn.sourceChannel;
+    newConn.destBundle = conn.destBundle;
+    newConn.destChannel = conn.destChannel;
+    newConn.isPacketMode = conn.packetMode;
+
+    config.connections.push_back(newConn);
+  }
+
   /// Emit all collected BDs as aie.mem operations
   void emitAllBDs() {
     for (const auto &[tileId, bds] : tileBDs) {
       emitMemOpForTile(tileId, bds);
+    }
+  }
+
+  /// Emit all collected switchboxes as aie.switchbox operations
+  void emitAllSwitchboxes() {
+    for (const auto &[key, config] : switchboxes) {
+      emitSwitchboxForTile(config);
     }
   }
 
@@ -253,6 +281,41 @@ private:
     }
   }
 
+  void emitSwitchboxForTile(const ParsedSwitchboxConfig &config) {
+    if (!config.hasConnections()) {
+      return;
+    }
+
+    auto tile = getOrCreateTile(config.column, config.row);
+
+    OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointAfter(tile);
+
+    // Create aie.switchbox operation
+    auto switchboxOp = builder.create<AIE::SwitchboxOp>(
+        builder.getUnknownLoc(),
+        builder.getIndexType(),
+        tile
+    );
+
+    Block *switchboxBlock = &switchboxOp.getBody().emplaceBlock();
+    builder.setInsertionPointToEnd(switchboxBlock);
+
+    // Emit all connections
+    for (const auto &conn : config.connections) {
+      builder.create<AIE::ConnectOp>(
+          builder.getUnknownLoc(),
+          conn.sourceBundle,
+          conn.sourceChannel,
+          conn.destBundle,
+          conn.destChannel
+      );
+    }
+
+    // Terminate with aie.end
+    builder.create<AIE::EndOp>(builder.getUnknownLoc());
+  }
+
   OpBuilder &builder;
   AIE::DeviceOp device;
   llvm::DenseMap<TileID, AIE::TileOp> tiles;
@@ -260,6 +323,9 @@ private:
   llvm::DenseMap<std::tuple<int, int, int>, Value> locks;  // (col, row, lockId) -> lock Value
   llvm::DenseMap<TileID, llvm::SmallVector<ParsedBDConfig>> tileBDs;
   llvm::DenseSet<uint32_t> liftedAddresses;
+
+  // Switchbox storage
+  std::map<SwitchboxAccumulator::SwitchboxKey, ParsedSwitchboxConfig> switchboxes;
 };
 
 /// Extract PDI (Programmable Device Image) section from xclbin file.
@@ -440,6 +506,11 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
   // Initialize BD semantic lifting utilities
   BDAddressParser bdParser(/*numMemTileRows=*/1);
   BDAccumulator bdAccum;
+
+  // Initialize switchbox semantic lifting utilities
+  SwitchAddressParser switchParser(/*numMemTileRows=*/1);
+  SwitchboxAccumulator switchAccum;
+
   std::unique_ptr<LiftedBDEmitter> liftedEmitter;
 
   if (emitLifted) {
@@ -491,10 +562,21 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
       // Check if this is a BD register write and accumulate
       auto completedBD = bdAccum.addWrite(addr, value, bdParser);
 
+      // Check if this is a switchbox register write and accumulate
+      auto switchConn = switchAccum.addMasterWrite(addr, value, switchParser);
+
       // If lifted mode and this is a BD write, mark addresses for suppression
       bool shouldEmitRaw = true;
       if (emitLifted && bdParser.isBDAddress(addr)) {
         shouldEmitRaw = false;  // Don't emit raw write for BD registers
+        if (liftedEmitter) {
+          liftedEmitter->markLifted(addr);
+        }
+      }
+
+      // If lifted mode and this is a switchbox write, mark for suppression
+      if (emitLifted && switchParser.isSwitchboxAddress(addr)) {
+        shouldEmitRaw = false;  // Don't emit raw write for switchbox registers
         if (liftedEmitter) {
           liftedEmitter->markLifted(addr);
         }
@@ -509,6 +591,16 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
           llvm::outs() << "// ===== DMA BD Configuration Complete =====\n";
           BDPrettyPrinter::printAsComment(llvm::outs(), *completedBD);
           llvm::outs() << "// =========================================\n";
+        }
+      }
+
+      // If a switchbox connection was configured, record it for lifted emission
+      if (switchConn.has_value()) {
+        if (emitLifted && liftedEmitter) {
+          liftedEmitter->recordSwitchboxConnection(*switchConn);
+        } else {
+          // Annotated mode: emit comment
+          SwitchboxPrettyPrinter::printConnectionAsComment(llvm::outs(), *switchConn);
         }
       }
 
@@ -610,10 +702,11 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
     }
   }
 
-  // Emit all lifted BDs as aie.mem operations
+  // Emit all lifted BDs and switchboxes
   if (emitLifted && liftedEmitter) {
     builder.setInsertionPointToStart(deviceBlock);
     liftedEmitter->emitAllBDs();
+    liftedEmitter->emitAllSwitchboxes();
   }
 
   return success();

@@ -15,6 +15,7 @@
 #ifndef AIE_SWITCHBOX_LIFTING_H
 #define AIE_SWITCHBOX_LIFTING_H
 
+#include "aie/Dialect/AIE/IR/AIEDialect.h"  // For WireBundle enum
 #include "aie/Dialect/AIE/Util/AIEDMABDLifting.h"  // For TileType enum
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
@@ -29,21 +30,7 @@
 namespace xilinx {
 namespace AIE {
 
-//===----------------------------------------------------------------------===//
-// WireBundle - Stream switch port types
-//===----------------------------------------------------------------------===//
-
-enum class WireBundle {
-  Core,
-  DMA,
-  FIFO,
-  South,
-  West,
-  North,
-  East,
-  Trace,
-  TileControl
-};
+// Note: WireBundle enum is defined in AIEDialect.h
 
 //===----------------------------------------------------------------------===//
 // Switch Connection Info - Result of parsing a master config register
