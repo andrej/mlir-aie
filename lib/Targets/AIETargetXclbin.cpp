@@ -103,6 +103,33 @@ public:
     return bufOp.getResult();
   }
 
+  /// Get or create a lock operation
+  Value getOrCreateLock(int col, int row, int lockId) {
+    // Create a unique key for this lock
+    auto lockKey = std::make_tuple(col, row, lockId);
+    auto it = locks.find(lockKey);
+    if (it != locks.end())
+      return it->second;
+
+    // Create lock operation
+    auto tile = getOrCreateTile(col, row);
+
+    OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointAfter(tile);
+
+    auto lockOp = builder.create<AIE::LockOp>(
+        builder.getUnknownLoc(),
+        builder.getIndexType(),
+        tile,
+        builder.getI32IntegerAttr(lockId),
+        nullptr,  // init
+        nullptr   // sym_name
+    );
+
+    locks[lockKey] = lockOp.getResult();
+    return lockOp.getResult();
+  }
+
   /// Record a BD configuration for later emission
   void recordBD(const ParsedBDConfig &bd) {
     TileID id{bd.column, bd.row};
@@ -157,8 +184,25 @@ private:
 
     // Emit lock acquire if needed
     if (bd.hasLockAcquire()) {
-      // For now, we'll skip lock emission as it requires lock tracking
-      // This will be implemented in a follow-up
+      auto lock = getOrCreateLock(bd.column, bd.row, bd.lockAcquire.lockId);
+
+      // Determine lock action based on sign of value
+      AIE::LockAction action;
+      int32_t lockValue;
+      if (bd.lockAcquire.value < 0) {
+        action = AIE::LockAction::AcquireGreaterEqual;
+        lockValue = -bd.lockAcquire.value;  // Use absolute value
+      } else {
+        action = AIE::LockAction::Acquire;
+        lockValue = bd.lockAcquire.value;
+      }
+
+      builder.create<AIE::UseLockOp>(
+          builder.getUnknownLoc(),
+          lock,
+          action,
+          lockValue
+      );
     }
 
     // Emit the dma_bd operation
@@ -189,7 +233,14 @@ private:
 
     // Emit lock release if needed
     if (bd.hasLockRelease()) {
-      // Skip for now
+      auto lock = getOrCreateLock(bd.column, bd.row, bd.lockRelId);
+
+      builder.create<AIE::UseLockOp>(
+          builder.getUnknownLoc(),
+          lock,
+          AIE::LockAction::Release,
+          std::abs(bd.lockRelValue)  // Use absolute value
+      );
     }
 
     // Terminate the block
@@ -206,6 +257,7 @@ private:
   AIE::DeviceOp device;
   llvm::DenseMap<TileID, AIE::TileOp> tiles;
   llvm::StringMap<Value> buffers;
+  llvm::DenseMap<std::tuple<int, int, int>, Value> locks;  // (col, row, lockId) -> lock Value
   llvm::DenseMap<TileID, llvm::SmallVector<ParsedBDConfig>> tileBDs;
   llvm::DenseSet<uint32_t> liftedAddresses;
 };
