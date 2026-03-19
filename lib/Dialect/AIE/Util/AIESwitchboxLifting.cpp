@@ -124,6 +124,64 @@ const SwitchAddressParser::PortMapping
   {WireBundle::Trace, 0},       // 17: Mem_Trace (0xB0144)
 };
 
+// Shim tile master port mapping (22 ports) - Destinations
+// Computed from: (offset - 0x3F000) / 4
+// Note: Shim tiles use same switchbox base as compute tiles but different port layout
+const SwitchAddressParser::PortMapping
+    SwitchAddressParser::kShimTileMasterPortMap[22] = {
+  {WireBundle::TileControl, 0}, // 0: Tile_Ctrl (0x3F000)
+  {WireBundle::FIFO, 0},        // 1: FIFO0 (0x3F004)
+  {WireBundle::South, 0},       // 2: South0 (0x3F008)
+  {WireBundle::South, 1},       // 3: South1 (0x3F00C)
+  {WireBundle::South, 2},       // 4: South2 (0x3F010)
+  {WireBundle::South, 3},       // 5: South3 (0x3F014)
+  {WireBundle::South, 4},       // 6: South4 (0x3F018)
+  {WireBundle::South, 5},       // 7: South5 (0x3F01C)
+  {WireBundle::West, 0},        // 8: West0 (0x3F020)
+  {WireBundle::West, 1},        // 9: West1 (0x3F024)
+  {WireBundle::West, 2},        // 10: West2 (0x3F028)
+  {WireBundle::West, 3},        // 11: West3 (0x3F02C)
+  {WireBundle::North, 0},       // 12: North0 (0x3F030)
+  {WireBundle::North, 1},       // 13: North1 (0x3F034)
+  {WireBundle::North, 2},       // 14: North2 (0x3F038)
+  {WireBundle::North, 3},       // 15: North3 (0x3F03C)
+  {WireBundle::North, 4},       // 16: North4 (0x3F040)
+  {WireBundle::North, 5},       // 17: North5 (0x3F044)
+  {WireBundle::East, 0},        // 18: East0 (0x3F048)
+  {WireBundle::East, 1},        // 19: East1 (0x3F04C)
+  {WireBundle::East, 2},        // 20: East2 (0x3F050)
+  {WireBundle::East, 3},        // 21: East3 (0x3F054)
+};
+
+// Shim tile slave port mapping (23 ports) - Sources
+// Computed from: (offset - 0x3F100) / 4
+const SwitchAddressParser::PortMapping
+    SwitchAddressParser::kShimTileSlavePortMap[23] = {
+  {WireBundle::TileControl, 0}, // 0: Tile_Ctrl (0x3F100)
+  {WireBundle::FIFO, 0},        // 1: FIFO_0 (0x3F104)
+  {WireBundle::South, 0},       // 2: South_0 (0x3F108)
+  {WireBundle::South, 1},       // 3: South_1 (0x3F10C)
+  {WireBundle::South, 2},       // 4: South_2 (0x3F110)
+  {WireBundle::South, 3},       // 5: South_3 (0x3F114)
+  {WireBundle::South, 4},       // 6: South_4 (0x3F118)
+  {WireBundle::South, 5},       // 7: South_5 (0x3F11C)
+  {WireBundle::South, 6},       // 8: South_6 (0x3F120)
+  {WireBundle::South, 7},       // 9: South_7 (0x3F124)
+  {WireBundle::West, 0},        // 10: West_0 (0x3F128)
+  {WireBundle::West, 1},        // 11: West_1 (0x3F12C)
+  {WireBundle::West, 2},        // 12: West_2 (0x3F130)
+  {WireBundle::West, 3},        // 13: West_3 (0x3F134)
+  {WireBundle::North, 0},       // 14: North_0 (0x3F138)
+  {WireBundle::North, 1},       // 15: North_1 (0x3F13C)
+  {WireBundle::North, 2},       // 16: North_2 (0x3F140)
+  {WireBundle::North, 3},       // 17: North_3 (0x3F144)
+  {WireBundle::East, 0},        // 18: East_0 (0x3F148)
+  {WireBundle::East, 1},        // 19: East_1 (0x3F14C)
+  {WireBundle::East, 2},        // 20: East_2 (0x3F150)
+  {WireBundle::East, 3},        // 21: East_3 (0x3F154)
+  {WireBundle::Trace, 0},       // 22: Trace (0x3F158)
+};
+
 //===----------------------------------------------------------------------===//
 // SwitchAddressParser Implementation
 //===----------------------------------------------------------------------===//
@@ -138,6 +196,12 @@ SwitchAddressParser::getMasterPortMapping(int portIndex, TileType tileType) cons
       return {WireBundle::Core, 0};  // Invalid - return default
     }
     return kMemTileMasterPortMap[portIndex];
+  } else if (tileType == TileType::ShimNOC || tileType == TileType::ShimPL) {
+    // Shim tile
+    if (portIndex < 0 || portIndex >= 22) {
+      return {WireBundle::Core, 0};  // Invalid - return default
+    }
+    return kShimTileMasterPortMap[portIndex];
   } else {
     // Compute tile
     if (portIndex < 0 || portIndex >= 23) {
@@ -154,6 +218,12 @@ SwitchAddressParser::getSlavePortMapping(int portIndex, TileType tileType) const
       return {WireBundle::Core, 0};  // Invalid - return default
     }
     return kMemTileSlavePortMap[portIndex];
+  } else if (tileType == TileType::ShimNOC || tileType == TileType::ShimPL) {
+    // Shim tile
+    if (portIndex < 0 || portIndex >= 23) {
+      return {WireBundle::Core, 0};  // Invalid - return default
+    }
+    return kShimTileSlavePortMap[portIndex];
   } else {
     // Compute tile
     if (portIndex < 0 || portIndex >= 25) {
@@ -216,32 +286,38 @@ SwitchAddressParser::parseMasterConfig(uint32_t addr) const {
     }
 
     int masterPortIndex = portOffset / kRegisterSize;
-    if (masterPortIndex < 0 || masterPortIndex >= 23) {
-      return info;  // Out of range
-    }
 
     // Determine tile type and row
     // For compute tiles: rowPart = numMemTileRows + 1 + actualRow
     // For shim tiles: rowPart = 0
     if (rowPart == 0) {
-      // Shim tile - not supported in initial implementation
-      return info;
+      // Shim tile
+      // Shim tiles have 22 master ports (0-21)
+      if (masterPortIndex < 0 || masterPortIndex >= 22) {
+        return info;  // Out of range for Shim tile
+      }
+      info.tileType = TileType::ShimNOC;
+      info.row = 0;
     } else if (rowPart <= numMemTileRows_) {
       // Memory tile - but we're in compute tile register range, invalid
       return info;
     } else {
       // Compute tile
+      // Compute tiles have 23 master ports (0-22)
+      if (masterPortIndex < 0 || masterPortIndex >= 23) {
+        return info;  // Out of range for Compute tile
+      }
       info.tileType = TileType::Compute;
       info.row = rowPart - (numMemTileRows_ + 1);
     }
 
-    // Valid master config register for compute tile
+    // Valid master config register
     info.isValid = true;
     info.column = column;
     info.masterPortIndex = masterPortIndex;
 
     // Get destination port mapping
-    PortMapping destMapping = getMasterPortMapping(masterPortIndex, TileType::Compute);
+    PortMapping destMapping = getMasterPortMapping(masterPortIndex, info.tileType);
     info.destBundle = destMapping.bundle;
     info.destChannel = destMapping.channel;
 

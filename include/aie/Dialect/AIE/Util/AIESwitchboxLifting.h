@@ -175,6 +175,12 @@ private:
   // MemTile slave ports: 18 total (ports 0-17)
   static const PortMapping kMemTileSlavePortMap[18];
 
+  // Shim tile master ports: 22 total (ports 0-21)
+  static const PortMapping kShimTileMasterPortMap[22];
+
+  // Shim tile slave ports: 23 total (ports 0-22)
+  static const PortMapping kShimTileSlavePortMap[23];
+
   // Helper methods
   PortMapping getMasterPortMapping(int portIndex, TileType tileType) const;
   PortMapping getSlavePortMapping(int portIndex, TileType tileType) const;
