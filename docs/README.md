@@ -280,6 +280,9 @@ MLIR Tutorials
 - [AIE Routing](AIERouting)
 - [AIE Vectorization of Scalar Code](AIEVectorization)
 
+Tools and Utilities
+- [Xclbin Decompiler User Guide](XclbinDecompiler.md) - Reverse engineer compiled .xclbin files to MLIR
+
 -----
 
 <p align="center">Copyright&copy; 2019-2024 Advanced Micro Devices, Inc</p>
