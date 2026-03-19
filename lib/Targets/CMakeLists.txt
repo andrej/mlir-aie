@@ -88,6 +88,7 @@ add_mlir_library(AIETargets
   AIEX
   AIEXUtils
   ADF
+  MLIRAIEUtil
 )
 
 target_link_libraries(AIETargets PRIVATE xaienginecdo_static)

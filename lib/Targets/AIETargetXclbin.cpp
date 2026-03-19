@@ -19,6 +19,7 @@
 #include "aie/Targets/AIETargets.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Util/AIEDMABDLifting.h"
 #include "aie/Dialect/AIE/Util/AIERegisterDatabase.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
@@ -232,6 +233,10 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
   Block *seqBlock = &seqOp.getBody().emplaceBlock();
   builder.setInsertionPointToEnd(seqBlock);
 
+  // Initialize BD semantic lifting utilities
+  BDAddressParser bdParser(/*numMemTileRows=*/1);
+  BDAccumulator bdAccum;
+
   // First pass: collect blockwrite data and create memref.global operations
   int blockwriteIdx = 0;
   llvm::DenseMap<CdoCommand *, int> blockwriteMap;
@@ -274,6 +279,9 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
       uint32_t addr = static_cast<uint32_t>(cmd->dstaddr & 0xFFFFFFFF);
       uint32_t value = cmd->value;
 
+      // Check if this is a BD register write and accumulate
+      auto completedBD = bdAccum.addWrite(addr, value, bdParser);
+
       // Look up register name if database is available
       if (regDB) {
         const RegisterInfo *regInfo = regDB->lookupRegisterByAddress(addr);
@@ -283,6 +291,13 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
                        << llvm::format("%08X", addr) << " = 0x"
                        << llvm::format("%08X", value) << ")\n";
         }
+      }
+
+      // If a BD configuration was completed, emit semantic annotation
+      if (completedBD.has_value()) {
+        llvm::outs() << "// ===== DMA BD Configuration Complete =====\n";
+        BDPrettyPrinter::printAsComment(llvm::outs(), *completedBD);
+        llvm::outs() << "// =========================================\n";
       }
 
       AIEX::NpuWrite32Op::create(builder, loc, addr, value,
@@ -348,6 +363,18 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
       // Skip unsupported commands (NOP, etc.)
       break;
     }
+  }
+
+  // Flush any incomplete BD configurations at the end
+  auto pendingBDs = bdAccum.flush();
+  if (!pendingBDs.empty()) {
+    llvm::outs() << "// ===== Incomplete BD Configurations =====\n";
+    for (const auto &bd : pendingBDs) {
+      llvm::outs() << "// WARNING: Incomplete BD (only "
+                   << (bd.validBd ? "valid" : "partial") << ")\n";
+      BDPrettyPrinter::printAsComment(llvm::outs(), bd);
+    }
+    llvm::outs() << "// ========================================\n";
   }
 
   return success();
