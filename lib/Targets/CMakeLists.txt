@@ -96,18 +96,33 @@ if(TARGET bootgen-lib)
   find_package(OpenSSL)
   if(OpenSSL_FOUND)
     target_link_libraries(AIETargets PRIVATE bootgen-lib OpenSSL::SSL OpenSSL::Crypto)
+    target_compile_definitions(AIETargets PRIVATE HAVE_BOOTGEN=1)
   else()
     target_link_libraries(AIETargets PRIVATE bootgen-lib)
+    target_compile_definitions(AIETargets PRIVATE HAVE_BOOTGEN=1)
   endif()
 endif()
-target_include_directories(AIETargets SYSTEM PRIVATE
-  ${BOOTGEN_SOURCE_DIR}
-  ${AIE_BINARY_DIR}/include/xaienginecdo_static
-  ${AIE_BINARY_DIR}/include
-  /opt/xilinx/xrt/include
-)
-target_include_directories(obj.AIETargets SYSTEM PRIVATE
-  ${BOOTGEN_SOURCE_DIR}
-  ${AIE_BINARY_DIR}/include
-  /opt/xilinx/xrt/include
-)
+
+if(TARGET bootgen-lib)
+  target_include_directories(AIETargets SYSTEM PRIVATE
+    ${BOOTGEN_SOURCE_DIR}
+    ${AIE_BINARY_DIR}/include/xaienginecdo_static
+    ${AIE_BINARY_DIR}/include
+    /opt/xilinx/xrt/include
+  )
+  target_include_directories(obj.AIETargets SYSTEM PRIVATE
+    ${BOOTGEN_SOURCE_DIR}
+    ${AIE_BINARY_DIR}/include
+    /opt/xilinx/xrt/include
+  )
+else()
+  target_include_directories(AIETargets SYSTEM PRIVATE
+    ${AIE_BINARY_DIR}/include/xaienginecdo_static
+    ${AIE_BINARY_DIR}/include
+    /opt/xilinx/xrt/include
+  )
+  target_include_directories(obj.AIETargets SYSTEM PRIVATE
+    ${AIE_BINARY_DIR}/include
+    /opt/xilinx/xrt/include
+  )
+endif()

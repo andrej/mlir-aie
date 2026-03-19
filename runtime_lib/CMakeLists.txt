@@ -131,7 +131,7 @@ add_aiert_headers(xaienginecdo_static
 )
 add_aiert_library(xaienginecdo_static ${XAIE_SOURCE_DIR} STATIC)
 
-target_link_libraries(xaienginecdo_static PRIVATE cdo_driver_mlir_aie)
+target_link_libraries(xaienginecdo_static PUBLIC cdo_driver_mlir_aie)
 target_compile_definitions(xaienginecdo_static PRIVATE -D__AIECDO__ -D__AIEDEBUG__)
 
 # just to make cmake happy since AIETargets will need to re-export

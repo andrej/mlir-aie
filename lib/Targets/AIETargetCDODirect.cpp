@@ -7,9 +7,12 @@
 
 #include "aie/Targets/AIERT.h"
 #include "aie/Targets/AIETargets.h"
+
+#ifdef HAVE_BOOTGEN
 extern "C" {
 #include "cdo-driver/cdo_driver.h"
 }
+#endif
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIEEnums.h"
@@ -37,17 +40,21 @@ extern "C" {
 #define XAIE_DEBUG
 #endif
 
+#ifdef HAVE_BOOTGEN
 extern "C" {
 #include "xaiengine/xaie_elfloader.h"
 #include "xaiengine/xaie_interrupt.h"
 #include "xaiengine/xaiegbl.h"
 }
+#endif
 
 #define DEBUG_TYPE "aie-generate-cdo"
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
+
+#ifdef HAVE_BOOTGEN
 
 static void initializeCDOGenerator(byte_ordering endianness, bool cdoDebug) {
   // Enables AXI-MM prints for configs being added in CDO
@@ -175,3 +182,13 @@ LogicalResult xilinx::AIE::AIETranslateToCDODirect(
                               emitUnified, cdoDebug, aieSim, xaieDebug,
                               enableCores);
 }
+
+#else // !HAVE_BOOTGEN
+
+LogicalResult xilinx::AIE::AIETranslateToCDODirect(
+    ModuleOp m, llvm::StringRef, llvm::StringRef,
+    bool, bool, bool, bool, bool, bool) {
+  return m.emitError("CDO generation not available - bootgen library was not built (OpenSSL required)");
+}
+
+#endif // HAVE_BOOTGEN

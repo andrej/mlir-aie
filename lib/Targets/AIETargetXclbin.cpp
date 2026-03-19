@@ -34,10 +34,12 @@
 
 #include "xrt/detail/xclbin.h"
 
+#ifdef HAVE_BOOTGEN
 extern "C" {
 #include <cdo-binary.h>
 #include <cdo-command.h>
 }
+#endif
 
 #include <cstring>
 #include <vector>
@@ -48,6 +50,7 @@ using namespace xilinx::AIE;
 
 namespace {
 
+#ifdef HAVE_BOOTGEN
 /// Format register information as a string for attaching to MLIR operations
 std::string formatRegisterInfo(const RegisterInfo *regInfo, uint32_t addr) {
   if (!regInfo)
@@ -59,6 +62,7 @@ std::string formatRegisterInfo(const RegisterInfo *regInfo, uint32_t addr) {
   }
   return result;
 }
+#endif
 
 /// Helper class to manage lifted BD emission state
 class LiftedBDEmitter {
@@ -363,6 +367,7 @@ private:
   std::map<SwitchboxAccumulator::SwitchboxKey, ParsedSwitchboxConfig> switchboxes;
 };
 
+#ifdef HAVE_BOOTGEN
 /// Extract PDI (Programmable Device Image) section from xclbin file.
 /// Parses the AXLF format and finds the PDI section.
 LogicalResult extractPDIFromXclbin(StringRef xclbinPath,
@@ -491,7 +496,9 @@ LogicalResult extractCDOFromPDI(const uint8_t *pdiData, size_t pdiSize,
   llvm::errs() << "No CDO found in PDI\n";
   return failure();
 }
+#endif // HAVE_BOOTGEN (for extractPDI and extractCDO)
 
+#ifdef HAVE_BOOTGEN
 /// Decode CDO binary using bootgen's decoder.
 /// Returns a list of CdoCommand structures.
 LogicalResult decodeCDOToCmds(const uint8_t *data, size_t len,
@@ -746,6 +753,7 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
 
   return success();
 }
+#endif // HAVE_BOOTGEN
 
 } // namespace
 
@@ -768,6 +776,7 @@ LogicalResult AIETranslateFromXclbin(ModuleOp module, StringRef filename,
                  << "Register names will not be annotated.\n";
   }
 
+#ifdef HAVE_BOOTGEN
   // Step 2: Extract PDI from xclbin
   std::vector<uint8_t> pdiData;
   if (failed(extractPDIFromXclbin(filename, pdiData))) {
@@ -779,7 +788,6 @@ LogicalResult AIETranslateFromXclbin(ModuleOp module, StringRef filename,
   if (failed(extractCDOFromPDI(pdiData.data(), pdiData.size(), cdoData))) {
     return module.emitError("Failed to extract CDO from PDI");
   }
-
   // Step 4: Decode CDO to commands
   std::vector<CdoCommand *> commands;
   if (failed(
@@ -794,6 +802,9 @@ LogicalResult AIETranslateFromXclbin(ModuleOp module, StringRef filename,
 
   llvm::outs() << "Successfully translated xclbin to MLIR\n";
   return success();
+#else
+  return module.emitError("CDO decoding not available - bootgen library was not built (OpenSSL required)");
+#endif
 }
 
 } // namespace AIE
