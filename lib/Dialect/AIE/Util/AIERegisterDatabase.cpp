@@ -294,3 +294,15 @@ uint32_t RegisterDatabase::encodeFieldValue(const BitFieldInfo &field,
   uint64_t encoded = (static_cast<uint64_t>(value) << field.bit_start);
   return static_cast<uint32_t>(encoded);
 }
+
+const RegisterInfo *
+RegisterDatabase::lookupRegisterByAddress(uint32_t offset) const {
+  // Linear search through all registers to find one matching the offset
+  // This could be optimized with a reverse map if needed
+  for (const auto &entry : registers_) {
+    if (entry.second.offset == offset) {
+      return &entry.second;
+    }
+  }
+  return nullptr;
+}

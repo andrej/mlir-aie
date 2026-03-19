@@ -75,6 +75,10 @@ public:
   /// Encode a value for a specific bitfield
   uint32_t encodeFieldValue(const BitFieldInfo &field, uint32_t value) const;
 
+  /// Reverse lookup: find register name by address offset
+  /// Returns nullptr if no register matches the given offset
+  const RegisterInfo *lookupRegisterByAddress(uint32_t offset) const;
+
 private:
   RegisterDatabase() = default;
 

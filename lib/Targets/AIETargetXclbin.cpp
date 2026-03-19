@@ -19,6 +19,7 @@
 #include "aie/Targets/AIETargets.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Util/AIERegisterDatabase.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -44,6 +45,18 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 
 namespace {
+
+/// Format register information as a string for attaching to MLIR operations
+std::string formatRegisterInfo(const RegisterInfo *regInfo, uint32_t addr) {
+  if (!regInfo)
+    return "";
+
+  std::string result = regInfo->module + "::" + regInfo->name;
+  if (!regInfo->description.empty()) {
+    result += " - " + regInfo->description;
+  }
+  return result;
+}
 
 /// Extract PDI (Programmable Device Image) section from xclbin file.
 /// Parses the AXLF format and finds the PDI section.
@@ -199,7 +212,8 @@ LogicalResult decodeCDOToCmds(const uint8_t *data, size_t len,
 /// Emit MLIR operations from decoded CDO commands.
 /// Creates aie.device, runtime_sequence, and MLIR operations for register writes.
 LogicalResult emitMLIRFromCDO(ModuleOp module,
-                              llvm::ArrayRef<CdoCommand *> commands) {
+                              llvm::ArrayRef<CdoCommand *> commands,
+                              RegisterDatabase *regDB = nullptr) {
   OpBuilder builder(module.getContext());
   builder.setInsertionPointToEnd(module.getBody());
 
@@ -260,6 +274,17 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
       uint32_t addr = static_cast<uint32_t>(cmd->dstaddr & 0xFFFFFFFF);
       uint32_t value = cmd->value;
 
+      // Look up register name if database is available
+      if (regDB) {
+        const RegisterInfo *regInfo = regDB->lookupRegisterByAddress(addr);
+        if (regInfo) {
+          std::string info = formatRegisterInfo(regInfo, addr);
+          llvm::outs() << "// Write to " << info << " (0x"
+                       << llvm::format("%08X", addr) << " = 0x"
+                       << llvm::format("%08X", value) << ")\n";
+        }
+      }
+
       AIEX::NpuWrite32Op::create(builder, loc, addr, value,
                                  nullptr, nullptr, nullptr);
       break;
@@ -271,6 +296,18 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
       uint32_t addr = static_cast<uint32_t>(cmd->dstaddr & 0xFFFFFFFF);
       uint32_t mask = cmd->mask;
       uint32_t value = cmd->value;
+
+      // Look up register name if database is available
+      if (regDB) {
+        const RegisterInfo *regInfo = regDB->lookupRegisterByAddress(addr);
+        if (regInfo) {
+          std::string info = formatRegisterInfo(regInfo, addr);
+          llvm::outs() << "// MaskWrite to " << info << " (0x"
+                       << llvm::format("%08X", addr) << " = 0x"
+                       << llvm::format("%08X", value) << ", mask=0x"
+                       << llvm::format("%08X", mask) << ")\n";
+        }
+      }
 
       AIEX::NpuMaskWrite32Op::create(builder, loc, addr, value, mask,
                                      nullptr, nullptr, nullptr);
@@ -289,6 +326,18 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
           loc, memrefType, builder.getStringAttr(globalName));
 
       uint32_t addr = static_cast<uint32_t>(cmd->dstaddr & 0xFFFFFFFF);
+
+      // Look up register name if database is available
+      if (regDB) {
+        const RegisterInfo *regInfo = regDB->lookupRegisterByAddress(addr);
+        if (regInfo) {
+          std::string info = formatRegisterInfo(regInfo, addr);
+          llvm::outs() << "// BlockWrite to " << info << " (0x"
+                       << llvm::format("%08X", addr) << ", "
+                       << cmd->count << " words)\n";
+        }
+      }
+
       AIEX::NpuBlockWriteOp::create(builder, loc, addr,
                                     getGlobal.getResult(),
                                     nullptr, nullptr, nullptr);
@@ -313,27 +362,34 @@ namespace AIE {
 LogicalResult AIETranslateFromXclbin(ModuleOp module, StringRef filename) {
   llvm::outs() << "Translating xclbin to MLIR: " << filename << "\n";
 
-  // Step 1: Extract PDI from xclbin
+  // Step 1: Load register database for AIE2
+  auto regDB = RegisterDatabase::loadAIE2();
+  if (!regDB) {
+    llvm::errs() << "Warning: Failed to load register database. "
+                 << "Register names will not be annotated.\n";
+  }
+
+  // Step 2: Extract PDI from xclbin
   std::vector<uint8_t> pdiData;
   if (failed(extractPDIFromXclbin(filename, pdiData))) {
     return module.emitError("Failed to extract PDI from xclbin");
   }
 
-  // Step 2: Extract CDO from PDI
+  // Step 3: Extract CDO from PDI
   std::vector<uint8_t> cdoData;
   if (failed(extractCDOFromPDI(pdiData.data(), pdiData.size(), cdoData))) {
     return module.emitError("Failed to extract CDO from PDI");
   }
 
-  // Step 3: Decode CDO to commands
+  // Step 4: Decode CDO to commands
   std::vector<CdoCommand *> commands;
   if (failed(
           decodeCDOToCmds(cdoData.data(), cdoData.size(), commands))) {
     return module.emitError("Failed to decode CDO binary");
   }
 
-  // Step 4: Emit MLIR operations
-  if (failed(emitMLIRFromCDO(module, commands))) {
+  // Step 5: Emit MLIR operations with register name annotations
+  if (failed(emitMLIRFromCDO(module, commands, regDB.get()))) {
     return module.emitError("Failed to emit MLIR from CDO commands");
   }
 
