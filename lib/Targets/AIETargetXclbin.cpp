@@ -59,6 +59,157 @@ std::string formatRegisterInfo(const RegisterInfo *regInfo, uint32_t addr) {
   return result;
 }
 
+/// Helper class to manage lifted BD emission state
+class LiftedBDEmitter {
+public:
+  LiftedBDEmitter(OpBuilder &builder, AIE::DeviceOp device)
+      : builder(builder), device(device) {}
+
+  /// Get or create a tile operation
+  AIE::TileOp getOrCreateTile(int col, int row) {
+    TileID id{col, row};
+    auto it = tiles.find(id);
+    if (it != tiles.end())
+      return it->second;
+
+    auto tile = AIE::TileOp::getOrCreate(builder, device, col, row);
+    tiles[id] = tile;
+    return tile;
+  }
+
+  /// Get or create a buffer for a BD
+  Value getOrCreateBuffer(const ParsedBDConfig &bd) {
+    // Create a unique buffer name based on tile and BD info
+    std::string bufName = llvm::formatv("bd_buf_{0}_{1}_{2}",
+                                        bd.column, bd.row, bd.bdIndex);
+
+    auto it = buffers.find(bufName);
+    if (it != buffers.end())
+      return it->second;
+
+    // Create buffer with anonymous memref type
+    auto tile = getOrCreateTile(bd.column, bd.row);
+    auto memrefType = MemRefType::get({static_cast<int64_t>(bd.bufferLength)},
+                                      builder.getI32Type());
+
+    OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointAfter(tile);
+
+    auto bufOp = builder.create<AIE::BufferOp>(
+        builder.getUnknownLoc(), memrefType, tile,
+        builder.getStringAttr(bufName), nullptr, nullptr, nullptr);
+
+    buffers[bufName] = bufOp.getResult();
+    return bufOp.getResult();
+  }
+
+  /// Record a BD configuration for later emission
+  void recordBD(const ParsedBDConfig &bd) {
+    TileID id{bd.column, bd.row};
+    tileBDs[id].push_back(bd);
+  }
+
+  /// Emit all collected BDs as aie.mem operations
+  void emitAllBDs() {
+    for (const auto &[tileId, bds] : tileBDs) {
+      emitMemOpForTile(tileId, bds);
+    }
+  }
+
+  /// Check if a BD was lifted (to suppress raw write emission)
+  bool wasLifted(uint32_t addr) const {
+    return liftedAddresses.count(addr) > 0;
+  }
+
+  /// Mark an address as lifted
+  void markLifted(uint32_t addr) {
+    liftedAddresses.insert(addr);
+  }
+
+private:
+  void emitMemOpForTile(TileID tileId, const llvm::SmallVector<ParsedBDConfig> &bds) {
+    auto tile = getOrCreateTile(tileId.col, tileId.row);
+
+    OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointAfter(tile);
+
+    auto memOp = builder.create<AIE::MemOp>(builder.getUnknownLoc(),
+                                             builder.getIndexType(), tile);
+    Block *memBlock = &memOp.getBody().emplaceBlock();
+    builder.setInsertionPointToEnd(memBlock);
+
+    // Emit all BDs for this tile
+    for (const auto &bd : bds) {
+      emitSingleBD(bd, memBlock);
+    }
+
+    // Terminate with aie.end
+    builder.create<AIE::EndOp>(builder.getUnknownLoc());
+  }
+
+  void emitSingleBD(const ParsedBDConfig &bd, Block *memBlock) {
+    OpBuilder::InsertionGuard guard(builder);
+
+    // Create a basic block for this BD
+    Block *bdBlock = new Block();
+    memBlock->getParent()->push_back(bdBlock);
+    builder.setInsertionPointToEnd(bdBlock);
+
+    // Emit lock acquire if needed
+    if (bd.hasLockAcquire()) {
+      // For now, we'll skip lock emission as it requires lock tracking
+      // This will be implemented in a follow-up
+    }
+
+    // Emit the dma_bd operation
+    auto buffer = getOrCreateBuffer(bd);
+
+    // Build dimension attributes if needed
+    SmallVector<Attribute> dimAttrs;
+    if (bd.hasDimensions()) {
+      // Build dimension layout attributes
+      // For simplicity, we'll emit a comment for now and implement full dimension support later
+    }
+
+    ArrayAttr dimensions = dimAttrs.empty() ? nullptr : builder.getArrayAttr(dimAttrs);
+
+    builder.create<AIE::DMABDOp>(
+        builder.getUnknownLoc(),
+        buffer,
+        bd.baseAddress,
+        bd.bufferLength,
+        dimensions,
+        nullptr,  // pad_dimensions
+        0,        // pad_value
+        bd.bdIndex,
+        nullptr,  // packet
+        0,        // burst_length
+        nullptr   // next_bd_id
+    );
+
+    // Emit lock release if needed
+    if (bd.hasLockRelease()) {
+      // Skip for now
+    }
+
+    // Terminate the block
+    if (bd.useNextBd) {
+      // For now, create a simple end terminator
+      // Full next_bd support requires block references
+      builder.create<AIE::EndOp>(builder.getUnknownLoc());
+    } else {
+      builder.create<AIE::EndOp>(builder.getUnknownLoc());
+    }
+  }
+
+  OpBuilder &builder;
+  AIE::DeviceOp device;
+  llvm::DenseMap<TileID, AIE::TileOp> tiles;
+  llvm::StringMap<Value> buffers;
+  llvm::DenseMap<TileID, llvm::SmallVector<ParsedBDConfig>> tileBDs;
+  llvm::DenseSet<uint32_t> liftedAddresses;
+};
+
 /// Extract PDI (Programmable Device Image) section from xclbin file.
 /// Parses the AXLF format and finds the PDI section.
 LogicalResult extractPDIFromXclbin(StringRef xclbinPath,
@@ -214,7 +365,8 @@ LogicalResult decodeCDOToCmds(const uint8_t *data, size_t len,
 /// Creates aie.device, runtime_sequence, and MLIR operations for register writes.
 LogicalResult emitMLIRFromCDO(ModuleOp module,
                               llvm::ArrayRef<CdoCommand *> commands,
-                              RegisterDatabase *regDB = nullptr) {
+                              RegisterDatabase *regDB = nullptr,
+                              bool emitLifted = false) {
   OpBuilder builder(module.getContext());
   builder.setInsertionPointToEnd(module.getBody());
 
@@ -236,6 +388,11 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
   // Initialize BD semantic lifting utilities
   BDAddressParser bdParser(/*numMemTileRows=*/1);
   BDAccumulator bdAccum;
+  std::unique_ptr<LiftedBDEmitter> liftedEmitter;
+
+  if (emitLifted) {
+    liftedEmitter = std::make_unique<LiftedBDEmitter>(builder, deviceOp);
+  }
 
   // First pass: collect blockwrite data and create memref.global operations
   int blockwriteIdx = 0;
@@ -282,8 +439,29 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
       // Check if this is a BD register write and accumulate
       auto completedBD = bdAccum.addWrite(addr, value, bdParser);
 
-      // Look up register name if database is available
-      if (regDB) {
+      // If lifted mode and this is a BD write, mark addresses for suppression
+      bool shouldEmitRaw = true;
+      if (emitLifted && bdParser.isBDAddress(addr)) {
+        shouldEmitRaw = false;  // Don't emit raw write for BD registers
+        if (liftedEmitter) {
+          liftedEmitter->markLifted(addr);
+        }
+      }
+
+      // If a BD configuration was completed, record it for lifted emission
+      if (completedBD.has_value()) {
+        if (emitLifted && liftedEmitter) {
+          liftedEmitter->recordBD(*completedBD);
+        } else {
+          // Annotated mode: emit comment
+          llvm::outs() << "// ===== DMA BD Configuration Complete =====\n";
+          BDPrettyPrinter::printAsComment(llvm::outs(), *completedBD);
+          llvm::outs() << "// =========================================\n";
+        }
+      }
+
+      // Look up register name if database is available (for debugging)
+      if (!emitLifted && regDB) {
         const RegisterInfo *regInfo = regDB->lookupRegisterByAddress(addr);
         if (regInfo) {
           std::string info = formatRegisterInfo(regInfo, addr);
@@ -293,15 +471,11 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
         }
       }
 
-      // If a BD configuration was completed, emit semantic annotation
-      if (completedBD.has_value()) {
-        llvm::outs() << "// ===== DMA BD Configuration Complete =====\n";
-        BDPrettyPrinter::printAsComment(llvm::outs(), *completedBD);
-        llvm::outs() << "// =========================================\n";
+      // Emit raw write only if not suppressed
+      if (shouldEmitRaw) {
+        AIEX::NpuWrite32Op::create(builder, loc, addr, value,
+                                   nullptr, nullptr, nullptr);
       }
-
-      AIEX::NpuWrite32Op::create(builder, loc, addr, value,
-                                 nullptr, nullptr, nullptr);
       break;
     }
 
@@ -368,13 +542,26 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
   // Flush any incomplete BD configurations at the end
   auto pendingBDs = bdAccum.flush();
   if (!pendingBDs.empty()) {
-    llvm::outs() << "// ===== Incomplete BD Configurations =====\n";
-    for (const auto &bd : pendingBDs) {
-      llvm::outs() << "// WARNING: Incomplete BD (only "
-                   << (bd.validBd ? "valid" : "partial") << ")\n";
-      BDPrettyPrinter::printAsComment(llvm::outs(), bd);
+    if (emitLifted && liftedEmitter) {
+      // Record incomplete BDs for lifted emission too
+      for (const auto &bd : pendingBDs) {
+        liftedEmitter->recordBD(bd);
+      }
+    } else {
+      llvm::outs() << "// ===== Incomplete BD Configurations =====\n";
+      for (const auto &bd : pendingBDs) {
+        llvm::outs() << "// WARNING: Incomplete BD (only "
+                     << (bd.validBd ? "valid" : "partial") << ")\n";
+        BDPrettyPrinter::printAsComment(llvm::outs(), bd);
+      }
+      llvm::outs() << "// ========================================\n";
     }
-    llvm::outs() << "// ========================================\n";
+  }
+
+  // Emit all lifted BDs as aie.mem operations
+  if (emitLifted && liftedEmitter) {
+    builder.setInsertionPointToStart(deviceBlock);
+    liftedEmitter->emitAllBDs();
   }
 
   return success();
@@ -386,8 +573,13 @@ namespace xilinx {
 namespace AIE {
 
 /// Main entry point: translate xclbin binary to MLIR module.
-LogicalResult AIETranslateFromXclbin(ModuleOp module, StringRef filename) {
-  llvm::outs() << "Translating xclbin to MLIR: " << filename << "\n";
+LogicalResult AIETranslateFromXclbin(ModuleOp module, StringRef filename,
+                                     bool emitLifted) {
+  llvm::outs() << "Translating xclbin to MLIR: " << filename;
+  if (emitLifted) {
+    llvm::outs() << " (lifted mode)";
+  }
+  llvm::outs() << "\n";
 
   // Step 1: Load register database for AIE2
   auto regDB = RegisterDatabase::loadAIE2();
@@ -415,8 +607,8 @@ LogicalResult AIETranslateFromXclbin(ModuleOp module, StringRef filename) {
     return module.emitError("Failed to decode CDO binary");
   }
 
-  // Step 5: Emit MLIR operations with register name annotations
-  if (failed(emitMLIRFromCDO(module, commands, regDB.get()))) {
+  // Step 5: Emit MLIR operations (lifted or annotated mode)
+  if (failed(emitMLIRFromCDO(module, commands, regDB.get(), emitLifted))) {
     return module.emitError("Failed to emit MLIR from CDO commands");
   }
 

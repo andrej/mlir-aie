@@ -74,7 +74,8 @@ mlir::LogicalResult AIETranslateToTargetArch(mlir::ModuleOp module,
                                              llvm::StringRef deviceName);
 
 mlir::LogicalResult AIETranslateFromXclbin(mlir::ModuleOp module,
-                                           llvm::StringRef filename);
+                                           llvm::StringRef filename,
+                                           bool emitLifted = false);
 
 } // namespace AIE
 

@@ -166,6 +166,11 @@ void registerAIETranslations() {
       llvm::cl::desc(
           "Specify the name of the aiex.runtime_sequence to translate"));
 
+  static llvm::cl::opt<bool> emitLifted(
+      "emit-lifted", llvm::cl::init(false),
+      llvm::cl::desc(
+          "Emit lifted aie.dma_bd operations instead of raw register writes"));
+
   TranslateFromMLIRRegistration registrationMMap(
       "aie-generate-mmap", "Generate AIE memory map",
       [](ModuleOp module, raw_ostream &output) {
@@ -416,7 +421,7 @@ void registerAIETranslations() {
       [](StringRef inputFilename, MLIRContext *context) {
         auto module =
             ModuleOp::create(FileLineColLoc::get(context, inputFilename, 0, 0));
-        if (failed(AIETranslateFromXclbin(module, inputFilename))) {
+        if (failed(AIETranslateFromXclbin(module, inputFilename, emitLifted))) {
           return OwningOpRef<ModuleOp>();
         }
         return OwningOpRef<ModuleOp>(module);
