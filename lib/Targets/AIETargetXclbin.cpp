@@ -149,7 +149,13 @@ public:
 
   /// Emit all collected BDs as aie.mem operations
   void emitAllBDs() {
+    auto &targetModel = getTargetModel(device);
     for (const auto &[tileId, bds] : tileBDs) {
+      // Skip shim tiles - they don't have local memory and use aie.shim_dma
+      // instead of aie.mem. For decompiled code, shim DMA BDs remain as raw writes.
+      if (targetModel.isShimNOCorPLTile(tileId.col, tileId.row)) {
+        continue;
+      }
       emitMemOpForTile(tileId, bds);
     }
   }
@@ -606,11 +612,19 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
       auto switchConn = switchAccum.addMasterWrite(addr, value, switchParser);
 
       // If lifted mode and this is a BD write, mark addresses for suppression
+      // However, skip shim tiles since they don't have local memory and can't
+      // have aie.mem operations - keep them as raw writes
       bool shouldEmitRaw = true;
       if (emitLifted && bdParser.isBDAddress(addr)) {
-        shouldEmitRaw = false;  // Don't emit raw write for BD registers
-        if (liftedEmitter) {
-          liftedEmitter->markLifted(addr);
+        auto addrInfo = bdParser.parse(addr);
+        auto &targetModel = getTargetModel(deviceOp);
+        bool isShimTile = targetModel.isShimNOCorPLTile(addrInfo.column, addrInfo.row);
+
+        if (!isShimTile) {
+          shouldEmitRaw = false;  // Don't emit raw write for BD registers (except shim)
+          if (liftedEmitter) {
+            liftedEmitter->markLifted(addr);
+          }
         }
       }
 
