@@ -254,77 +254,13 @@ private:
     builder.setInsertionPointToEnd(bdBlock);
 
     // Emit lock acquire if needed
-    if (bd.hasLockAcquire()) {
-      auto lock = getOrCreateLock(bd.column, bd.row, bd.lockAcquire.lockId);
-
-      // Determine lock action based on sign of value
-      AIE::LockAction action;
-      int32_t lockValue;
-      if (bd.lockAcquire.value < 0) {
-        action = AIE::LockAction::AcquireGreaterEqual;
-        lockValue = -bd.lockAcquire.value;  // Use absolute value
-      } else {
-        action = AIE::LockAction::Acquire;
-        lockValue = bd.lockAcquire.value;
-      }
-
-      builder.create<AIE::UseLockOp>(
-          builder.getUnknownLoc(),
-          lock,
-          action,
-          lockValue
-      );
-    }
+    emitLockAcquire(bd);
 
     // Emit the dma_bd operation
     auto buffer = getOrCreateBuffer(bd);
 
     // Build dimension attributes if needed
-    SmallVector<Attribute> dimAttrs;
-    if (bd.hasDimensions()) {
-      // Build dimension layout attributes from outermost to innermost
-      // Hardware dimension mapping:
-      //   - bd.dimensions[0] = D0 (innermost)
-      //   - bd.dimensions[1] = D1 (middle)
-      //   - bd.dimensions[2] = D2 (outermost)
-
-      // D2 dimension (outermost) - only if D1 has wrap
-      if (bd.dimensions[1].wrap != 0) {
-        auto dimAttr = AIE::BDDimLayoutAttr::get(
-            builder.getContext(),
-            bd.dimensions[1].wrap,      // size
-            bd.dimensions[2].stepSize   // stride
-        );
-        dimAttrs.push_back(dimAttr);
-      }
-
-      // D1 dimension (middle) - only if D0 has wrap
-      if (bd.dimensions[0].wrap != 0) {
-        auto dimAttr = AIE::BDDimLayoutAttr::get(
-            builder.getContext(),
-            bd.dimensions[0].wrap,      // size
-            bd.dimensions[1].stepSize   // stride
-        );
-        dimAttrs.push_back(dimAttr);
-      }
-
-      // D0 dimension (innermost) - always included when dimensions are non-trivial
-      auto dimAttr = AIE::BDDimLayoutAttr::get(
-          builder.getContext(),
-          bd.bufferLength,            // size (in 32-bit words)
-          bd.dimensions[0].stepSize   // stride
-      );
-      dimAttrs.push_back(dimAttr);
-    }
-
-    AIE::BDDimLayoutArrayAttr dimensions = nullptr;
-    if (!dimAttrs.empty()) {
-      SmallVector<AIE::BDDimLayoutAttr> bdDimAttrs;
-      for (auto attr : dimAttrs) {
-        bdDimAttrs.push_back(llvm::cast<AIE::BDDimLayoutAttr>(attr));
-      }
-      dimensions = AIE::BDDimLayoutArrayAttr::get(builder.getContext(), bdDimAttrs);
-    }
+    AIE::BDDimLayoutArrayAttr dimensions = buildDimensionAttrs(bd);
 
     auto bdOp = builder.create<AIE::DMABDOp>(
         builder.getUnknownLoc(),
@@ -338,25 +274,10 @@ private:
       bdOp.setBdIdAttr(builder.getI32IntegerAttr(bd.bdIndex));
 
     // Emit lock release if needed
-    if (bd.hasLockRelease()) {
-      auto lock = getOrCreateLock(bd.column, bd.row, bd.lockRelId);
-
-      builder.create<AIE::UseLockOp>(
-          builder.getUnknownLoc(),
-          lock,
-          AIE::LockAction::Release,
-          std::abs(bd.lockRelValue)  // Use absolute value
-      );
-    }
+    emitLockRelease(bd);
 
     // Terminate the block
-    if (bd.useNextBd) {
-      // For now, create a simple end terminator
-      // Full next_bd support requires block references
-      builder.create<AIE::EndOp>(builder.getUnknownLoc());
-    } else {
-      builder.create<AIE::EndOp>(builder.getUnknownLoc());
-    }
+    emitBlockTerminator(bd);
   }
 
   void emitSingleShimBD(const ParsedBDConfig &bd, Block *shimDmaBlock) {
@@ -368,71 +289,13 @@ private:
     builder.setInsertionPointToEnd(bdBlock);
 
     // Emit lock acquire if needed
-    if (bd.hasLockAcquire()) {
-      auto lock = getOrCreateLock(bd.column, bd.row, bd.lockAcquire.lockId);
-
-      // Determine lock action based on sign of value
-      AIE::LockAction action;
-      int32_t lockValue;
-      if (bd.lockAcquire.value < 0) {
-        action = AIE::LockAction::AcquireGreaterEqual;
-        lockValue = -bd.lockAcquire.value;  // Use absolute value
-      } else {
-        action = AIE::LockAction::Acquire;
-        lockValue = bd.lockAcquire.value;
-      }
-
-      builder.create<AIE::UseLockOp>(
-          builder.getUnknownLoc(),
-          lock,
-          action,
-          lockValue
-      );
-    }
+    emitLockAcquire(bd);
 
     // Emit the dma_bd operation using external buffer
     auto buffer = getOrCreateExternalBuffer(bd);
 
     // Build dimension attributes if needed (same as for compute tiles)
-    SmallVector<Attribute> dimAttrs;
-    if (bd.hasDimensions()) {
-      // D2 dimension (outermost) - only if D1 has wrap
-      if (bd.dimensions[1].wrap != 0) {
-        auto dimAttr = AIE::BDDimLayoutAttr::get(
-            builder.getContext(),
-            bd.dimensions[1].wrap,      // size
-            bd.dimensions[2].stepSize   // stride
-        );
-        dimAttrs.push_back(dimAttr);
-      }
-
-      // D1 dimension (middle) - only if D0 has wrap
-      if (bd.dimensions[0].wrap != 0) {
-        auto dimAttr = AIE::BDDimLayoutAttr::get(
-            builder.getContext(),
-            bd.dimensions[0].wrap,      // size
-            bd.dimensions[1].stepSize   // stride
-        );
-        dimAttrs.push_back(dimAttr);
-      }
-
-      // D0 dimension (innermost) - always included when dimensions are non-trivial
-      auto dimAttr = AIE::BDDimLayoutAttr::get(
-          builder.getContext(),
-          bd.bufferLength,            // size (in 32-bit words)
-          bd.dimensions[0].stepSize   // stride
-      );
-      dimAttrs.push_back(dimAttr);
-    }
-
-    AIE::BDDimLayoutArrayAttr dimensions = nullptr;
-    if (!dimAttrs.empty()) {
-      SmallVector<AIE::BDDimLayoutAttr> bdDimAttrs;
-      for (auto attr : dimAttrs) {
-        bdDimAttrs.push_back(llvm::cast<AIE::BDDimLayoutAttr>(attr));
-      }
-      dimensions = AIE::BDDimLayoutArrayAttr::get(builder.getContext(), bdDimAttrs);
-    }
+    AIE::BDDimLayoutArrayAttr dimensions = buildDimensionAttrs(bd);
 
     auto bdOp = builder.create<AIE::DMABDOp>(
         builder.getUnknownLoc(),
@@ -446,25 +309,10 @@ private:
       bdOp.setBdIdAttr(builder.getI32IntegerAttr(bd.bdIndex));
 
     // Emit lock release if needed
-    if (bd.hasLockRelease()) {
-      auto lock = getOrCreateLock(bd.column, bd.row, bd.lockRelId);
-
-      builder.create<AIE::UseLockOp>(
-          builder.getUnknownLoc(),
-          lock,
-          AIE::LockAction::Release,
-          std::abs(bd.lockRelValue)  // Use absolute value
-      );
-    }
+    emitLockRelease(bd);
 
     // Terminate the block
-    if (bd.useNextBd) {
-      // For now, create a simple end terminator
-      // Full next_bd support requires block references
-      builder.create<AIE::EndOp>(builder.getUnknownLoc());
-    } else {
-      builder.create<AIE::EndOp>(builder.getUnknownLoc());
-    }
+    emitBlockTerminator(bd);
   }
 
   void emitSwitchboxForTile(const ParsedSwitchboxConfig &config) {
@@ -499,6 +347,109 @@ private:
     }
 
     // Terminate with aie.end
+    builder.create<AIE::EndOp>(builder.getUnknownLoc());
+  }
+
+  /// Helper: Emit lock acquire operation if BD has lock acquire
+  void emitLockAcquire(const ParsedBDConfig &bd) {
+    if (!bd.hasLockAcquire()) {
+      return;
+    }
+
+    auto lock = getOrCreateLock(bd.column, bd.row, bd.lockAcquire.lockId);
+
+    // Determine lock action based on sign of value
+    AIE::LockAction action;
+    int32_t lockValue;
+    if (bd.lockAcquire.value < 0) {
+      action = AIE::LockAction::AcquireGreaterEqual;
+      lockValue = -bd.lockAcquire.value;  // Use absolute value
+    } else {
+      action = AIE::LockAction::Acquire;
+      lockValue = bd.lockAcquire.value;
+    }
+
+    builder.create<AIE::UseLockOp>(
+        builder.getUnknownLoc(),
+        lock,
+        action,
+        lockValue
+    );
+  }
+
+  /// Helper: Build dimension attributes from BD configuration
+  AIE::BDDimLayoutArrayAttr buildDimensionAttrs(const ParsedBDConfig &bd) {
+    if (!bd.hasDimensions()) {
+      return nullptr;
+    }
+
+    SmallVector<Attribute> dimAttrs;
+
+    // Build dimension layout attributes from outermost to innermost
+    // Hardware dimension mapping:
+    //   - bd.dimensions[0] = D0 (innermost)
+    //   - bd.dimensions[1] = D1 (middle)
+    //   - bd.dimensions[2] = D2 (outermost)
+
+    // D2 dimension (outermost) - only if D1 has wrap
+    if (bd.dimensions[1].wrap != 0) {
+      auto dimAttr = AIE::BDDimLayoutAttr::get(
+          builder.getContext(),
+          bd.dimensions[1].wrap,      // size
+          bd.dimensions[2].stepSize   // stride
+      );
+      dimAttrs.push_back(dimAttr);
+    }
+
+    // D1 dimension (middle) - only if D0 has wrap
+    if (bd.dimensions[0].wrap != 0) {
+      auto dimAttr = AIE::BDDimLayoutAttr::get(
+          builder.getContext(),
+          bd.dimensions[0].wrap,      // size
+          bd.dimensions[1].stepSize   // stride
+      );
+      dimAttrs.push_back(dimAttr);
+    }
+
+    // D0 dimension (innermost) - always included when dimensions are non-trivial
+    auto dimAttr = AIE::BDDimLayoutAttr::get(
+        builder.getContext(),
+        bd.bufferLength,            // size (in 32-bit words)
+        bd.dimensions[0].stepSize   // stride
+    );
+    dimAttrs.push_back(dimAttr);
+
+    if (dimAttrs.empty()) {
+      return nullptr;
+    }
+
+    SmallVector<AIE::BDDimLayoutAttr> bdDimAttrs;
+    for (auto attr : dimAttrs) {
+      bdDimAttrs.push_back(llvm::cast<AIE::BDDimLayoutAttr>(attr));
+    }
+    return AIE::BDDimLayoutArrayAttr::get(builder.getContext(), bdDimAttrs);
+  }
+
+  /// Helper: Emit lock release operation if BD has lock release
+  void emitLockRelease(const ParsedBDConfig &bd) {
+    if (!bd.hasLockRelease()) {
+      return;
+    }
+
+    auto lock = getOrCreateLock(bd.column, bd.row, bd.lockRelId);
+
+    builder.create<AIE::UseLockOp>(
+        builder.getUnknownLoc(),
+        lock,
+        AIE::LockAction::Release,
+        std::abs(bd.lockRelValue)  // Use absolute value
+    );
+  }
+
+  /// Helper: Emit block termination (EndOp)
+  void emitBlockTerminator(const ParsedBDConfig &bd) {
+    // For now, create a simple end terminator
+    // Full next_bd support requires block references
     builder.create<AIE::EndOp>(builder.getUnknownLoc());
   }
 
