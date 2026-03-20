@@ -51,17 +51,7 @@ using namespace xilinx::AIE;
 namespace {
 
 #ifdef HAVE_BOOTGEN
-/// Format register information as a string for attaching to MLIR operations
-std::string formatRegisterInfo(const RegisterInfo *regInfo, uint32_t addr) {
-  if (!regInfo)
-    return "";
-
-  std::string result = regInfo->module + "::" + regInfo->name;
-  if (!regInfo->description.empty()) {
-    result += " - " + regInfo->description;
-  }
-  return result;
-}
+// formatRegisterInfo removed - not used in final output
 #endif
 
 /// Helper class to manage lifted BD emission state
@@ -403,13 +393,8 @@ LogicalResult extractPDIFromXclbin(StringRef xclbinData,
   // Find PDI section (or AIE_PARTITION section for NPU xclbins)
   uint32_t numSections = header->m_header.m_numSections;
 
-  llvm::outs() << "xclbin has " << numSections << " sections\n";
-
   // First, try to find a PDI section (kind 18)
   for (uint32_t i = 0; i < numSections; i++) {
-    llvm::outs() << "Section " << i << ": kind=" << sections[i].m_sectionKind
-                 << " offset=" << sections[i].m_sectionOffset
-                 << " size=" << sections[i].m_sectionSize << "\n";
     if (sections[i].m_sectionKind == PDI) {
       // Found PDI section
       uint64_t offset = sections[i].m_sectionOffset;
@@ -423,7 +408,6 @@ LogicalResult extractPDIFromXclbin(StringRef xclbinData,
       pdiData.resize(len);
       std::memcpy(pdiData.data(), data + offset, len);
 
-      llvm::outs() << "Found PDI section: " << len << " bytes\n";
       return success();
     }
   }
@@ -443,7 +427,6 @@ LogicalResult extractPDIFromXclbin(StringRef xclbinData,
       pdiData.resize(len);
       std::memcpy(pdiData.data(), data + offset, len);
 
-      llvm::outs() << "Found AIE_PARTITION section (treating as PDI): " << len << " bytes\n";
       return success();
     }
   }
@@ -507,9 +490,6 @@ LogicalResult extractCDOFromPDI(const uint8_t *pdiData, size_t pdiSize,
       cdoData.resize(totalLen);
       std::memcpy(cdoData.data(), pdiData + i - 4, totalLen);
 
-      llvm::outs() << "Found CDO: version=0x"
-                   << llvm::format("%x", *(pdiData + i + 4))
-                   << ", length=" << cdoLen << " words\n";
       return success();
     }
   }
@@ -538,7 +518,6 @@ LogicalResult decodeCDOToCmds(const uint8_t *data, size_t len,
     commands.push_back(cmd);
   }
 
-  llvm::outs() << "Decoded " << commands.size() << " CDO commands\n";
   return success();
 }
 
@@ -548,37 +527,21 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
                               llvm::ArrayRef<CdoCommand *> commands,
                               RegisterDatabase *regDB = nullptr,
                               bool emitLifted = false) {
-  llvm::outs() << "DEBUG: Entering emitMLIRFromCDO with " << commands.size()
-               << " commands, emitLifted=" << emitLifted << "\n";
-  llvm::outs().flush();
-
   OpBuilder builder(module.getContext());
-  llvm::outs() << "DEBUG: Created OpBuilder\n";
-  llvm::outs().flush();
   builder.setInsertionPointToEnd(module.getBody());
-  llvm::outs() << "DEBUG: Set insertion point\n";
-  llvm::outs().flush();
 
-  llvm::outs() << "DEBUG: Creating aie.device\n";
-  llvm::outs().flush();
   // Create aie.device
   auto deviceOp = AIE::DeviceOp::create(
       builder, builder.getUnknownLoc(),
       AIE::AIEDeviceAttr::get(builder.getContext(), AIE::AIEDevice::npu1_1col),
       mlir::StringAttr::get(builder.getContext(), "xclbin_device"));
 
-  llvm::outs() << "DEBUG: Created device, creating block\n";
-  llvm::outs().flush();
   Block *deviceBlock = &deviceOp.getRegion().emplaceBlock();
   builder.setInsertionPointToEnd(deviceBlock);
 
-  llvm::outs() << "DEBUG: Creating runtime_sequence\n";
-  llvm::outs().flush();
   // Create runtime_sequence
   auto seqOp = AIE::RuntimeSequenceOp::create(
       builder, builder.getUnknownLoc(), "configure");
-  llvm::outs() << "DEBUG: Created runtime_sequence\n";
-  llvm::outs().flush();
 
   Block *seqBlock = &seqOp.getBody().emplaceBlock();
   builder.setInsertionPointToEnd(seqBlock);
@@ -597,15 +560,12 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
     liftedEmitter = std::make_unique<LiftedBDEmitter>(builder, deviceOp);
   }
 
-  llvm::outs() << "Starting first pass: processing blockwrite data\n";
-
   // First pass: collect blockwrite data and create memref.global operations
   int blockwriteIdx = 0;
   llvm::DenseMap<CdoCommand *, int> blockwriteMap;
 
   for (CdoCommand *cmd : commands) {
     if (cmd->type == CdoCmdSetBlock) {
-      llvm::outs() << "Processing blockwrite " << blockwriteIdx << "\n";
       // Create memref.global for blockwrite data
       std::string globalName =
           "cdo_blockwrite_" + std::to_string(blockwriteIdx);
@@ -632,14 +592,9 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
     }
   }
 
-  llvm::outs() << "Starting second pass: emitting MLIR operations for "
-               << commands.size() << " commands\n";
-
   // Second pass: emit operations in sequence
   for (size_t cmdIdx = 0; cmdIdx < commands.size(); cmdIdx++) {
     CdoCommand *cmd = commands[cmdIdx];
-    llvm::outs() << "Processing command " << cmdIdx << "/" << commands.size()
-                 << " type=" << cmd->type << "\n";
     Location loc = builder.getUnknownLoc();
 
     switch (cmd->type) {
@@ -675,11 +630,6 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
       if (completedBD.has_value()) {
         if (emitLifted && liftedEmitter) {
           liftedEmitter->recordBD(*completedBD);
-        } else {
-          // Annotated mode: emit comment
-          llvm::outs() << "// ===== DMA BD Configuration Complete =====\n";
-          BDPrettyPrinter::printAsComment(llvm::outs(), *completedBD);
-          llvm::outs() << "// =========================================\n";
         }
       }
 
@@ -687,20 +637,6 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
       if (switchConn.has_value()) {
         if (emitLifted && liftedEmitter) {
           liftedEmitter->recordSwitchboxConnection(*switchConn);
-        } else {
-          // Annotated mode: emit comment
-          SwitchboxPrettyPrinter::printConnectionAsComment(llvm::outs(), *switchConn);
-        }
-      }
-
-      // Look up register name if database is available (for debugging)
-      if (!emitLifted && regDB) {
-        const RegisterInfo *regInfo = regDB->lookupRegisterByAddress(addr);
-        if (regInfo) {
-          std::string info = formatRegisterInfo(regInfo, addr);
-          llvm::outs() << "// Write to " << info << " (0x"
-                       << llvm::format("%08X", addr) << " = 0x"
-                       << llvm::format("%08X", value) << ")\n";
         }
       }
 
@@ -719,18 +655,6 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
       uint32_t mask = cmd->mask;
       uint32_t value = cmd->value;
 
-      // Look up register name if database is available
-      if (regDB) {
-        const RegisterInfo *regInfo = regDB->lookupRegisterByAddress(addr);
-        if (regInfo) {
-          std::string info = formatRegisterInfo(regInfo, addr);
-          llvm::outs() << "// MaskWrite to " << info << " (0x"
-                       << llvm::format("%08X", addr) << " = 0x"
-                       << llvm::format("%08X", value) << ", mask=0x"
-                       << llvm::format("%08X", mask) << ")\n";
-        }
-      }
-
       AIEX::NpuMaskWrite32Op::create(builder, loc, addr, value, mask,
                                      nullptr, nullptr, nullptr);
       break;
@@ -748,17 +672,6 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
           loc, memrefType, builder.getStringAttr(globalName));
 
       uint32_t addr = static_cast<uint32_t>(cmd->dstaddr & 0xFFFFFFFF);
-
-      // Look up register name if database is available
-      if (regDB) {
-        const RegisterInfo *regInfo = regDB->lookupRegisterByAddress(addr);
-        if (regInfo) {
-          std::string info = formatRegisterInfo(regInfo, addr);
-          llvm::outs() << "// BlockWrite to " << info << " (0x"
-                       << llvm::format("%08X", addr) << ", "
-                       << cmd->count << " words)\n";
-        }
-      }
 
       AIEX::NpuBlockWriteOp::create(builder, loc, addr,
                                     getGlobal.getResult(),
@@ -781,35 +694,25 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
         liftedEmitter->recordBD(bd);
       }
     } else {
-      llvm::outs() << "// ===== Incomplete BD Configurations =====\n";
+      // Warn about incomplete BDs
       for (const auto &bd : pendingBDs) {
-        llvm::outs() << "// WARNING: Incomplete BD (only "
-                     << (bd.validBd ? "valid" : "partial") << ")\n";
-        BDPrettyPrinter::printAsComment(llvm::outs(), bd);
+        llvm::errs() << "Warning: Incomplete BD configuration found (tile "
+                     << bd.column << "," << bd.row << " BD " << bd.bdIndex << ")\n";
       }
-      llvm::outs() << "// ========================================\n";
     }
   }
 
   // Add terminator to runtime_sequence block
   builder.setInsertionPointToEnd(seqBlock);
-  AIEX::NpuSyncOp::create(builder, builder.getUnknownLoc(),
-                          /*column=*/0, /*row=*/0,
-                          /*direction=*/0, /*channel=*/0,
-                          /*column_num=*/0, /*row_num=*/0);
+  builder.create<AIE::EndOp>(builder.getUnknownLoc());
 
   // Emit all lifted BDs and switchboxes
   if (emitLifted && liftedEmitter) {
-    llvm::outs() << "Emitting lifted BDs and switchboxes\n";
     builder.setInsertionPointToStart(deviceBlock);
-    llvm::outs() << "Calling emitAllBDs()...\n";
     liftedEmitter->emitAllBDs();
-    llvm::outs() << "Calling emitAllSwitchboxes()...\n";
     liftedEmitter->emitAllSwitchboxes();
-    llvm::outs() << "Finished emitting lifted operations\n";
   }
 
-  llvm::outs() << "emitMLIRFromCDO completed successfully\n";
   return success();
 }
 #endif // HAVE_BOOTGEN
@@ -822,12 +725,6 @@ namespace AIE {
 /// Main entry point: translate xclbin binary to MLIR module.
 LogicalResult AIETranslateFromXclbin(ModuleOp module, StringRef filename,
                                      bool emitLifted) {
-  llvm::outs() << "Translating xclbin to MLIR: " << filename;
-  if (emitLifted) {
-    llvm::outs() << " (lifted mode)";
-  }
-  llvm::outs() << "\n";
-
   // Step 1: Load register database for AIE2
   auto regDB = RegisterDatabase::loadAIE2();
   if (!regDB) {
@@ -859,7 +756,6 @@ LogicalResult AIETranslateFromXclbin(ModuleOp module, StringRef filename,
     return module.emitError("Failed to emit MLIR from CDO commands");
   }
 
-  llvm::outs() << "Successfully translated xclbin to MLIR\n";
   return success();
 #else
   return module.emitError("CDO decoding not available - bootgen library was not built (OpenSSL required)");
