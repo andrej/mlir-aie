@@ -213,7 +213,12 @@ private:
     auto memOp = builder.create<AIE::MemOp>(builder.getUnknownLoc(),
                                              builder.getIndexType(), tile);
     Block *memBlock = &memOp.getBody().emplaceBlock();
-    builder.setInsertionPointToEnd(memBlock);
+
+    // Create an explicit end block first
+    Block *endBlock = new Block();
+    memBlock->getParent()->push_back(endBlock);
+    builder.setInsertionPointToEnd(endBlock);
+    builder.create<AIE::EndOp>(builder.getUnknownLoc());
 
     // First pass: Create all BD blocks and register them (without terminators)
     llvm::SmallVector<std::pair<const ParsedBDConfig*, Block*>> bdBlockPairs;
@@ -222,15 +227,19 @@ private:
       bdBlockPairs.push_back({&bd, bdBlock});
     }
 
-    // Second pass: Add terminators to all blocks
+    // Second pass: Add terminators to all blocks (using the end block)
     for (const auto &[bd, bdBlock] : bdBlockPairs) {
       builder.setInsertionPointToEnd(bdBlock);
-      emitBlockTerminator(*bd);
+      emitBlockTerminator(*bd, endBlock);
     }
 
-    // Terminate the main block with aie.end
+    // Terminate the main block: branch to first BD block if any, otherwise end block
     builder.setInsertionPointToEnd(memBlock);
-    builder.create<AIE::EndOp>(builder.getUnknownLoc());
+    if (!bdBlockPairs.empty()) {
+      builder.create<cf::BranchOp>(builder.getUnknownLoc(), bdBlockPairs[0].second);
+    } else {
+      builder.create<cf::BranchOp>(builder.getUnknownLoc(), endBlock);
+    }
   }
 
   void emitShimDmaOpForTile(TileID tileId, const llvm::SmallVector<ParsedBDConfig> &bds) {
@@ -242,7 +251,12 @@ private:
     auto shimDmaOp = builder.create<AIE::ShimDMAOp>(builder.getUnknownLoc(),
                                                      builder.getIndexType(), tile);
     Block *shimDmaBlock = &shimDmaOp.getBody().emplaceBlock();
-    builder.setInsertionPointToEnd(shimDmaBlock);
+
+    // Create an explicit end block first
+    Block *endBlock = new Block();
+    shimDmaBlock->getParent()->push_back(endBlock);
+    builder.setInsertionPointToEnd(endBlock);
+    builder.create<AIE::EndOp>(builder.getUnknownLoc());
 
     // First pass: Create all BD blocks and register them (without terminators)
     llvm::SmallVector<std::pair<const ParsedBDConfig*, Block*>> bdBlockPairs;
@@ -251,15 +265,19 @@ private:
       bdBlockPairs.push_back({&bd, bdBlock});
     }
 
-    // Second pass: Add terminators to all blocks
+    // Second pass: Add terminators to all blocks (using the end block)
     for (const auto &[bd, bdBlock] : bdBlockPairs) {
       builder.setInsertionPointToEnd(bdBlock);
-      emitBlockTerminator(*bd);
+      emitBlockTerminator(*bd, endBlock);
     }
 
-    // Terminate the main block with aie.end
+    // Terminate the main block: branch to first BD block if any, otherwise end block
     builder.setInsertionPointToEnd(shimDmaBlock);
-    builder.create<AIE::EndOp>(builder.getUnknownLoc());
+    if (!bdBlockPairs.empty()) {
+      builder.create<cf::BranchOp>(builder.getUnknownLoc(), bdBlockPairs[0].second);
+    } else {
+      builder.create<cf::BranchOp>(builder.getUnknownLoc(), endBlock);
+    }
   }
 
   // Helper to emit a single BD block without terminator (for two-pass emission)
@@ -475,8 +493,8 @@ private:
     );
   }
 
-  /// Helper: Emit block termination (EndOp or NextBDOp)
-  void emitBlockTerminator(const ParsedBDConfig &bd) {
+  /// Helper: Emit block termination (NextBDOp or branch to end)
+  void emitBlockTerminator(const ParsedBDConfig &bd, Block *endBlock) {
     if (bd.useNextBd) {
       // Find the target BD block
       auto key = std::make_tuple(bd.column, bd.row, static_cast<int>(bd.nextBd));
@@ -486,10 +504,10 @@ private:
         builder.create<AIE::NextBDOp>(builder.getUnknownLoc(), it->second);
         return;
       }
-      // If target block not found, fall back to aie.end (shouldn't happen if BDs are emitted in order)
+      // If target block not found, fall back to branching to end
     }
-    // Default: emit aie.end
-    builder.create<AIE::EndOp>(builder.getUnknownLoc());
+    // Default: branch to the end block
+    builder.create<cf::BranchOp>(builder.getUnknownLoc(), endBlock);
   }
 
   OpBuilder &builder;
