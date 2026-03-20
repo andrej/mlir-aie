@@ -28,16 +28,26 @@ Tests decompilation of `/workspace/mlir-aie/test/npu-xrt/ctrl_packet_reconfig/ai
 
 ## Running the Tests
 
-### Option 1: Using the test script (recommended)
+### Option 1: Using lit (recommended - fully integrated)
+```bash
+# Setup environment
+source /opt/xilinx/xrt/setup.sh
+source /workspace/buildenv/bin/activate
+export PEANO_INSTALL_DIR="$(pip show llvm-aie 2>/dev/null | grep ^Location: | awk '{print $2}')/llvm-aie"
+source /workspace/mlir-aie/utils/env_setup.sh /workspace/mlir-aie/install ${PEANO_INSTALL_DIR}
+
+# Run all roundtrip tests
+cd /workspace/mlir-aie/build
+lit -v test/xclbin2mlir/roundtrip/
+
+# Or run a specific test
+lit -v test/xclbin2mlir/roundtrip/add_blockwrite_raw.mlir
+```
+
+### Option 2: Using the test script
 ```bash
 cd /workspace/mlir-aie/test/xclbin2mlir/roundtrip
 ./run_tests.sh
-```
-
-### Option 2: Using lit (if configured)
-```bash
-cd /workspace/mlir-aie/build
-lit -v ../test/xclbin2mlir/roundtrip/
 ```
 
 ### Option 3: Manual testing with FileCheck
@@ -71,4 +81,6 @@ These tests use the **lit** test framework with **FileCheck** patterns to valida
 ## Status
 
 ✅ Raw mode tests implemented and passing (March 2026)
+✅ Fully integrated with lit test infrastructure (March 2026)
+✅ Tests discoverable and executable via `lit test/xclbin2mlir/roundtrip/`
 ⏳ Lifted mode tests - pending
