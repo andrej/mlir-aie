@@ -713,6 +713,10 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
     liftedEmitter->emitAllSwitchboxes();
   }
 
+  // Add terminator to device block
+  builder.setInsertionPointToEnd(deviceBlock);
+  builder.create<AIE::EndOp>(builder.getUnknownLoc());
+
   return success();
 }
 #endif // HAVE_BOOTGEN
