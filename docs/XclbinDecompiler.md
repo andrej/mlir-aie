@@ -271,15 +271,17 @@ Declares a buffer (memory allocation) within a tile.
 
 **Interpretation:** Allocates 1024 32-bit integers in the local memory of tile (0,2).
 
-#### 3. `aie.lock`
+#### 3. `aie.lock` (Not Currently Emitted)
 Declares a hardware lock for synchronization.
 
-**Format:**
+**Note:** While `aie.lock` is a valid AIE dialect operation, the xclbin decompiler does not currently emit lock declarations in lifted mode. Lock information is encoded in the DMA BD control registers but not lifted to standalone operations.
+
+**Standard Format (for reference):**
 ```mlir
 %lock = aie.lock(%tile, LOCK_ID)
 ```
 
-**Example:**
+**Example (not emitted by decompiler):**
 ```mlir
 %lock_0_2_0 = aie.lock(%tile_0_2, 0)
 ```
@@ -287,42 +289,49 @@ Declares a hardware lock for synchronization.
 - `%tile`: The tile containing this lock
 - `LOCK_ID`: Hardware lock identifier (typically 0-15)
 
-**Interpretation:** Declares lock #0 on tile (0,2) for synchronizing access to shared resources.
+**To access lock information from decompiled xclbin:**
+- Use raw mode to see BD control register writes (DMA_BDx_5)
+- Refer to [Known Limitations](#known-limitations) section for details
 
-#### 4. `aie.dma_bd`
-Defines a DMA Buffer Descriptor for data movement.
+#### 4. `aie.mem` and `aie.dma_bd`
+Defines DMA memory operations containing Buffer Descriptors.
 
 **Format:**
 ```mlir
-aie.dma_bd(%buffer : memref<SIZE x TYPE>, OFFSET, LENGTH) {
-  // Optional attributes
-  dimensions = [#aie.dma_dim<...>, ...]
-  lock_acq_id = ...
-  lock_acq_val = ...
-  lock_rel_id = ...
-  lock_rel_val = ...
-  next_bd = ...
-  valid_bd = ...
+%mem = aie.mem(%tile) {
+  // Basic block containing BD
+  aie.dma_bd(%buffer : memref<SIZE x TYPE>, OFFSET, LENGTH) {bd_id = ID : i32}
+  aie.end  // or aie.next_bd ^next_block
+^next_block:
+  aie.dma_bd(%buffer2 : memref<SIZE x TYPE>, OFFSET, LENGTH) {bd_id = ID : i32}
+  aie.end
 }
 ```
 
 **Example:**
 ```mlir
-aie.dma_bd(%buffer_0 : memref<1024xi32>, 0, 256) {
-  lock_acq_id = 0
-  lock_acq_val = 1
-  lock_rel_id = 0
-  lock_rel_val = 0
-  valid_bd = true
+%mem_0_2 = aie.mem(%tile_0_2) {
+  // BD 0
+  aie.dma_bd(%buffer_0 : memref<1024xi32>, 0, 256) {bd_id = 0 : i32}
+  aie.end
+^bb1:
+  // BD 1 with next_bd chaining
+  aie.dma_bd(%buffer_1 : memref<1024xi32>, 0, 256) {bd_id = 1 : i32}
+  aie.next_bd ^bb2  // Chain to next BD
+^bb2:
+  // BD 2 (end of chain)
+  aie.dma_bd(%buffer_2 : memref<1024xi32>, 0, 256) {bd_id = 2 : i32}
+  aie.end
 }
 ```
 
-**Parameters:**
-- `%buffer`: The buffer this BD operates on
-- `OFFSET`: Starting offset in the buffer (in elements)
-- `LENGTH`: Number of elements to transfer
+**Structure:**
+- `aie.mem` contains the DMA memory region for a tile
+- Each `aie.dma_bd` operation is in its own basic block
+- Blocks terminate with either `aie.end` (no chaining) or `aie.next_bd ^block` (chain to next)
+- `bd_id` attribute identifies the hardware buffer descriptor number
 
-**Attributes:** (See [Interpreting DMA Buffer Descriptor Configurations](#interpreting-dma-buffer-descriptor-configurations))
+**Note:** In current implementation, incomplete BD configurations may show `memref<0xi32>` due to missing register values in the xclbin.
 
 #### 5. `aie.switchbox`
 Defines routing configuration for a tile's switchbox.
@@ -370,32 +379,21 @@ module {
     %tile_0_3 = aie.tile(0, 3)
 
     // Declare buffers
-    %buffer_0 = aie.buffer(%tile_0_2) : memref<1024xi32>
-    %buffer_1 = aie.buffer(%tile_0_2) : memref<1024xi32>
+    %buffer_0 = aie.buffer(%tile_0_2) {sym_name = "bd_buf_0_2_0"} : memref<1024xi32>
+    %buffer_1 = aie.buffer(%tile_0_2) {sym_name = "bd_buf_0_2_1"} : memref<1024xi32>
 
-    // Declare locks
-    %lock_0 = aie.lock(%tile_0_2, 0)
-    %lock_1 = aie.lock(%tile_0_2, 1)
-
-    // Define DMA buffer descriptors
-    aie.dma_bd(%buffer_0 : memref<1024xi32>, 0, 256) {
-      lock_acq_id = 0
-      lock_acq_val = 1
-      lock_rel_id = 0
-      lock_rel_val = 0
-      next_bd = 1
-      valid_bd = true
+    // DMA memory block with buffer descriptors
+    %mem_0_2 = aie.mem(%tile_0_2) {
+      // BD 0 (chains to BD 1)
+      aie.dma_bd(%buffer_0 : memref<1024xi32>, 0, 256) {bd_id = 0 : i32}
+      aie.next_bd ^bb1
+    ^bb1:
+      // BD 1 (end of chain)
+      aie.dma_bd(%buffer_1 : memref<1024xi32>, 0, 256) {bd_id = 1 : i32}
+      aie.end
     }
 
-    aie.dma_bd(%buffer_1 : memref<1024xi32>, 0, 256) {
-      lock_acq_id = 1
-      lock_acq_val = 1
-      lock_rel_id = 1
-      lock_rel_val = 0
-      valid_bd = true
-    }
-
-    // Configure switchbox routing
+    // Configure switchbox routing (if present in xclbin)
     aie.switchbox(%tile_0_2) {
       aie.connect<DMA : 0, South : 0>
       aie.connect<North : 0, DMA : 1>
@@ -406,8 +404,11 @@ module {
     }
   }
 
-  aiex.runtime_sequence {
-    // Any operations that couldn't be lifted remain here
+  aiex.runtime_sequence @configure() {
+    // Operations that couldn't be lifted remain here as raw NPU writes
+    // This includes shim tile configuration, control registers, etc.
+    aiex.npu.write32 {address = 2228224 : ui32, value = 0 : ui32}
+    aie.end
   }
 }
 ```
@@ -528,32 +529,30 @@ aie.dma_bd(%buffer : memref<1024xi32>, 0, 256) {
 
 ### BD Chaining
 
-Multiple BDs can be chained for complex transfer sequences:
+Multiple BDs can be chained for complex transfer sequences using `aie.next_bd`:
 
 ```mlir
-// BD 0
-aie.dma_bd(%buffer_a : memref<512xi32>, 0, 128) {
-  next_bd = 1
-  valid_bd = true
-}
-
-// BD 1
-aie.dma_bd(%buffer_b : memref<512xi32>, 0, 128) {
-  next_bd = 2
-  valid_bd = true
-}
-
-// BD 2 (last in chain)
-aie.dma_bd(%buffer_c : memref<512xi32>, 0, 128) {
-  valid_bd = true
-  // No next_bd - end of chain
+%mem = aie.mem(%tile_0_2) {
+  // BD 0 - chains to BD 1
+  aie.dma_bd(%buffer_a : memref<512xi32>, 0, 128) {bd_id = 0 : i32}
+  aie.next_bd ^bb1
+^bb1:
+  // BD 1 - chains to BD 2
+  aie.dma_bd(%buffer_b : memref<512xi32>, 0, 128) {bd_id = 1 : i32}
+  aie.next_bd ^bb2
+^bb2:
+  // BD 2 - end of chain
+  aie.dma_bd(%buffer_c : memref<512xi32>, 0, 128) {bd_id = 2 : i32}
+  aie.end
 }
 ```
 
 **Interpretation:**
 - Execute BD 0, then automatically proceed to BD 1, then BD 2
+- `aie.next_bd ^block` chains to the next buffer descriptor
+- `aie.end` terminates the chain
 - Enables complex transfer patterns without CPU intervention
-- Can create circular chains by pointing back to BD 0
+- Can create circular chains by having the last BD use `aie.next_bd` to point back to an earlier block
 
 ### Advanced BD Attributes
 
@@ -582,27 +581,25 @@ valid_bd = true
 
 ### Complete DMA BD Example
 
+The following shows a conceptual BD with advanced features. Note that in the current implementation, many attributes (locks, dimensions) are encoded in the raw BD registers but not fully lifted to operation attributes:
+
 ```mlir
-// Transfer a 16x16 tile from a larger 256x256 matrix
-// Each element is 32-bit, access stride pattern with locking
-aie.dma_bd(%matrix : memref<65536xi32>, 0, 256) {
-  // 2D access: 16 rows of 16 elements each
-  dimensions = [
-    #aie.dma_dim<stepsize = 1, wrap = 16>,    // 16 elements per row
-    #aie.dma_dim<stepsize = 256, wrap = 16>   // 16 rows, stride 256 between rows
-  ]
-
-  // Synchronization
-  lock_acq_id = 0
-  lock_acq_val = 1      // Wait for producer
-  lock_rel_id = 0
-  lock_rel_val = 0      // Signal consumer done
-
-  // Chaining
-  next_bd = 1           // Continue to next BD
-  valid_bd = true
+%mem = aie.mem(%tile_0_2) {
+  // BD 0: Transfer a 16x16 tile from a larger 256x256 matrix
+  // In actual decompiled output, this would show as:
+  aie.dma_bd(%matrix : memref<65536xi32>, 0, 256) {bd_id = 0 : i32}
+  aie.next_bd ^bb1  // Chain to next BD
+^bb1:
+  // BD 1: Next transfer in chain
+  aie.dma_bd(%matrix2 : memref<65536xi32>, 0, 256) {bd_id = 1 : i32}
+  aie.end  // End of chain
 }
 ```
+
+**Note:** Advanced features like multi-dimensional access patterns, lock configurations, and iteration controls are present in the raw BD register writes but are not currently decoded into operation attributes in lifted mode. To access this information:
+- Use raw mode to see the BD control register values
+- Refer to AIE hardware documentation for bit field layouts
+- Look for writes to DMA_BDx_2, DMA_BDx_3 (dimensions), and DMA_BDx_5 (locks) registers
 
 ---
 
@@ -856,58 +853,42 @@ aie-translate --xclbin-to-mlir --emit-lifted add.xclbin > add_lifted.mlir
 
 ```mlir
 module {
-  aie.device(npu1_1col) {
+  aie.device(npu1_1col) @xclbin_device {
     // Tile declarations
     %tile_0_2 = aie.tile(0, 2)
 
-    // Buffer allocations
-    %buffer_a = aie.buffer(%tile_0_2) : memref<1024xi32>
-    %buffer_b = aie.buffer(%tile_0_2) : memref<1024xi32>
-    %buffer_c = aie.buffer(%tile_0_2) : memref<1024xi32>
+    // Buffer allocations (note: may show memref<0xi32> if BD config incomplete)
+    %buffer_a = aie.buffer(%tile_0_2) {sym_name = "bd_buf_0_2_0"} : memref<1024xi32>
+    %buffer_b = aie.buffer(%tile_0_2) {sym_name = "bd_buf_0_2_1"} : memref<1024xi32>
+    %buffer_c = aie.buffer(%tile_0_2) {sym_name = "bd_buf_0_2_2"} : memref<1024xi32>
 
-    // Lock declarations
-    %lock_a = aie.lock(%tile_0_2, 0)
-    %lock_b = aie.lock(%tile_0_2, 1)
-    %lock_c = aie.lock(%tile_0_2, 2)
-
-    // DMA Buffer Descriptor for input A
-    aie.dma_bd(%buffer_a : memref<1024xi32>, 0, 1024) {
-      lock_acq_id = 0
-      lock_acq_val = 0        // Acquire empty buffer
-      lock_rel_id = 0
-      lock_rel_val = 1        // Release as full
-      next_bd = 1
-      valid_bd = true
+    // DMA memory block containing buffer descriptors
+    %mem_0_2 = aie.mem(%tile_0_2) {
+      // BD 0 for input A
+      aie.dma_bd(%buffer_a : memref<1024xi32>, 0, 1024) {bd_id = 0 : i32}
+      aie.next_bd ^bb1  // Chain to BD 1
+    ^bb1:
+      // BD 1 for input B
+      aie.dma_bd(%buffer_b : memref<1024xi32>, 0, 1024) {bd_id = 1 : i32}
+      aie.next_bd ^bb2  // Chain to BD 2
+    ^bb2:
+      // BD 2 for output C
+      aie.dma_bd(%buffer_c : memref<1024xi32>, 0, 1024) {bd_id = 2 : i32}
+      aie.end  // End of chain
     }
 
-    // DMA Buffer Descriptor for input B
-    aie.dma_bd(%buffer_b : memref<1024xi32>, 0, 1024) {
-      lock_acq_id = 1
-      lock_acq_val = 0
-      lock_rel_id = 1
-      lock_rel_val = 1
-      next_bd = 2
-      valid_bd = true
-    }
-
-    // DMA Buffer Descriptor for output C
-    aie.dma_bd(%buffer_c : memref<1024xi32>, 0, 1024) {
-      lock_acq_id = 2
-      lock_acq_val = 1        // Wait for result
-      lock_rel_id = 2
-      lock_rel_val = 0        // Release as empty
-      valid_bd = true
-    }
-
-    // Switchbox routing for tile (0,2)
+    // Switchbox routing for tile (0,2) (if configured in xclbin)
     aie.switchbox(%tile_0_2) {
       aie.connect<NOC : 0, DMA : 0>     // Input from NOC to DMA
       aie.connect<DMA : 1, NOC : 0>     // Output from DMA to NOC
     }
   }
 
-  aiex.runtime_sequence {
-    // Remaining runtime operations
+  aiex.runtime_sequence @configure() {
+    // Shim tile and other operations that couldn't be lifted
+    aiex.npu.write32 {address = 2228224 : ui32, value = 0 : ui32}
+    // ... more NPU operations ...
+    aie.end
   }
 }
 ```
@@ -919,27 +900,32 @@ From the lifted output, we can immediately understand:
 1. **Resources Used:**
    - One tile: (0, 2)
    - Three buffers: A, B, C (each 1024 elements)
-   - Three locks: 0, 1, 2
+   - DMA memory block with 3 buffer descriptors
 
-2. **Data Movement:**
-   - BD 0: Load input A (acquire empty, release full)
-   - BD 1: Load input B (acquire empty, release full)
-   - BD 2: Store output C (acquire full/ready, release empty)
+2. **Data Movement (BD Chain):**
+   - BD 0: Load input A, chains to BD 1
+   - BD 1: Load input B, chains to BD 2
+   - BD 2: Store output C, ends chain
+   - The chain executes automatically: BD 0 → BD 1 → BD 2
 
-3. **Synchronization Pattern:**
-   - Locks ensure data is ready before processing
-   - Producer-consumer protocol on each buffer
+3. **BD Structure:**
+   - All BDs are contained within `aie.mem(%tile_0_2)`
+   - Each BD is in its own basic block
+   - `aie.next_bd` creates the BD chain
+   - `aie.end` terminates the chain
 
-4. **Routing:**
+4. **Routing (if present):**
    - Data flows: NOC → DMA (input path)
    - Data flows: DMA → NOC (output path)
    - Tile (0,2) serves as both input and output interface
 
 5. **Execution Flow:**
-   1. DMA loads buffer A from NOC (releases lock 0 = full)
-   2. DMA loads buffer B from NOC (releases lock 1 = full)
-   3. Core processes A + B → C (releases lock 2 = full)
-   4. DMA stores buffer C to NOC (releases lock 2 = empty)
+   1. DMA executes BD 0: loads buffer A from NOC
+   2. Automatically proceeds to BD 1: loads buffer B from NOC
+   3. Automatically proceeds to BD 2: stores buffer C to NOC
+   4. Chain completes
+
+**Note:** Lock information is encoded in the raw BD registers but may not be fully decoded if some registers weren't written in the xclbin. Check the raw mode output for complete lock configurations.
 
 ### Step 5: Debugging Use Case
 
@@ -947,13 +933,12 @@ Suppose the output is incorrect. Using the decompiled output:
 
 **Check BD configurations:**
 ```mlir
-aie.dma_bd(%buffer_c : memref<1024xi32>, 0, 1024) {
-  lock_acq_id = 2
-  lock_acq_val = 1
-  ...
+%mem_0_2 = aie.mem(%tile_0_2) {
+  aie.dma_bd(%buffer_c : memref<1024xi32>, 0, 1024) {bd_id = 2 : i32}
+  aie.end
 }
 ```
-✓ Output BD correctly waits for lock 2 = 1 (result ready)
+✓ Output BD (BD 2) is correctly defined with proper size
 
 **Check buffer sizes:**
 ```mlir
@@ -981,18 +966,34 @@ The xclbin decompiler (`aie-translate --xclbin-to-mlir`) is a powerful tool for 
 
 - **Raw mode**: Shows exact register operations for low-level analysis
 - **Lifted mode**: Reconstructs high-level operations for readability
+  - Emits `aie.tile`, `aie.buffer`, `aie.mem`, and `aie.dma_bd` operations
+  - DMA buffer descriptors are organized in `aie.mem` blocks with basic block structure
+  - BD chaining uses `aie.next_bd` terminator operations
+  - Shim tile operations remain as raw NPU writes
+  - Switchbox lifting works when routing is configured in the xclbin
 - **Use cases**: Debugging, reverse engineering, learning, verification
 
 **Recommended workflow:**
-1. Start with lifted mode for quick understanding
-2. Use raw mode when you need exact register details
+1. Start with lifted mode for quick understanding of tile/buffer/DMA structure
+2. Use raw mode when you need exact register details or lock configurations
 3. Combine both outputs for comprehensive analysis
+4. Be aware that incomplete BD configurations may show `memref<0xi32>` - check raw mode for details
 
 **Key benefits:**
 - Verify compiler output matches expectations
 - Understand existing designs without source code
-- Learn AIE architecture and best practices
+- Learn AIE architecture and best practices (especially DMA BD chaining)
 - Debug configuration issues systematically
+- Reverse engineer xclbin files to understand data movement patterns
+
+**Current Implementation Features (as of March 2026):**
+- ✅ Raw mode: Complete register-level output
+- ✅ Lifted mode: Tile, buffer, and DMA BD semantic lifting
+- ✅ Next_BD chaining support with proper block structure
+- ✅ Shim DMA BD detection (remains as raw writes)
+- ✅ Switchbox routing semantic lifting (when configured)
+- ⚠️ Lock operations: Encoded in BDs but not lifted to standalone operations
+- ⚠️ Incomplete BDs: May show zero-length buffers when registers aren't fully written
 
 For more information on AIE architecture and MLIR dialect operations, see:
 - [AIE Dialect Documentation](https://xilinx.github.io/mlir-aie/)
@@ -1042,9 +1043,22 @@ Warning: Incomplete BD configuration found (tile X,Y BD N)
 - Be configured through different mechanisms
 - Not be relevant for the specific operation mode
 
-**Impact:** These incomplete BDs are still recorded in lifted mode but may have partial information. The decompiled output will show the fields that were actually configured.
+**Impact:** These incomplete BDs are still recorded in lifted mode but may have partial information:
+- Buffers may show `memref<0xi32>` indicating zero-length due to missing length register
+- Lock configurations may not be fully decoded
+- Dimension information may be absent
+The decompiled output will show the fields that were actually configured.
 
-**Solution:** This is usually informational and doesn't indicate a problem. The BD configuration may intentionally use default values for some fields.
+**Example:**
+```mlir
+%bd_buf_0_2_0 = aie.buffer(%tile_0_2) {sym_name = "bd_buf_0_2_0"} : memref<0xi32>
+%mem_0_2 = aie.mem(%tile_0_2) {
+  aie.dma_bd(%bd_buf_0_2_0 : memref<0xi32>, 0, 0) {bd_id = 0 : i32}
+  aie.end
+}
+```
+
+**Solution:** This is usually informational and doesn't indicate a problem. The BD configuration may intentionally use default values for some fields. For complete information, check the raw mode output to see all register writes.
 
 ### 3. Block Write Data Storage
 
@@ -1089,16 +1103,35 @@ Error: CDO decoding not available - bootgen library was not built (OpenSSL requi
 2. Rebuild MLIR-AIE to enable bootgen support
 3. Verify that CMake configuration shows `HAVE_BOOTGEN` is enabled
 
-### 6. Switchbox Lifting Limitations
+### 6. Lock Operations Not Currently Lifted
+
+**Current Status:** Lock information is encoded in the DMA BD control registers (DMA_BDx_5) but is not currently lifted to standalone `aie.lock` operations.
+
+**Behavior:** Lock acquire/release configurations exist in the raw BD registers but:
+- No `aie.lock` declarations are created in lifted mode
+- Lock information is part of the BD register values but not decoded into attributes
+- You won't see `lock_acq_id`, `lock_acq_val`, `lock_rel_id`, `lock_rel_val` attributes on `aie.dma_bd` operations
+
+**Workaround:** To see lock configuration details:
+- Use raw mode (`--xclbin-to-mlir` without `--emit-lifted`)
+- Look for writes to BD control registers (offset +20 within each BD)
+- Manually decode the lock fields using the AIE hardware documentation
+
+### 7. Switchbox Lifting Limitations
 
 **Current Status:** Switchbox routing configuration lifting is implemented and works for most common patterns.
 
-**Limitation:** Complex packet-switched routing may not be fully lifted to semantic operations, and some packet configuration registers may remain as raw writes.
+**Limitation:**
+- Switchboxes are only emitted if routing is explicitly configured in the xclbin
+- Complex packet-switched routing may not be fully lifted to semantic operations
+- Some packet configuration registers may remain as raw writes
 
-**Expected Behavior:** In lifted mode, you should see:
+**Expected Behavior:** In lifted mode, when switchbox routing is configured:
 - `aie.switchbox` operations for tiles with routing
 - `aie.connect` operations for stream connections
 - Some configuration registers may remain as raw NPU writes in the runtime sequence
+
+**Note:** Many simple designs may not configure switchbox routing in the xclbin, so you may not see any `aie.switchbox` operations even though the lifting is implemented.
 
 ---
 
