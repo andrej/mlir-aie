@@ -35,6 +35,26 @@
 // CHECK:       aiex.npu.maskwrite32 {address = {{[0-9]+}} : ui32, mask = {{[0-9]+}} : ui32, value = {{[0-9]+}} : ui32}
 
 // ============================================================================
+// SPECIFIC ADDRESS RANGE CHECKS - Verify hardware register regions
+// ============================================================================
+
+// DMA Buffer Descriptor (BD) configuration registers - typically in 0x21E000-0x21F000 range
+// These writes configure buffer descriptors for DMA operations (addresses 2220000-2359999)
+// CHECK-DAG:   aiex.npu.write32 {address = 222{{[0-9][0-9][0-9][0-9]}} : ui32, value = {{[0-9]+}} : ui32}
+
+// Stream Switch configuration registers - typically in 0x21D000-0x21E000 range
+// These writes configure stream routing and connections (addresses 2215936-2224639)
+// CHECK-DAG:   aiex.npu.maskwrite32 {address = 221{{[5-9][0-9][0-9][0-9]}} : ui32, mask = {{[0-9]+}} : ui32, value = {{[0-9]+}} : ui32}
+
+// Column control registers - lower address range (0x3F000 range, ~258048)
+// These configure column-level settings (addresses 257000-269999)
+// CHECK-DAG:   aiex.npu.write32 {address = 25{{[7-9][0-9][0-9][0-9]}} : ui32, value = {{[0-9]+}} : ui32}
+
+// AXI MM registers - middle address range (0x1B0000 range, ~1769472)
+// These configure memory-mapped AXI interfaces (addresses 1760000-1779999)
+// CHECK-DAG:   aiex.npu.write32 {address = 176{{[0-9][0-9][0-9][0-9]}} : ui32, value = {{[0-9]+}} : ui32}
+
+// ============================================================================
 // TERMINATOR - Verify proper termination
 // ============================================================================
 
