@@ -3523,14 +3523,11 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
       std::string outputFileName =
           formatString(instsName, devName.str(), seqName);
 
-      // Determine output path:
-      // - If generateNpuInsts is set, use the filename as-is (relative to cwd)
-      //   This matches Python aiecc.py behavior where --npu-insts-name
-      //   specifies the output path relative to the current directory.
-      // - Otherwise (e.g., for generateFullElf), write to tmpDirName so
-      //   the full ELF generation can find them.
+      // Determine output path: use the filename as-is if absolute, otherwise
+      // write to tmpDirName for test isolation (prevents race conditions when
+      // multiple tests run in parallel).
       SmallString<128> outputPath;
-      if (generateNpuInsts) {
+      if (sys::path::is_absolute(outputFileName)) {
         outputPath = outputFileName;
       } else {
         outputPath = tmpDirName;
@@ -3699,7 +3696,8 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
   if (sys::path::is_absolute(ctrlPktBinFileName)) {
     ctrlPktBinPath = ctrlPktBinFileName;
   } else {
-    ctrlPktBinPath = ctrlPktBinFileName;
+    ctrlPktBinPath = tmpDirName;
+    sys::path::append(ctrlPktBinPath, ctrlPktBinFileName);
   }
 
   std::vector<uint32_t> ctrlPktInstructions;
@@ -3760,7 +3758,8 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
   if (sys::path::is_absolute(dmaSeqBinFileName)) {
     dmaSeqBinPath = dmaSeqBinFileName;
   } else {
-    dmaSeqBinPath = dmaSeqBinFileName;
+    dmaSeqBinPath = tmpDirName;
+    sys::path::append(dmaSeqBinPath, dmaSeqBinFileName);
   }
 
   std::vector<uint32_t> dmaSeqInstructions;
