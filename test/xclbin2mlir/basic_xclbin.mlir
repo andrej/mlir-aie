@@ -7,8 +7,8 @@
 // Test raw (default) mode - should emit raw register writes
 // CHECK-RAW: module
 // CHECK-RAW: aie.device(npu1_1col)
-// CHECK-RAW: memref.global "private" constant @cdo_blockwrite_
-// CHECK-RAW: aiex.runtime_sequence
+// Note: This xclbin doesn't have blockwrite commands, so no memref.global
+// CHECK-RAW: aie.runtime_sequence
 // CHECK-RAW: aiex.npu.write32
 
 // Test lifted mode - should emit high-level AIE operations
@@ -17,4 +17,4 @@
 // CHECK-LIFTED-DAG: aie.tile
 // CHECK-LIFTED-DAG: aie.buffer
 // CHECK-LIFTED-DAG: aie.dma_bd
-// CHECK-LIFTED: aiex.runtime_sequence
+// CHECK-LIFTED: aie.runtime_sequence

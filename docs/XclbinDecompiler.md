@@ -271,27 +271,37 @@ Declares a buffer (memory allocation) within a tile.
 
 **Interpretation:** Allocates 1024 32-bit integers in the local memory of tile (0,2).
 
-#### 3. `aie.lock` (Not Currently Emitted)
-Declares a hardware lock for synchronization.
+#### 3. `aie.lock` and `aie.use_lock`
+Declares a hardware lock for synchronization and emits lock acquire/release operations.
 
-**Note:** While `aie.lock` is a valid AIE dialect operation, the xclbin decompiler does not currently emit lock declarations in lifted mode. Lock information is encoded in the DMA BD control registers but not lifted to standalone operations.
-
-**Standard Format (for reference):**
+**Format:**
 ```mlir
 %lock = aie.lock(%tile, LOCK_ID)
+
+// Inside aie.mem block:
+aie.use_lock(%lock, Acquire, VALUE)
+aie.dma_bd(...)
+aie.use_lock(%lock, Release, VALUE)
 ```
 
-**Example (not emitted by decompiler):**
+**Example:**
 ```mlir
 %lock_0_2_0 = aie.lock(%tile_0_2, 0)
+%mem_0_2 = aie.mem(%tile_0_2) {
+  aie.use_lock(%lock_0_2_0, Acquire, 1)
+  aie.dma_bd(%buffer : memref<256xi32>, 0, 256) {bd_id = 0 : i32}
+  aie.use_lock(%lock_0_2_0, Release, 1)
+  aie.end
+}
 ```
 
 - `%tile`: The tile containing this lock
 - `LOCK_ID`: Hardware lock identifier (typically 0-15)
+- `Acquire`/`AcquireGreaterEqual`: Lock acquire action
+- `Release`: Lock release action
+- `VALUE`: Lock value to acquire/release
 
-**To access lock information from decompiled xclbin:**
-- Use raw mode to see BD control register writes (DMA_BDx_5)
-- Refer to [Known Limitations](#known-limitations) section for details
+**Note:** Lock operations are only emitted when buffer descriptors in the xclbin have lock acquire or release configured. Many simple designs may not use locks, so you may not see `aie.lock` or `aie.use_lock` operations in the output.
 
 #### 4. `aie.mem` and `aie.dma_bd`
 Defines DMA memory operations containing Buffer Descriptors.
@@ -581,7 +591,7 @@ valid_bd = true
 
 ### Complete DMA BD Example
 
-The following shows a conceptual BD with advanced features. Note that in the current implementation, many attributes (locks, dimensions) are encoded in the raw BD registers but not fully lifted to operation attributes:
+The following shows a conceptual BD with advanced features. Lock operations are lifted to `aie.use_lock` operations, while dimension attributes are included when the BD has multi-dimensional addressing configured:
 
 ```mlir
 %mem = aie.mem(%tile_0_2) {
@@ -596,9 +606,7 @@ The following shows a conceptual BD with advanced features. Note that in the cur
 }
 ```
 
-**Note:** Advanced features like multi-dimensional access patterns, lock configurations, and iteration controls are present in the raw BD register writes but are not currently decoded into operation attributes in lifted mode. To access this information:
-- Use raw mode to see the BD control register values
-- Refer to AIE hardware documentation for bit field layouts
+**Note:** Lock operations are lifted to `aie.use_lock` operations within the `aie.mem` block. Dimension attributes are included when the BD has multi-dimensional addressing configured. Iteration controls are present in the raw BD register writes but may not be fully represented as operation attributes.
 - Look for writes to DMA_BDx_2, DMA_BDx_3 (dimensions), and DMA_BDx_5 (locks) registers
 
 ---
@@ -925,7 +933,7 @@ From the lifted output, we can immediately understand:
    3. Automatically proceeds to BD 2: stores buffer C to NOC
    4. Chain completes
 
-**Note:** Lock information is encoded in the raw BD registers but may not be fully decoded if some registers weren't written in the xclbin. Check the raw mode output for complete lock configurations.
+**Note:** Lock information is decoded from BD control registers (DMA_BDx_5) and emitted as `aie.use_lock` operations. If you don't see lock operations in the output, it means the BD's lock enable bits weren't set in the xclbin. Check the raw mode output to verify register values.
 
 ### Step 5: Debugging Use Case
 
@@ -990,9 +998,9 @@ The xclbin decompiler (`aie-translate --xclbin-to-mlir`) is a powerful tool for 
 - ✅ Raw mode: Complete register-level output
 - ✅ Lifted mode: Tile, buffer, and DMA BD semantic lifting
 - ✅ Next_BD chaining support with proper block structure
+- ✅ Lock operations: `aie.lock` and `aie.use_lock` when locks are configured
 - ✅ Shim DMA BD detection (remains as raw writes)
 - ✅ Switchbox routing semantic lifting (when configured)
-- ⚠️ Lock operations: Encoded in BDs but not lifted to standalone operations
 - ⚠️ Incomplete BDs: May show zero-length buffers when registers aren't fully written
 
 For more information on AIE architecture and MLIR dialect operations, see:
@@ -1045,8 +1053,8 @@ Warning: Incomplete BD configuration found (tile X,Y BD N)
 
 **Impact:** These incomplete BDs are still recorded in lifted mode but may have partial information:
 - Buffers may show `memref<0xi32>` indicating zero-length due to missing length register
-- Lock configurations may not be fully decoded
-- Dimension information may be absent
+- Lock operations will only appear if lock enable bits are set in the BD control register
+- Dimension information may be absent if wrap/stride registers aren't configured
 The decompiled output will show the fields that were actually configured.
 
 **Example:**
@@ -1103,19 +1111,17 @@ Error: CDO decoding not available - bootgen library was not built (OpenSSL requi
 2. Rebuild MLIR-AIE to enable bootgen support
 3. Verify that CMake configuration shows `HAVE_BOOTGEN` is enabled
 
-### 6. Lock Operations Not Currently Lifted
+### 6. Lock Operations
 
-**Current Status:** Lock information is encoded in the DMA BD control registers (DMA_BDx_5) but is not currently lifted to standalone `aie.lock` operations.
+**Current Status:** Lock information is now fully lifted from DMA BD control registers (DMA_BDx_5) to `aie.lock` and `aie.use_lock` operations.
 
-**Behavior:** Lock acquire/release configurations exist in the raw BD registers but:
-- No `aie.lock` declarations are created in lifted mode
-- Lock information is part of the BD register values but not decoded into attributes
-- You won't see `lock_acq_id`, `lock_acq_val`, `lock_rel_id`, `lock_rel_val` attributes on `aie.dma_bd` operations
+**Behavior:** When buffer descriptors have lock acquire or release configured:
+- `aie.lock` declarations are created for each unique lock ID
+- `aie.use_lock` operations are emitted before and after `aie.dma_bd` operations
+- Lock acquire uses either `Acquire` or `AcquireGreaterEqual` action depending on the sign of the encoded value
+- Lock release uses the `Release` action with the absolute value
 
-**Workaround:** To see lock configuration details:
-- Use raw mode (`--xclbin-to-mlir` without `--emit-lifted`)
-- Look for writes to BD control registers (offset +20 within each BD)
-- Manually decode the lock fields using the AIE hardware documentation
+**Note:** Many simple designs may not configure locks in their buffer descriptors. If you don't see lock operations in the output, it means the xclbin doesn't have lock configurations enabled. To verify this, use raw mode to see the BD control registers and check if lock enable bits are set.
 
 ### 7. Switchbox Lifting Limitations
 
