@@ -216,12 +216,21 @@ private:
     Block *memBlock = &memOp.getBody().emplaceBlock();
     builder.setInsertionPointToEnd(memBlock);
 
-    // Emit all BDs for this tile
+    // First pass: Create all BD blocks and register them (without terminators)
+    llvm::SmallVector<std::pair<const ParsedBDConfig*, Block*>> bdBlockPairs;
     for (const auto &bd : bds) {
-      emitSingleBD(bd, memBlock);
+      Block *bdBlock = emitSingleBDWithoutTerminator(bd, memBlock);
+      bdBlockPairs.push_back({&bd, bdBlock});
     }
 
-    // Terminate with aie.end
+    // Second pass: Add terminators to all blocks
+    for (const auto &[bd, bdBlock] : bdBlockPairs) {
+      builder.setInsertionPointToEnd(bdBlock);
+      emitBlockTerminator(*bd);
+    }
+
+    // Terminate the main block with aie.end
+    builder.setInsertionPointToEnd(memBlock);
     builder.create<AIE::EndOp>(builder.getUnknownLoc());
   }
 
@@ -236,22 +245,38 @@ private:
     Block *shimDmaBlock = &shimDmaOp.getBody().emplaceBlock();
     builder.setInsertionPointToEnd(shimDmaBlock);
 
-    // Emit all BDs for this shim tile
+    // First pass: Create all BD blocks and register them (without terminators)
+    llvm::SmallVector<std::pair<const ParsedBDConfig*, Block*>> bdBlockPairs;
     for (const auto &bd : bds) {
-      emitSingleShimBD(bd, shimDmaBlock);
+      Block *bdBlock = emitSingleShimBDWithoutTerminator(bd, shimDmaBlock);
+      bdBlockPairs.push_back({&bd, bdBlock});
     }
 
-    // Terminate with aie.end
+    // Second pass: Add terminators to all blocks
+    for (const auto &[bd, bdBlock] : bdBlockPairs) {
+      builder.setInsertionPointToEnd(bdBlock);
+      emitBlockTerminator(*bd);
+    }
+
+    // Terminate the main block with aie.end
+    builder.setInsertionPointToEnd(shimDmaBlock);
     builder.create<AIE::EndOp>(builder.getUnknownLoc());
   }
 
-  void emitSingleBD(const ParsedBDConfig &bd, Block *memBlock) {
+  // Helper to emit a single BD block without terminator (for two-pass emission)
+  Block* emitSingleBDWithoutTerminator(const ParsedBDConfig &bd, Block *memBlock) {
     OpBuilder::InsertionGuard guard(builder);
 
     // Create a basic block for this BD
     Block *bdBlock = new Block();
     memBlock->getParent()->push_back(bdBlock);
     builder.setInsertionPointToEnd(bdBlock);
+
+    // Register this block for next_bd chaining
+    if (bd.bdIndex >= 0) {
+      auto key = std::make_tuple(bd.column, bd.row, bd.bdIndex);
+      bdBlocksByTileAndIndex[key] = bdBlock;
+    }
 
     // Emit lock acquire if needed
     emitLockAcquire(bd);
@@ -276,17 +301,23 @@ private:
     // Emit lock release if needed
     emitLockRelease(bd);
 
-    // Terminate the block
-    emitBlockTerminator(bd);
+    return bdBlock;
   }
 
-  void emitSingleShimBD(const ParsedBDConfig &bd, Block *shimDmaBlock) {
+  // Helper to emit a single shim BD block without terminator (for two-pass emission)
+  Block* emitSingleShimBDWithoutTerminator(const ParsedBDConfig &bd, Block *shimDmaBlock) {
     OpBuilder::InsertionGuard guard(builder);
 
     // Create a basic block for this BD
     Block *bdBlock = new Block();
     shimDmaBlock->getParent()->push_back(bdBlock);
     builder.setInsertionPointToEnd(bdBlock);
+
+    // Register this block for next_bd chaining
+    if (bd.bdIndex >= 0) {
+      auto key = std::make_tuple(bd.column, bd.row, bd.bdIndex);
+      bdBlocksByTileAndIndex[key] = bdBlock;
+    }
 
     // Emit lock acquire if needed
     emitLockAcquire(bd);
@@ -311,8 +342,7 @@ private:
     // Emit lock release if needed
     emitLockRelease(bd);
 
-    // Terminate the block
-    emitBlockTerminator(bd);
+    return bdBlock;
   }
 
   void emitSwitchboxForTile(const ParsedSwitchboxConfig &config) {
@@ -446,10 +476,20 @@ private:
     );
   }
 
-  /// Helper: Emit block termination (EndOp)
+  /// Helper: Emit block termination (EndOp or NextBDOp)
   void emitBlockTerminator(const ParsedBDConfig &bd) {
-    // For now, create a simple end terminator
-    // Full next_bd support requires block references
+    if (bd.useNextBd) {
+      // Find the target BD block
+      auto key = std::make_tuple(bd.column, bd.row, static_cast<int>(bd.nextBd));
+      auto it = bdBlocksByTileAndIndex.find(key);
+      if (it != bdBlocksByTileAndIndex.end()) {
+        // Emit aie.next_bd to the target block
+        builder.create<AIE::NextBDOp>(builder.getUnknownLoc(), it->second);
+        return;
+      }
+      // If target block not found, fall back to aie.end (shouldn't happen if BDs are emitted in order)
+    }
+    // Default: emit aie.end
     builder.create<AIE::EndOp>(builder.getUnknownLoc());
   }
 
@@ -464,6 +504,9 @@ private:
 
   // Switchbox storage
   std::map<SwitchboxAccumulator::SwitchboxKey, ParsedSwitchboxConfig> switchboxes;
+
+  // BD block tracking for next_bd chaining (col, row, bdIndex) -> Block*
+  std::map<std::tuple<int, int, int>, Block*> bdBlocksByTileAndIndex;
 };
 
 #ifdef HAVE_BOOTGEN
