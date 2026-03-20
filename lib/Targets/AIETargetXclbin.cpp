@@ -50,10 +50,6 @@ using namespace xilinx::AIE;
 
 namespace {
 
-#ifdef HAVE_BOOTGEN
-// formatRegisterInfo removed - not used in final output
-#endif
-
 /// Helper class to manage lifted BD emission state
 class LiftedBDEmitter {
 public:
