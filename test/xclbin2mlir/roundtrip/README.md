@@ -8,7 +8,9 @@ These tests verify that the xclbin decompiler correctly decompiles binary xclbin
 
 ## Test Files
 
-### add_blockwrite_raw.mlir
+### Raw Mode Tests
+
+#### add_blockwrite_raw.mlir
 Tests decompilation of `/workspace/mlir-aie/test/npu-xrt/add_blockwrite/aie.xclbin` in raw mode.
 
 **Verifies:**
@@ -19,12 +21,46 @@ Tests decompilation of `/workspace/mlir-aie/test/npu-xrt/add_blockwrite/aie.xclb
 - `aiex.npu.maskwrite32` operations are generated for masked writes
 - Proper `aie.end` terminator is present
 
-### ctrl_packet_reconfig_raw.mlir
+#### ctrl_packet_reconfig_raw.mlir
 Tests decompilation of `/workspace/mlir-aie/test/npu-xrt/ctrl_packet_reconfig/aie.xclbin` in raw mode.
 
 **Verifies:**
 - Same checks as add_blockwrite_raw.mlir
 - Ensures control packet designs are correctly decompiled
+
+### Lifted Mode Tests
+
+#### add_blockwrite_lifted.mlir
+Tests decompilation of `/workspace/mlir-aie/test/npu-xrt/add_blockwrite/aie.xclbin` in lifted mode.
+
+**Verifies:**
+- Semantic AIE operations are generated (aie.tile, aie.buffer, aie.mem, aie.dma_bd)
+- Buffer descriptors are lifted to aie.dma_bd operations
+- Compute tile operations use high-level constructs
+- Shim tile operations still use raw NPU operations
+
+#### ctrl_packet_reconfig_lifted.mlir
+Tests decompilation of `/workspace/mlir-aie/test/npu-xrt/ctrl_packet_reconfig/aie.xclbin` in lifted mode.
+
+**Verifies:**
+- Same checks as add_blockwrite_lifted.mlir
+- Control packet designs work correctly in lifted mode
+
+#### lock_roundtrip_lifted.mlir (XFAIL)
+Tests lock lifting in the xclbin decompiler for DMA buffer descriptors with lock acquire/release.
+
+**Verifies:**
+- Lock operations are created (aie.lock) from BD register 5 lock fields
+- Lock acquire operations are emitted before DMA BDs (aie.use_lock with Acquire/AcquireGreaterEqual)
+- Lock release operations are emitted after DMA BDs (aie.use_lock with Release)
+- Correct lock action selection based on signed lock value
+
+**Note:** This test is currently marked XFAIL (expected failure) because it requires an xclbin
+file with lock-configured buffer descriptors. The lock lifting code is fully implemented
+in `/workspace/mlir-aie/lib/Targets/AIETargetXclbin.cpp` (functions `getOrCreateLock()`,
+`emitLockAcquire()`, `emitLockRelease()`), but needs an xclbin compiled with aietools
+that includes locks in BD register 5. See the test file comments for details on
+generating the required xclbin.
 
 ## Running the Tests
 
@@ -73,14 +109,17 @@ These tests use the **lit** test framework with **FileCheck** patterns to valida
 
 ## Future Work
 
-- Add lifted mode tests (using `--emit-lifted` flag)
+- Generate xclbin files with lock-configured BDs to enable lock_roundtrip_lifted.mlir test
 - Add tests for additional xclbin files from the test suite
 - Add tests that compare specific values (e.g., buffer sizes, lock IDs)
 - Add tests for error cases (malformed xclbin files)
+- Add tests for switchbox lifting in lifted mode
 
 ## Status
 
 ✅ Raw mode tests implemented and passing (March 2026)
+✅ Lifted mode tests implemented and passing (March 2026)
 ✅ Fully integrated with lit test infrastructure (March 2026)
 ✅ Tests discoverable and executable via `lit test/xclbin2mlir/roundtrip/`
-⏳ Lifted mode tests - pending
+✅ Lock lifting test framework created (March 2026)
+⏳ Lock lifting end-to-end verification - pending xclbin with locks
