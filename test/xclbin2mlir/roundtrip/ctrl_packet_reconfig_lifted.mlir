@@ -5,12 +5,9 @@
 // and verifies that the operations are correctly generated.
 //
 // The ctrl_packet_reconfig design uses control packets for dynamic reconfiguration.
-//
-// NOTE: Currently, lifted mode (--emit-lifted) still emits low-level NPU operations
-// (aiex.npu.write32 and aiex.npu.maskwrite32) rather than high-level semantic
-// AIE operations (aie.tile, aie.buffer, aie.mem, aie.dma_bd, aie.switchbox).
-// This test documents the current behavior and can be updated when lifted mode
-// is enhanced to produce semantic operations.
+// This xclbin does not contain DMA BD configurations, so it only emits low-level
+// NPU operations for register writes. When DMA BDs are present in compute tiles,
+// lifted mode will emit semantic AIE operations (aie.tile, aie.buffer, aie.mem, aie.dma_bd).
 
 // ============================================================================
 // MODULE STRUCTURE - Verify basic module structure

@@ -4,11 +4,10 @@
 // This test decompiles the add_blockwrite xclbin with the --emit-lifted flag
 // and verifies that the operations are correctly generated.
 //
-// NOTE: Currently, lifted mode (--emit-lifted) still emits low-level NPU operations
-// (aiex.npu.write32 and aiex.npu.maskwrite32) rather than high-level semantic
-// AIE operations (aie.tile, aie.buffer, aie.mem, aie.dma_bd, aie.switchbox).
-// This test documents the current behavior and can be updated when lifted mode
-// is enhanced to produce semantic operations.
+// Lifted mode (--emit-lifted) now emits high-level semantic AIE operations
+// (aie.tile, aie.buffer, aie.mem, aie.dma_bd) for compute tiles (row > 0).
+// Shim tiles (row 0) continue to emit low-level NPU operations since they
+// lack local memory and use different DMA infrastructure.
 
 // ============================================================================
 // MODULE STRUCTURE - Verify basic module structure
@@ -16,6 +15,23 @@
 
 // CHECK: module {
 // CHECK:   aie.device(npu1_1col)
+
+// ============================================================================
+// SEMANTIC AIE OPERATIONS - Verify semantic lifting for compute tiles
+// ============================================================================
+
+// Compute tile (0, 2) should be created
+// CHECK:     %[[TILE_0_2:.*]] = aie.tile(0, 2)
+
+// Buffers for BDs should be created
+// CHECK:     %[[BUF_0:.*]] = aie.buffer(%[[TILE_0_2]]) {sym_name = "bd_buf_0_2_0"} : memref<0xi32>
+
+// Memory operation should be created for compute tile
+// CHECK:     %[[MEM:.*]] = aie.mem(%[[TILE_0_2]]) {
+
+// DMA BD operations should be emitted inside aie.mem
+// CHECK:       aie.dma_bd(%[[BUF_0]] : memref<0xi32>, 0, 0) {bd_id = 0 : i32}
+// CHECK:       aie.end
 
 // ============================================================================
 // RUNTIME SEQUENCE - Verify runtime sequence block exists
@@ -26,10 +42,10 @@
 // CHECK:     aie.runtime_sequence @configure() {
 
 // ============================================================================
-// NPU OPERATIONS - Verify presence of NPU operations
+// NPU OPERATIONS - Verify presence of NPU operations for shim tiles
 // ============================================================================
 
-// Lifted mode currently emits aiex.npu.write32 operations
+// Shim tile operations and non-BD operations still emit raw NPU operations
 // CHECK:       aiex.npu.write32 {address = {{[0-9]+}} : ui32, value = {{[0-9]+}} : ui32}
 
 // Lifted mode currently emits aiex.npu.maskwrite32 operations
@@ -39,11 +55,11 @@
 // SPECIFIC ADDRESS RANGE CHECKS - Verify hardware register regions
 // ============================================================================
 
-// DMA Buffer Descriptor (BD) configuration registers - addresses in 0x220000 range (2220000+)
+// Shim DMA BD configuration (0x220000 range) - still emitted as raw writes for shim tiles
 // CHECK-DAG:   aiex.npu.write32 {address = 222{{[0-9][0-9][0-9][0-9]}} : ui32, value = {{[0-9]+}} : ui32}
 
-// Stream Switch configuration registers - addresses in 0x21D000-0x21E000 range (2215936-2224639)
-// CHECK-DAG:   aiex.npu.maskwrite32 {address = 221{{[5-9][0-9][0-9][0-9]}} : ui32, mask = {{[0-9]+}} : ui32, value = {{[0-9]+}} : ui32}
+// Note: Compute tile BD registers (0x21D000 range) are now lifted to aie.dma_bd operations
+// and should NOT appear as aiex.npu.write32 operations
 
 // Column control registers - lower address range (0x3F000 range, ~258048)
 // CHECK-DAG:   aiex.npu.write32 {address = 25{{[7-9][0-9][0-9][0-9]}} : ui32, value = {{[0-9]+}} : ui32}

@@ -89,7 +89,7 @@ BDAddressInfo BDAddressParser::parse(uint32_t addr) const {
       info.row = 0;
     } else {
       info.tileType = TileType::Compute;
-      info.row = rowPart - (numMemTileRows_ + 1);
+      info.row = rowPart;  // Use actual hardware row
     }
 
     info.isBDRegister = true;
@@ -111,7 +111,7 @@ BDAddressInfo BDAddressParser::parse(uint32_t addr) const {
 
     info.isBDRegister = true;
     info.column = column;
-    info.row = rowPart - 1;  // Memory tile row offset
+    info.row = rowPart;  // Use actual hardware row
     info.tileType = TileType::MemoryTile;
     info.bdIndex = bdOffset / kBDSize;
     info.regIndex = (bdOffset % kBDSize) / 4;
