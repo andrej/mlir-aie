@@ -97,8 +97,6 @@ void test_switch_address_parser_master_config() {
 
   // Create a connection: South0 -> Core0
   // Master enable, circuit mode, slave port 0 (Core)
-  uint32_t value = (1u << 31) | 0;  // Master enable, slave port 0
-
   SwitchConnectionInfo conn = parser.parseMasterConfig(addr);
 
   if (!conn.isValid) {
