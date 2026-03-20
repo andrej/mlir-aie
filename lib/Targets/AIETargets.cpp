@@ -419,6 +419,12 @@ void registerAIETranslations() {
   TranslateToMLIRRegistration registrationXclbinToMLIR(
       "xclbin-to-mlir", "Decompile xclbin binary to MLIR",
       [](StringRef inputFilename, MLIRContext *context) {
+        // Ensure dialects are loaded into the context
+        DialectRegistry registry;
+        registerDialects(registry);
+        context->appendDialectRegistry(registry);
+        context->loadAllAvailableDialects();
+
         auto module =
             ModuleOp::create(FileLineColLoc::get(context, inputFilename, 0, 0));
         if (failed(AIETranslateFromXclbin(module, inputFilename, emitLifted))) {

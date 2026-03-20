@@ -548,20 +548,37 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
                               llvm::ArrayRef<CdoCommand *> commands,
                               RegisterDatabase *regDB = nullptr,
                               bool emitLifted = false) {
+  llvm::outs() << "DEBUG: Entering emitMLIRFromCDO with " << commands.size()
+               << " commands, emitLifted=" << emitLifted << "\n";
+  llvm::outs().flush();
+
   OpBuilder builder(module.getContext());
+  llvm::outs() << "DEBUG: Created OpBuilder\n";
+  llvm::outs().flush();
   builder.setInsertionPointToEnd(module.getBody());
+  llvm::outs() << "DEBUG: Set insertion point\n";
+  llvm::outs().flush();
 
+  llvm::outs() << "DEBUG: Creating aie.device\n";
+  llvm::outs().flush();
   // Create aie.device
-  auto deviceOp = builder.create<AIE::DeviceOp>(
-      builder.getUnknownLoc(), AIE::AIEDeviceAttr::get(builder.getContext(),
-                                                        AIE::AIEDevice::npu1_1col));
+  auto deviceOp = AIE::DeviceOp::create(
+      builder, builder.getUnknownLoc(),
+      AIE::AIEDeviceAttr::get(builder.getContext(), AIE::AIEDevice::npu1_1col),
+      mlir::StringAttr::get(builder.getContext(), "xclbin_device"));
 
+  llvm::outs() << "DEBUG: Created device, creating block\n";
+  llvm::outs().flush();
   Block *deviceBlock = &deviceOp.getRegion().emplaceBlock();
   builder.setInsertionPointToEnd(deviceBlock);
 
+  llvm::outs() << "DEBUG: Creating runtime_sequence\n";
+  llvm::outs().flush();
   // Create runtime_sequence
   auto seqOp = AIE::RuntimeSequenceOp::create(
       builder, builder.getUnknownLoc(), "configure");
+  llvm::outs() << "DEBUG: Created runtime_sequence\n";
+  llvm::outs().flush();
 
   Block *seqBlock = &seqOp.getBody().emplaceBlock();
   builder.setInsertionPointToEnd(seqBlock);
@@ -580,12 +597,15 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
     liftedEmitter = std::make_unique<LiftedBDEmitter>(builder, deviceOp);
   }
 
+  llvm::outs() << "Starting first pass: processing blockwrite data\n";
+
   // First pass: collect blockwrite data and create memref.global operations
   int blockwriteIdx = 0;
   llvm::DenseMap<CdoCommand *, int> blockwriteMap;
 
   for (CdoCommand *cmd : commands) {
     if (cmd->type == CdoCmdSetBlock) {
+      llvm::outs() << "Processing blockwrite " << blockwriteIdx << "\n";
       // Create memref.global for blockwrite data
       std::string globalName =
           "cdo_blockwrite_" + std::to_string(blockwriteIdx);
@@ -612,8 +632,14 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
     }
   }
 
+  llvm::outs() << "Starting second pass: emitting MLIR operations for "
+               << commands.size() << " commands\n";
+
   // Second pass: emit operations in sequence
-  for (CdoCommand *cmd : commands) {
+  for (size_t cmdIdx = 0; cmdIdx < commands.size(); cmdIdx++) {
+    CdoCommand *cmd = commands[cmdIdx];
+    llvm::outs() << "Processing command " << cmdIdx << "/" << commands.size()
+                 << " type=" << cmd->type << "\n";
     Location loc = builder.getUnknownLoc();
 
     switch (cmd->type) {
@@ -765,13 +791,25 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
     }
   }
 
+  // Add terminator to runtime_sequence block
+  builder.setInsertionPointToEnd(seqBlock);
+  AIEX::NpuSyncOp::create(builder, builder.getUnknownLoc(),
+                          /*column=*/0, /*row=*/0,
+                          /*direction=*/0, /*channel=*/0,
+                          /*column_num=*/0, /*row_num=*/0);
+
   // Emit all lifted BDs and switchboxes
   if (emitLifted && liftedEmitter) {
+    llvm::outs() << "Emitting lifted BDs and switchboxes\n";
     builder.setInsertionPointToStart(deviceBlock);
+    llvm::outs() << "Calling emitAllBDs()...\n";
     liftedEmitter->emitAllBDs();
+    llvm::outs() << "Calling emitAllSwitchboxes()...\n";
     liftedEmitter->emitAllSwitchboxes();
+    llvm::outs() << "Finished emitting lifted operations\n";
   }
 
+  llvm::outs() << "emitMLIRFromCDO completed successfully\n";
   return success();
 }
 #endif // HAVE_BOOTGEN
