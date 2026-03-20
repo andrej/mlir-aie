@@ -20,7 +20,6 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Util/AIEDMABDLifting.h"
-#include "aie/Dialect/AIE/Util/AIERegisterDatabase.h"
 #include "aie/Dialect/AIE/Util/AIESwitchboxLifting.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
@@ -677,7 +676,6 @@ LogicalResult decodeCDOToCmds(const uint8_t *data, size_t len,
 /// Creates aie.device, runtime_sequence, and MLIR operations for register writes.
 LogicalResult emitMLIRFromCDO(ModuleOp module,
                               llvm::ArrayRef<CdoCommand *> commands,
-                              RegisterDatabase *regDB = nullptr,
                               bool emitLifted = false) {
   OpBuilder builder(module.getContext());
   builder.setInsertionPointToEnd(module.getBody());
@@ -889,34 +887,28 @@ namespace AIE {
 /// Main entry point: translate xclbin binary to MLIR module.
 LogicalResult AIETranslateFromXclbin(ModuleOp module, StringRef filename,
                                      bool emitLifted) {
-  // Step 1: Load register database for AIE2
-  auto regDB = RegisterDatabase::loadAIE2();
-  if (!regDB) {
-    llvm::errs() << "Warning: Failed to load register database. "
-                 << "Register names will not be annotated.\n";
-  }
-
 #ifdef HAVE_BOOTGEN
-  // Step 2: Extract PDI from xclbin
+  // Step 1: Extract PDI from xclbin
   std::vector<uint8_t> pdiData;
   if (failed(extractPDIFromXclbin(filename, pdiData))) {
     return module.emitError("Failed to extract PDI from xclbin");
   }
 
-  // Step 3: Extract CDO from PDI
+  // Step 2: Extract CDO from PDI
   std::vector<uint8_t> cdoData;
   if (failed(extractCDOFromPDI(pdiData.data(), pdiData.size(), cdoData))) {
     return module.emitError("Failed to extract CDO from PDI");
   }
-  // Step 4: Decode CDO to commands
+
+  // Step 3: Decode CDO to commands
   std::vector<CdoCommand *> commands;
   if (failed(
           decodeCDOToCmds(cdoData.data(), cdoData.size(), commands))) {
     return module.emitError("Failed to decode CDO binary");
   }
 
-  // Step 5: Emit MLIR operations (lifted or annotated mode)
-  if (failed(emitMLIRFromCDO(module, commands, regDB.get(), emitLifted))) {
+  // Step 4: Emit MLIR operations (lifted or raw mode)
+  if (failed(emitMLIRFromCDO(module, commands, emitLifted))) {
     return module.emitError("Failed to emit MLIR from CDO commands");
   }
 
