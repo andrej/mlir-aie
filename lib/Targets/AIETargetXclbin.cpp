@@ -68,7 +68,7 @@ public:
     return tile;
   }
 
-  /// Get or create a buffer for a BD
+  /// Get or create a buffer for a BD (compute tiles)
   Value getOrCreateBuffer(const ParsedBDConfig &bd) {
     // Create a unique buffer name based on tile and BD info
     std::string bufName = llvm::formatv("bd_buf_{0}_{1}_{2}",
@@ -92,6 +92,32 @@ public:
 
     buffers[bufName] = bufOp.getResult();
     return bufOp.getResult();
+  }
+
+  /// Get or create an external buffer for a BD (shim tiles)
+  Value getOrCreateExternalBuffer(const ParsedBDConfig &bd) {
+    // Create a unique buffer name based on tile and BD info
+    std::string bufName = llvm::formatv("ext_buf_{0}_{1}_{2}",
+                                        bd.column, bd.row, bd.bdIndex);
+
+    auto it = externalBuffers.find(bufName);
+    if (it != externalBuffers.end())
+      return it->second;
+
+    // Create external buffer with memref type
+    auto memrefType = MemRefType::get({static_cast<int64_t>(bd.bufferLength)},
+                                      builder.getI32Type());
+
+    OpBuilder::InsertionGuard guard(builder);
+    // Insert external buffers at the beginning of the device block
+    builder.setInsertionPointToStart(&device.getRegion().front());
+
+    auto extBufOp = builder.create<AIE::ExternalBufferOp>(
+        builder.getUnknownLoc(), memrefType,
+        builder.getStringAttr(bufName), nullptr);
+
+    externalBuffers[bufName] = extBufOp.getResult();
+    return extBufOp.getResult();
   }
 
   /// Get or create a lock operation
@@ -147,16 +173,17 @@ public:
     config.connections.push_back(newConn);
   }
 
-  /// Emit all collected BDs as aie.mem operations
+  /// Emit all collected BDs as aie.mem or aie.shim_dma operations
   void emitAllBDs() {
     auto &targetModel = getTargetModel(device);
     for (const auto &[tileId, bds] : tileBDs) {
-      // Skip shim tiles - they don't have local memory and use aie.shim_dma
-      // instead of aie.mem. For decompiled code, shim DMA BDs remain as raw writes.
       if (targetModel.isShimNOCorPLTile(tileId.col, tileId.row)) {
-        continue;
+        // Shim tiles use aie.shim_dma instead of aie.mem
+        emitShimDmaOpForTile(tileId, bds);
+      } else {
+        // Compute and memory tiles use aie.mem
+        emitMemOpForTile(tileId, bds);
       }
-      emitMemOpForTile(tileId, bds);
     }
   }
 
@@ -192,6 +219,26 @@ private:
     // Emit all BDs for this tile
     for (const auto &bd : bds) {
       emitSingleBD(bd, memBlock);
+    }
+
+    // Terminate with aie.end
+    builder.create<AIE::EndOp>(builder.getUnknownLoc());
+  }
+
+  void emitShimDmaOpForTile(TileID tileId, const llvm::SmallVector<ParsedBDConfig> &bds) {
+    auto tile = getOrCreateTile(tileId.col, tileId.row);
+
+    OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointAfter(tile);
+
+    auto shimDmaOp = builder.create<AIE::ShimDMAOp>(builder.getUnknownLoc(),
+                                                     builder.getIndexType(), tile);
+    Block *shimDmaBlock = &shimDmaOp.getBody().emplaceBlock();
+    builder.setInsertionPointToEnd(shimDmaBlock);
+
+    // Emit all BDs for this shim tile
+    for (const auto &bd : bds) {
+      emitSingleShimBD(bd, shimDmaBlock);
     }
 
     // Terminate with aie.end
@@ -312,6 +359,114 @@ private:
     }
   }
 
+  void emitSingleShimBD(const ParsedBDConfig &bd, Block *shimDmaBlock) {
+    OpBuilder::InsertionGuard guard(builder);
+
+    // Create a basic block for this BD
+    Block *bdBlock = new Block();
+    shimDmaBlock->getParent()->push_back(bdBlock);
+    builder.setInsertionPointToEnd(bdBlock);
+
+    // Emit lock acquire if needed
+    if (bd.hasLockAcquire()) {
+      auto lock = getOrCreateLock(bd.column, bd.row, bd.lockAcquire.lockId);
+
+      // Determine lock action based on sign of value
+      AIE::LockAction action;
+      int32_t lockValue;
+      if (bd.lockAcquire.value < 0) {
+        action = AIE::LockAction::AcquireGreaterEqual;
+        lockValue = -bd.lockAcquire.value;  // Use absolute value
+      } else {
+        action = AIE::LockAction::Acquire;
+        lockValue = bd.lockAcquire.value;
+      }
+
+      builder.create<AIE::UseLockOp>(
+          builder.getUnknownLoc(),
+          lock,
+          action,
+          lockValue
+      );
+    }
+
+    // Emit the dma_bd operation using external buffer
+    auto buffer = getOrCreateExternalBuffer(bd);
+
+    // Build dimension attributes if needed (same as for compute tiles)
+    SmallVector<Attribute> dimAttrs;
+    if (bd.hasDimensions()) {
+      // D2 dimension (outermost) - only if D1 has wrap
+      if (bd.dimensions[1].wrap != 0) {
+        auto dimAttr = AIE::BDDimLayoutAttr::get(
+            builder.getContext(),
+            bd.dimensions[1].wrap,      // size
+            bd.dimensions[2].stepSize   // stride
+        );
+        dimAttrs.push_back(dimAttr);
+      }
+
+      // D1 dimension (middle) - only if D0 has wrap
+      if (bd.dimensions[0].wrap != 0) {
+        auto dimAttr = AIE::BDDimLayoutAttr::get(
+            builder.getContext(),
+            bd.dimensions[0].wrap,      // size
+            bd.dimensions[1].stepSize   // stride
+        );
+        dimAttrs.push_back(dimAttr);
+      }
+
+      // D0 dimension (innermost) - always included when dimensions are non-trivial
+      auto dimAttr = AIE::BDDimLayoutAttr::get(
+          builder.getContext(),
+          bd.bufferLength,            // size (in 32-bit words)
+          bd.dimensions[0].stepSize   // stride
+      );
+      dimAttrs.push_back(dimAttr);
+    }
+
+    AIE::BDDimLayoutArrayAttr dimensions = nullptr;
+    if (!dimAttrs.empty()) {
+      SmallVector<AIE::BDDimLayoutAttr> bdDimAttrs;
+      for (auto attr : dimAttrs) {
+        bdDimAttrs.push_back(llvm::cast<AIE::BDDimLayoutAttr>(attr));
+      }
+      dimensions = AIE::BDDimLayoutArrayAttr::get(builder.getContext(), bdDimAttrs);
+    }
+
+    auto bdOp = builder.create<AIE::DMABDOp>(
+        builder.getUnknownLoc(),
+        buffer,
+        0,  // Offset for external buffers is typically 0
+        bd.bufferLength
+    );
+    if (dimensions)
+      bdOp.setDimensionsAttr(dimensions);
+    if (bd.bdIndex >= 0)
+      bdOp.setBdIdAttr(builder.getI32IntegerAttr(bd.bdIndex));
+
+    // Emit lock release if needed
+    if (bd.hasLockRelease()) {
+      auto lock = getOrCreateLock(bd.column, bd.row, bd.lockRelId);
+
+      builder.create<AIE::UseLockOp>(
+          builder.getUnknownLoc(),
+          lock,
+          AIE::LockAction::Release,
+          std::abs(bd.lockRelValue)  // Use absolute value
+      );
+    }
+
+    // Terminate the block
+    if (bd.useNextBd) {
+      // For now, create a simple end terminator
+      // Full next_bd support requires block references
+      builder.create<AIE::EndOp>(builder.getUnknownLoc());
+    } else {
+      builder.create<AIE::EndOp>(builder.getUnknownLoc());
+    }
+  }
+
   void emitSwitchboxForTile(const ParsedSwitchboxConfig &config) {
     if (!config.hasConnections()) {
       return;
@@ -351,6 +506,7 @@ private:
   AIE::DeviceOp device;
   llvm::DenseMap<TileID, AIE::TileOp> tiles;
   llvm::StringMap<Value> buffers;
+  llvm::StringMap<Value> externalBuffers;  // External buffers for shim tiles
   llvm::DenseMap<std::tuple<int, int, int>, Value> locks;  // (col, row, lockId) -> lock Value
   llvm::DenseMap<TileID, llvm::SmallVector<ParsedBDConfig>> tileBDs;
   llvm::DenseSet<uint32_t> liftedAddresses;
