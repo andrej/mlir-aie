@@ -151,7 +151,7 @@ target_include_directories(bootgen-lib PUBLIC
 install(
   TARGETS bootgen-lib
   DESTINATION lib
-  EXPORT bootgen-lib)
+  EXPORT MLIRTargets)
 install(
   FILES ${BOOTGEN_SOURCE}/bootgen_c_api.h
   DESTINATION include)

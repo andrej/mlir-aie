@@ -258,6 +258,16 @@ if(AIE_ENABLE_BINDINGS_PYTHON)
 endif()
 
 add_subdirectory(include)
+
+# Build bootgen early so lib/Targets can link against it
+find_package(OpenSSL QUIET)
+if(OpenSSL_FOUND)
+  add_subdirectory(tools/bootgen)
+else()
+  message(WARNING "OpenSSL not found - skipping bootgen build at top level")
+  # cdo_driver_mlir_aie will be built later in tools/CMakeLists.txt if needed
+endif()
+
 add_subdirectory(lib)
 add_subdirectory(aie_runtime_lib)
 add_subdirectory(tools)
