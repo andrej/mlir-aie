@@ -238,6 +238,34 @@ For your design of interest, for instance from [programming_examples](../program
 
 1. If you are a university researcher or student and interested in trying these tools on our Ryzen™ AI AUP Cloud systems, please contact the [AMD University Program](mailto:aup@amd.com)
 
+## Xclbin Decompiler
+
+MLIR-AIE includes an **xclbin decompiler** that converts compiled xclbin binary files back to human-readable MLIR code. This tool is valuable for:
+
+- **Debugging**: Inspect actual hardware configuration generated from high-level MLIR
+- **Reverse Engineering**: Understand existing xclbin designs
+- **Verification**: Validate compilation outputs through round-trip testing
+- **Learning**: Study how high-level AIE operations map to hardware registers
+
+### Basic Usage
+
+```bash
+# Raw mode - low-level register operations
+aie-translate --xclbin-to-mlir design.xclbin
+
+# Lifted mode - high-level semantic operations (tiles, buffers, DMA BDs, switchboxes)
+aie-translate --xclbin-to-mlir --emit-lifted design.xclbin
+```
+
+### Example
+
+```bash
+# Decompile a sample design
+aie-translate --xclbin-to-mlir --emit-lifted test/npu-xrt/add_blockwrite/aie.xclbin > decompiled.mlir
+```
+
+For detailed documentation, usage examples, and information about raw vs. lifted modes, see the **[Xclbin Decompiler User Guide](docs/XclbinDecompiler.md)**.
+
 ## Optional: Install AIETools
 
 > You may skip the Vitis™ installation step if you intend to only target AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P) using our open-source single-core compiler [Peano](https://github.com/Xilinx/llvm-aie). Compiling with `xchesscc` is not supported without installing AMD Vitis™ AIE Essentials.

@@ -9,6 +9,8 @@
 6. [Interpreting DMA Buffer Descriptor Configurations](#interpreting-dma-buffer-descriptor-configurations)
 7. [Interpreting Switchbox Routing](#interpreting-switchbox-routing)
 8. [Complete Example Walkthrough](#complete-example-walkthrough)
+9. [Known Limitations](#known-limitations)
+10. [Testing and Verification](#testing-and-verification)
 
 ---
 
@@ -999,6 +1001,305 @@ For more information on AIE architecture and MLIR dialect operations, see:
 
 ---
 
-**Document Version:** 1.0
+## Known Limitations
+
+### 1. Shim Tiles (Row 0) Don't Produce Buffer Operations in Lifted Mode
+
+**Issue:** Shim tiles at row 0 do not have local tile memory, so they cannot have `aie.buffer` or `aie.mem` operations in lifted mode.
+
+**Impact:** Buffer descriptor configurations for shim tiles remain as raw `aiex.npu.write32` operations even in lifted mode. The semantic lifting only applies to memory tiles (row 2+) and compute tiles (row 1+) that have local memory.
+
+**Example:**
+```mlir
+// Even in lifted mode, shim tile (0,0) BD configurations remain as raw writes
+aiex.npu.write32 {address = 2228224 : ui32, value = 0 : ui32}  // Shim BD config
+aiex.npu.write32 {address = 2229120 : ui32, value = 0 : ui32}  // Shim BD config
+```
+
+**Why:** Shim tiles use `aie.shim_dma` operations rather than `aie.mem`, and the decompiler currently focuses on lifting memory tile buffer descriptors. Shim DMA configurations require different handling and are not currently lifted to semantic operations.
+
+**Workaround:** When analyzing shim tile configurations:
+- Refer to the raw mode output to see all shim tile operations
+- Manually interpret the register addresses using AIE hardware documentation
+- Focus on memory tile BDs in lifted mode for data movement analysis
+
+**Warning Output:** When decompiling xclbin files, you may see warnings like:
+```
+Warning: Incomplete BD configuration found (tile 0,0 BD 0)
+```
+
+This is expected for shim tiles and indicates that the decompiler detected BD writes but chose not to lift them because shim tiles lack local memory.
+
+### 2. Incomplete BD Configurations
+
+**Issue:** You may see warnings about incomplete buffer descriptor configurations:
+```
+Warning: Incomplete BD configuration found (tile X,Y BD N)
+```
+
+**Cause:** This occurs when not all registers for a buffer descriptor are written in the CDO. Some fields may:
+- Use hardware default values
+- Be configured through different mechanisms
+- Not be relevant for the specific operation mode
+
+**Impact:** These incomplete BDs are still recorded in lifted mode but may have partial information. The decompiled output will show the fields that were actually configured.
+
+**Solution:** This is usually informational and doesn't indicate a problem. The BD configuration may intentionally use default values for some fields.
+
+### 3. Block Write Data Storage
+
+**Behavior:** Block write operations (`aiex.npu.blockwrite`) in raw mode reference `memref.global` constants that contain the block data:
+
+```mlir
+memref.global "private" constant @cdo_blockwrite_0 : memref<16xi32> = dense<[0, 1, 2, ...]>
+
+// Later in runtime sequence:
+%0 = memref.get_global @cdo_blockwrite_0 : memref<16xi32>
+aiex.npu.blockwrite(%0) {address = 2228224 : ui32}
+```
+
+**Why:** These globals are created at the module level to store the block data extracted from the xclbin CDO commands. This preserves the exact data that will be written to hardware registers.
+
+**Note:** The data in these globals is often configuration tables, initialization values, or complex multi-register setups that are more efficient to write in bulk.
+
+### 4. Register Database Availability
+
+**Warning:** You may see:
+```
+Warning: Failed to load register database. Register names will not be annotated.
+```
+
+**Impact:** This doesn't affect functionality, but register addresses won't have descriptive comments or annotations.
+
+**Cause:** The register database provides human-readable names for hardware register addresses. If it's not available, addresses are shown as numeric values only.
+
+**Solution:** This is a warning only. The decompiler will still function correctly, producing numeric addresses instead of annotated ones.
+
+### 5. Bootgen Library Requirement
+
+**Error:** If bootgen library is not available:
+```
+Error: CDO decoding not available - bootgen library was not built (OpenSSL required)
+```
+
+**Cause:** The decompiler uses Xilinx's bootgen library to decode CDO (Configuration Data Object) binaries. This library requires OpenSSL.
+
+**Solution:** Rebuild MLIR-AIE with bootgen support enabled:
+1. Install OpenSSL development libraries: `sudo apt-get install libssl-dev`
+2. Rebuild MLIR-AIE to enable bootgen support
+3. Verify that CMake configuration shows `HAVE_BOOTGEN` is enabled
+
+### 6. Switchbox Lifting Limitations
+
+**Current Status:** Switchbox routing configuration lifting is implemented and works for most common patterns.
+
+**Limitation:** Complex packet-switched routing may not be fully lifted to semantic operations, and some packet configuration registers may remain as raw writes.
+
+**Expected Behavior:** In lifted mode, you should see:
+- `aie.switchbox` operations for tiles with routing
+- `aie.connect` operations for stream connections
+- Some configuration registers may remain as raw NPU writes in the runtime sequence
+
+---
+
+## Testing and Verification
+
+### Round-trip Verification Tests
+
+Round-trip tests verify that the xclbin decompiler correctly processes xclbin files and produces valid, verifiable MLIR output. These tests are integrated with the MLIR-AIE lit test framework.
+
+**Test Location:** `/workspace/mlir-aie/test/xclbin2mlir/roundtrip/`
+
+### Available Tests
+
+The roundtrip directory contains tests for both raw and lifted modes:
+
+| Test File | Mode | Description |
+|-----------|------|-------------|
+| `add_blockwrite_raw.mlir` | Raw | Tests raw mode decompilation of DMA block write design |
+| `add_blockwrite_lifted.mlir` | Lifted | Tests lifted mode decompilation with semantic operations |
+| `ctrl_packet_reconfig_raw.mlir` | Raw | Tests raw mode for control packet reconfiguration design |
+| `ctrl_packet_reconfig_lifted.mlir` | Lifted | Tests lifted mode for control packet design |
+
+Each test verifies:
+- ✓ Module structure is present
+- ✓ Device declaration exists (`aie.device(npu1_1col)`)
+- ✓ Runtime sequence block is created
+- ✓ Appropriate operations are generated (write32, maskwrite32, or semantic operations)
+- ✓ Proper terminator (`aie.end`) is present
+- ✓ Specific register address ranges are accessed (BDs, switchboxes, column controls)
+
+### Setup Environment for Testing
+
+Before running tests, set up your environment:
+
+```bash
+# Source XRT runtime
+source /opt/xilinx/xrt/setup.sh
+
+# Activate Python virtual environment
+source buildenv/bin/activate
+
+# Set PEANO installation directory
+export PEANO_INSTALL_DIR="$(pip show llvm-aie 2>/dev/null | grep ^Location: | awk '{print $2}')/llvm-aie"
+
+# Source MLIR-AIE environment
+source mlir-aie/utils/env_setup.sh mlir-aie/install ${PEANO_INSTALL_DIR}
+```
+
+### Option 1: Running Tests with lit (Recommended)
+
+**Run all roundtrip tests:**
+```bash
+cd mlir-aie/build
+lit -v test/xclbin2mlir/roundtrip/
+```
+
+**Expected Output:**
+```
+-- Testing: 4 tests, 1 workers --
+PASS: MLIR-AIE :: xclbin2mlir/roundtrip/add_blockwrite_raw.mlir (1 of 4)
+PASS: MLIR-AIE :: xclbin2mlir/roundtrip/add_blockwrite_lifted.mlir (2 of 4)
+PASS: MLIR-AIE :: xclbin2mlir/roundtrip/ctrl_packet_reconfig_raw.mlir (3 of 4)
+PASS: MLIR-AIE :: xclbin2mlir/roundtrip/ctrl_packet_reconfig_lifted.mlir (4 of 4)
+
+Testing Time: 3.21s
+  Passed: 4
+```
+
+**Run a specific test:**
+```bash
+lit -v test/xclbin2mlir/roundtrip/add_blockwrite_raw.mlir
+```
+
+**Run only lifted mode tests:**
+```bash
+lit -v test/xclbin2mlir/roundtrip/*lifted.mlir
+```
+
+### Option 2: Using the Test Script
+
+A convenience script is provided for quick testing:
+
+```bash
+cd mlir-aie/test/xclbin2mlir/roundtrip
+./run_tests.sh
+```
+
+This script runs all roundtrip tests and reports pass/fail status.
+
+### Option 3: Manual Testing with FileCheck
+
+For detailed manual verification:
+
+```bash
+# Test raw mode decompilation
+aie-translate --xclbin-to-mlir mlir-aie/test/npu-xrt/add_blockwrite/aie.xclbin | \
+  FileCheck mlir-aie/test/xclbin2mlir/roundtrip/add_blockwrite_raw.mlir
+
+# Test lifted mode decompilation
+aie-translate --xclbin-to-mlir --emit-lifted mlir-aie/test/npu-xrt/add_blockwrite/aie.xclbin | \
+  FileCheck mlir-aie/test/xclbin2mlir/roundtrip/add_blockwrite_lifted.mlir
+```
+
+**What FileCheck does:**
+- Reads CHECK patterns from the .mlir test file
+- Compares the decompiler output against these patterns
+- Reports success if all patterns match, failure otherwise
+
+**Example CHECK patterns from tests:**
+```mlir
+// CHECK: module {
+// CHECK:   aie.device(npu1_1col)
+// CHECK:     aie.runtime_sequence @configure() {
+// CHECK:       aiex.npu.write32 {address = {{[0-9]+}} : ui32, value = {{[0-9]+}} : ui32}
+// CHECK:       aie.end
+```
+
+### Option 4: Interactive Testing
+
+To see the actual decompiler output:
+
+```bash
+# View raw mode output
+aie-translate --xclbin-to-mlir mlir-aie/test/npu-xrt/add_blockwrite/aie.xclbin
+
+# View lifted mode output
+aie-translate --xclbin-to-mlir --emit-lifted mlir-aie/test/npu-xrt/add_blockwrite/aie.xclbin
+
+# Save to file for detailed inspection
+aie-translate --xclbin-to-mlir --emit-lifted mlir-aie/test/npu-xrt/add_blockwrite/aie.xclbin > /tmp/output.mlir
+less /tmp/output.mlir
+```
+
+### Understanding Test Verification
+
+The tests use FileCheck patterns to verify specific features. Here's what each test type checks:
+
+**Raw Mode Tests:**
+- Presence of `aiex.npu.write32` operations
+- Presence of `aiex.npu.maskwrite32` operations
+- Specific register address ranges:
+  - DMA BD registers (222xxxx range)
+  - Stream switch registers (221xxxx range)
+  - Column control registers (25xxxx range)
+  - AXI MM registers (176xxxx range)
+
+**Lifted Mode Tests:**
+- (Currently) Similar to raw mode, verifying NPU operations
+- In future: Will verify presence of `aie.mem`, `aie.dma_bd`, `aie.switchbox` operations
+
+### Creating New Tests
+
+To add a new roundtrip test:
+
+1. **Choose an xclbin file** from the test suite (or create one)
+2. **Run the decompiler** to see what output is generated
+3. **Create a test file** with RUN and CHECK directives:
+
+```mlir
+// RUN: aie-translate --xclbin-to-mlir %S/path/to/your.xclbin | FileCheck %s
+
+// CHECK: module {
+// CHECK:   aie.device(npu1_1col)
+// Add more CHECK patterns...
+```
+
+4. **Place the test** in `mlir-aie/test/xclbin2mlir/roundtrip/`
+5. **Run lit** to verify it passes
+
+### Debugging Test Failures
+
+If a test fails:
+
+```bash
+# Run with verbose output to see what failed
+lit -v test/xclbin2mlir/roundtrip/failing_test.mlir
+
+# See the actual decompiler output
+aie-translate --xclbin-to-mlir path/to/test.xclbin
+
+# Use FileCheck with --dump-input to see match details
+aie-translate --xclbin-to-mlir test.xclbin | FileCheck --dump-input=fail test.mlir
+```
+
+Common failure reasons:
+- **Address mismatch**: Register addresses changed due to compiler updates
+- **Missing operations**: Expected operation type wasn't generated
+- **Ordering issues**: Operations appeared in different order than CHECK patterns expect
+- **Value changes**: Hardware configuration values changed
+
+### Continuous Integration
+
+The roundtrip tests are part of the MLIR-AIE CI/CD pipeline and run automatically on:
+- Pull requests
+- Main branch commits
+- Release builds
+
+This ensures the decompiler remains functional across development changes.
+
+---
+
+**Document Version:** 1.1
 **Last Updated:** March 2026
 **Maintained by:** MLIR-AIE Project
