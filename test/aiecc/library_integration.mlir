@@ -24,7 +24,7 @@
 
 // PDI: Generating CDO artifacts for device
 // PDI: bootgen
-// PDI: Generated PDI via library:
+// PDI: Generated PDI via library: main.pdi
 
 module {
   aie.device(npu1_1col) {
