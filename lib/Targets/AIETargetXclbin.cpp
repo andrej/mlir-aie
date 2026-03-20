@@ -368,21 +368,16 @@ private:
 };
 
 #ifdef HAVE_BOOTGEN
-/// Extract PDI (Programmable Device Image) section from xclbin file.
+/// Extract PDI (Programmable Device Image) section from xclbin binary data.
 /// Parses the AXLF format and finds the PDI section.
-LogicalResult extractPDIFromXclbin(StringRef xclbinPath,
+/// Note: xclbinData is the actual binary content (not a filename), as MLIR's
+/// translation framework reads the file and passes the content.
+LogicalResult extractPDIFromXclbin(StringRef xclbinData,
                                    std::vector<uint8_t> &pdiData) {
-  // Read xclbin file
-  auto fileOrErr = llvm::MemoryBuffer::getFile(xclbinPath);
-  if (!fileOrErr) {
-    llvm::errs() << "Failed to open xclbin file: " << xclbinPath << "\n";
-    return failure();
-  }
-
-  auto buffer = std::move(*fileOrErr);
+  // xclbinData contains the actual xclbin binary content
   const uint8_t *data =
-      reinterpret_cast<const uint8_t *>(buffer->getBuffer().data());
-  size_t size = buffer->getBufferSize();
+      reinterpret_cast<const uint8_t *>(xclbinData.data());
+  size_t size = xclbinData.size();
 
   // Parse AXLF header
   if (size < sizeof(axlf)) {
@@ -405,10 +400,16 @@ LogicalResult extractPDIFromXclbin(StringRef xclbinPath,
   const axlf_section_header *sections =
       reinterpret_cast<const axlf_section_header *>(data + headerSize);
 
-  // Find PDI section
+  // Find PDI section (or AIE_PARTITION section for NPU xclbins)
   uint32_t numSections = header->m_header.m_numSections;
 
+  llvm::outs() << "xclbin has " << numSections << " sections\n";
+
+  // First, try to find a PDI section (kind 18)
   for (uint32_t i = 0; i < numSections; i++) {
+    llvm::outs() << "Section " << i << ": kind=" << sections[i].m_sectionKind
+                 << " offset=" << sections[i].m_sectionOffset
+                 << " size=" << sections[i].m_sectionSize << "\n";
     if (sections[i].m_sectionKind == PDI) {
       // Found PDI section
       uint64_t offset = sections[i].m_sectionOffset;
@@ -427,7 +428,27 @@ LogicalResult extractPDIFromXclbin(StringRef xclbinPath,
     }
   }
 
-  llvm::errs() << "No PDI section found in xclbin\n";
+  // For NPU xclbins, try AIE_PARTITION section (kind 32) which contains CDO directly
+  for (uint32_t i = 0; i < numSections; i++) {
+    if (sections[i].m_sectionKind == AIE_PARTITION) {
+      // Found AIE partition section - treat as PDI for NPU
+      uint64_t offset = sections[i].m_sectionOffset;
+      uint64_t len = sections[i].m_sectionSize;
+
+      if (offset + len > size) {
+        llvm::errs() << "AIE_PARTITION section offset/size extends beyond file\n";
+        return failure();
+      }
+
+      pdiData.resize(len);
+      std::memcpy(pdiData.data(), data + offset, len);
+
+      llvm::outs() << "Found AIE_PARTITION section (treating as PDI): " << len << " bytes\n";
+      return success();
+    }
+  }
+
+  llvm::errs() << "No PDI or AIE_PARTITION section found in xclbin\n";
   return failure();
 }
 
