@@ -21,6 +21,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Util/AIEDMABDLifting.h"
 #include "aie/Dialect/AIE/Util/AIESwitchboxLifting.h"
+#include "aie/Dialect/AIE/Util/AIEFlowReconstruction.h"
 #include "aie/Dialect/AIE/Util/AIELockLifting.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
@@ -274,6 +275,55 @@ public:
   void emitAllSwitchboxes() {
     for (const auto &[key, config] : switchboxes) {
       emitSwitchboxForTile(config);
+    }
+  }
+
+  /// Reconstruct and emit aie.flow operations from switchbox connections
+  void emitAllFlows() {
+    // Build flow reconstruction graph from all switchbox configs
+    FlowReconstructionGraph flowGraph;
+    for (const auto &[key, config] : switchboxes) {
+      flowGraph.addSwitchboxConfig(config);
+    }
+
+    // Reconstruct end-to-end flows
+    auto flows = flowGraph.reconstructFlows();
+
+    if (flows.empty()) {
+      return;  // No flows to emit
+    }
+
+    // Emit aie.flow operations
+    OpBuilder::InsertionGuard guard(builder);
+
+    // Insert flows after all tiles but before other operations
+    // Find a good insertion point - after the last tile
+    Operation *lastTile = nullptr;
+    for (auto &[tileId, tile] : tiles) {
+      if (!lastTile || lastTile->isBeforeInBlock(tile)) {
+        lastTile = tile;
+      }
+    }
+
+    if (lastTile) {
+      builder.setInsertionPointAfter(lastTile);
+    }
+
+    // Emit each flow
+    for (const auto &flow : flows) {
+      auto srcTile = getOrCreateTile(flow.sourceCol, flow.sourceRow);
+      auto dstTile = getOrCreateTile(flow.destCol, flow.destRow);
+
+      AIE::FlowOp::create(
+          builder,
+          builder.getUnknownLoc(),
+          srcTile,
+          flow.sourceBundle,
+          flow.sourceChannel,
+          dstTile,
+          flow.destBundle,
+          flow.destChannel
+      );
     }
   }
 
@@ -911,6 +961,7 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
 
     liftedEmitter->emitAllLocks();
     liftedEmitter->emitAllBDs();
+    liftedEmitter->emitAllFlows();
     liftedEmitter->emitAllSwitchboxes();
   }
 
