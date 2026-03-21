@@ -262,7 +262,7 @@ SwitchAddressParser::parseMasterConfig(uint32_t addr) const {
     // Determine MemTile row
     if (rowPart >= 1 && rowPart <= numMemTileRows_) {
       info.tileType = TileType::MemoryTile;
-      info.row = rowPart - 1;  // MemTile rows are 0-based internally
+      info.row = rowPart;  // MemTile rows use hardware row number
       info.isValid = true;
       info.column = column;
       info.masterPortIndex = masterPortIndex;
@@ -308,7 +308,7 @@ SwitchAddressParser::parseMasterConfig(uint32_t addr) const {
         return info;  // Out of range for Compute tile
       }
       info.tileType = TileType::Compute;
-      info.row = rowPart - (numMemTileRows_ + 1);
+      info.row = rowPart;  // Compute tiles use hardware row number
     }
 
     // Valid master config register
