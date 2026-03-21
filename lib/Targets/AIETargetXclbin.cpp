@@ -77,10 +77,14 @@ public:
     if (it != buffers.end())
       return it->second;
 
-    // Create buffer with anonymous memref type
+    // Create buffer with memref type
+    // Note: bufferLength may be 0 if BD was not fully configured in CDO
+    // (e.g., configured dynamically at runtime via NPU instruction stream).
+    // In such cases, use a placeholder size of 1 since aie.buffer requires
+    // static dimensions. The user will need to update this with the correct size.
     auto tile = getOrCreateTile(bd.column, bd.row);
-    auto memrefType = MemRefType::get({static_cast<int64_t>(bd.bufferLength)},
-                                      builder.getI32Type());
+    int64_t bufSize = (bd.bufferLength == 0) ? 1 : static_cast<int64_t>(bd.bufferLength);
+    auto memrefType = MemRefType::get({bufSize}, builder.getI32Type());
 
     OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointAfter(tile);
@@ -104,8 +108,12 @@ public:
       return it->second;
 
     // Create external buffer with memref type
-    auto memrefType = MemRefType::get({static_cast<int64_t>(bd.bufferLength)},
-                                      builder.getI32Type());
+    // Note: bufferLength may be 0 if BD was not fully configured in CDO
+    // (e.g., configured dynamically at runtime via NPU instruction stream).
+    // In such cases, use a placeholder size of 1 since aie.external_buffer requires
+    // static dimensions. The user will need to update this with the correct size.
+    int64_t bufSize = (bd.bufferLength == 0) ? 1 : static_cast<int64_t>(bd.bufferLength);
+    auto memrefType = MemRefType::get({bufSize}, builder.getI32Type());
 
     OpBuilder::InsertionGuard guard(builder);
     // Insert external buffers at the beginning of the device block
@@ -207,6 +215,11 @@ private:
   void emitMemOpForTile(TileID tileId, const llvm::SmallVector<ParsedBDConfig> &bds) {
     auto tile = getOrCreateTile(tileId.col, tileId.row);
 
+    // Create buffers for all BDs in this tile
+    for (const auto &bd : bds) {
+      getOrCreateBuffer(bd);
+    }
+
     OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointAfter(tile);
 
@@ -222,6 +235,11 @@ private:
 
   void emitShimDmaOpForTile(TileID tileId, const llvm::SmallVector<ParsedBDConfig> &bds) {
     auto tile = getOrCreateTile(tileId.col, tileId.row);
+
+    // Create external buffers for all BDs in this shim tile
+    for (const auto &bd : bds) {
+      getOrCreateExternalBuffer(bd);
+    }
 
     OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointAfter(tile);
