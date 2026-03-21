@@ -517,6 +517,64 @@ static bool tryParseRtpWrite(uint32_t address, uint32_t value,
   return false;
 }
 
+// Try to parse a maskwrite32 operation as a DMA Controller_ID configuration.
+// Returns true if this is a Controller_ID write, false otherwise.
+// The Controller_ID field (bits 15:8) of DMA_S2MM/MM2S control registers
+// is used for task-complete-token configuration.
+static bool tryParseDMAControllerID(uint32_t address, uint32_t mask, uint32_t value,
+                                    int32_t &column, int32_t &row,
+                                    int32_t &direction, int32_t &channel,
+                                    int32_t &controller_id) {
+  // Extract column and row from address
+  column = (address >> 25) & 0xFF;
+  row = (address >> 20) & 0x1F;
+
+  // Get the offset within the tile
+  uint32_t tile_base = (column << 25) | (row << 20);
+  uint32_t offset = address - tile_base;
+
+  // Determine the control base based on tile type
+  uint32_t control_base;
+  if (row == 0) {
+    // Shim tile
+    control_base = kDMA_Control_Base_Shim;
+  } else {
+    // Core or mem tile
+    control_base = kDMA_Control_Base_Core;
+  }
+
+  // DMA control registers:
+  // control_base + (channel * 8) + (MM2S ? 0x10 : 0)
+  // Controller_ID field is at bits 15:8
+
+  // Check if mask includes Controller_ID bits (bits 15:8 = 0xFF00)
+  if ((mask & 0xFF00) == 0) {
+    return false; // Not touching Controller_ID field
+  }
+
+  // Try to match S2MM channels
+  if (offset == control_base + 0 * 8) {
+    direction = 0; // S2MM
+    channel = 0;
+  } else if (offset == control_base + 1 * 8) {
+    direction = 0; // S2MM
+    channel = 1;
+  } else if (offset == control_base + 0x10 + 0 * 8) {
+    direction = 1; // MM2S
+    channel = 0;
+  } else if (offset == control_base + 0x10 + 1 * 8) {
+    direction = 1; // MM2S
+    channel = 1;
+  } else {
+    return false;
+  }
+
+  // Extract Controller_ID from value (bits 15:8)
+  controller_id = (value >> 8) & 0xFF;
+
+  return true;
+}
+
 // Try to parse a write32 operation as a queue push operation.
 // Returns true if this is a queue push, false otherwise.
 // If true, populates the output parameters.
@@ -828,8 +886,22 @@ emitTransactionOps(OpBuilder &builder,
             memref.getResult(), nullptr, nullptr, nullptr);
       }
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
-      AIEX::NpuMaskWrite32Op::create(builder, loc, op.cmd.RegOff, op.cmd.Value,
-                                     op.cmd.Mask, nullptr, nullptr, nullptr);
+      // Try to parse as a DMA Controller_ID configuration
+      int32_t column, row, direction, channel, controller_id;
+      if (tryParseDMAControllerID(op.cmd.RegOff, op.cmd.Mask, op.cmd.Value,
+                                   column, row, direction, channel, controller_id)) {
+        // This is a DMA Controller_ID configuration (task-complete-token)
+        // Since this is a runtime configuration that will be reconstructed during recompilation,
+        // we suppress it here and document it
+        llvm::errs() << "Note: Suppressing DMA Controller_ID write at tile(" << column << "," << row
+                     << ") " << (direction == 0 ? "S2MM" : "MM2S") << " channel " << channel
+                     << " controller_id " << controller_id << "\n";
+        // Skip emission - don't emit raw maskwrite32
+      } else {
+        // Emit raw maskwrite32 for unrecognized operations
+        AIEX::NpuMaskWrite32Op::create(builder, loc, op.cmd.RegOff, op.cmd.Value,
+                                       op.cmd.Mask, nullptr, nullptr, nullptr);
+      }
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_TCT) {
       if (!op.sync) {
         llvm::errs() << "Missing sync payload while emitting transaction\n";
