@@ -89,6 +89,11 @@ struct ParsedBDConfig {
   TileType tileType = TileType::Compute;
   int bdIndex = 0;
 
+  // DMA channel assignment (tracked from Start_Queue writes)
+  // -1 means not assigned to any channel
+  // 0 = S2MM channel 0, 1 = S2MM channel 1, 2 = MM2S channel 0, 3 = MM2S channel 1
+  int dmaChannel = -1;
+
   // DMA_BDx_0: Base address and length
   uint32_t baseAddress = 0;     // 32-bit word address within tile memory
   uint32_t bufferLength = 0;    // Transfer length in 32-bit words

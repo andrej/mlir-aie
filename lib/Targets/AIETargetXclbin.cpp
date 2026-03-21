@@ -359,10 +359,128 @@ private:
     auto memOp = builder.create<AIE::MemOp>(builder.getUnknownLoc(),
                                              builder.getIndexType(), tile);
     Block *memBlock = &memOp.getBody().emplaceBlock();
-
-    // TODO: Properly implement DMA channel reconstruction to emit aie.dma_start operations
-    // For now, emit aie.end without DMA BD blocks to avoid unreachable blocks
     builder.setInsertionPointToEnd(memBlock);
+
+    // Group BDs by DMA channel
+    llvm::DenseMap<int, llvm::SmallVector<const ParsedBDConfig*>> bdsByChannel;
+    for (const auto &bd : bds) {
+      if (bd.dmaChannel >= 0) {
+        bdsByChannel[bd.dmaChannel].push_back(&bd);
+      }
+    }
+
+    // Track blocks for BD chains
+    llvm::DenseMap<int, Block*> bdBlocks;  // bdIndex -> Block*
+    Block *endBlock = nullptr;
+
+    // Emit DMA channels in order: S2MM_0, S2MM_1, MM2S_0, MM2S_1
+    for (int channelIdx = 0; channelIdx < 4; channelIdx++) {
+      auto it = bdsByChannel.find(channelIdx);
+      if (it == bdsByChannel.end() || it->second.empty()) {
+        continue;
+      }
+
+      const auto &channelBDs = it->second;
+
+      // Determine channel direction
+      AIE::DMAChannelDir channelDir;
+      int channelNum;
+      if (channelIdx == 0) {  // S2MM_0
+        channelDir = AIE::DMAChannelDir::S2MM;
+        channelNum = 0;
+      } else if (channelIdx == 1) {  // S2MM_1
+        channelDir = AIE::DMAChannelDir::S2MM;
+        channelNum = 1;
+      } else if (channelIdx == 2) {  // MM2S_0
+        channelDir = AIE::DMAChannelDir::MM2S;
+        channelNum = 0;
+      } else {  // MM2S_1
+        channelDir = AIE::DMAChannelDir::MM2S;
+        channelNum = 1;
+      }
+
+      // Create blocks for each BD in this channel
+      for (const auto *bd : channelBDs) {
+        Block *bdBlock = new Block();
+        memBlock->getParent()->push_back(bdBlock);
+        bdBlocks[bd->bdIndex] = bdBlock;
+      }
+
+      // Find the first BD (one with lowest index, or follow hardware convention)
+      const ParsedBDConfig *firstBD = channelBDs[0];
+
+      // Create end block if not already created
+      if (!endBlock) {
+        endBlock = new Block();
+        memBlock->getParent()->push_back(endBlock);
+      }
+
+      // Emit dma_start operation
+      Block *firstBDBlock = bdBlocks[firstBD->bdIndex];
+      Block *nextChain = endBlock;  // Chain to end or next channel
+
+      (void) AIE::DMAStartOp::create(
+          builder,
+          builder.getUnknownLoc(),
+          channelDir,
+          channelNum,
+          0,  // repeat_count
+          firstBDBlock,
+          nextChain
+      );
+
+      // Now emit each BD block
+      for (const auto *bd : channelBDs) {
+        Block *bdBlock = bdBlocks[bd->bdIndex];
+        builder.setInsertionPointToEnd(bdBlock);
+
+        // Emit lock acquire
+        emitLockAcquire(*bd);
+
+        // Emit dma_bd operation
+        auto buffer = getOrCreateBuffer(*bd);
+        auto dimAttrs = buildDimensionAttrs(*bd);
+
+        AIE::DMABDOp::create(
+            builder,
+            builder.getUnknownLoc(),
+            buffer,
+            0,  // offset
+            bd->bufferLength,
+            dimAttrs
+        );
+
+        // Emit lock release
+        emitLockRelease(*bd);
+
+        // Emit next_bd terminator
+        Block *nextBlock = nullptr;
+        if (bd->useNextBd) {
+          auto nextIt = bdBlocks.find(bd->nextBd);
+          if (nextIt != bdBlocks.end()) {
+            nextBlock = nextIt->second;
+          }
+        }
+
+        if (!nextBlock) {
+          // If no valid next_bd, loop back to first BD
+          nextBlock = bdBlocks[firstBD->bdIndex];
+        }
+
+        AIE::NextBDOp::create(
+            builder,
+            builder.getUnknownLoc(),
+            nextBlock
+        );
+      }
+    }
+
+    // Emit end block
+    if (!endBlock) {
+      endBlock = new Block();
+      memBlock->getParent()->push_back(endBlock);
+    }
+    builder.setInsertionPointToEnd(endBlock);
     AIE::EndOp::create(builder, builder.getUnknownLoc());
   }
 
@@ -552,6 +670,92 @@ private:
 
   // Track all tiles referenced by any register write (including shim tiles)
   llvm::DenseSet<TileID> referencedTiles;
+};
+
+//===----------------------------------------------------------------------===//
+// DMA Channel Tracker - Tracks BD assignments to DMA channels
+//===----------------------------------------------------------------------===//
+
+class DMAChannelTracker {
+public:
+  // DMA Start_Queue register offsets (relative to tile base)
+  static constexpr uint32_t kDMA_S2MM_0_Start_Queue = 0x1DE04;
+  static constexpr uint32_t kDMA_S2MM_1_Start_Queue = 0x1DE0C;
+  static constexpr uint32_t kDMA_MM2S_0_Start_Queue = 0x1DE14;
+  static constexpr uint32_t kDMA_MM2S_1_Start_Queue = 0x1DE1C;
+
+  // Channel indices
+  enum Channel {
+    S2MM_0 = 0,
+    S2MM_1 = 1,
+    MM2S_0 = 2,
+    MM2S_1 = 3,
+    INVALID = -1
+  };
+
+  /// Parse a write to a Start_Queue register and return channel assignment
+  /// Returns the BD index and channel, or std::nullopt if not a Start_Queue write
+  std::optional<std::pair<int, Channel>> parseStartQueue(uint32_t addr, uint32_t value) {
+    // Get offset within tile
+    uint32_t offset = addr & 0xFFFFF;
+
+    // Determine which channel based on offset
+    Channel channel = INVALID;
+    if (offset == kDMA_S2MM_0_Start_Queue) {
+      channel = S2MM_0;
+    } else if (offset == kDMA_S2MM_1_Start_Queue) {
+      channel = S2MM_1;
+    } else if (offset == kDMA_MM2S_0_Start_Queue) {
+      channel = MM2S_0;
+    } else if (offset == kDMA_MM2S_1_Start_Queue) {
+      channel = MM2S_1;
+    } else {
+      return std::nullopt;  // Not a Start_Queue register
+    }
+
+    // Extract BD index from value (bits [3:0])
+    int bdIndex = value & 0xF;
+
+    return std::make_pair(bdIndex, channel);
+  }
+
+  /// Record a BD-to-channel assignment
+  void recordAssignment(int col, int row, int bdIndex, Channel channel) {
+    BDKey key{col, row, bdIndex};
+    bdChannelMap[key] = channel;
+  }
+
+  /// Get the channel assigned to a BD, returns INVALID if not assigned
+  Channel getChannel(int col, int row, int bdIndex) const {
+    BDKey key{col, row, bdIndex};
+    auto it = bdChannelMap.find(key);
+    if (it != bdChannelMap.end()) {
+      return it->second;
+    }
+    return INVALID;
+  }
+
+  /// Check if this is a Start_Queue register address
+  bool isStartQueueAddress(uint32_t addr) const {
+    uint32_t offset = addr & 0xFFFFF;
+    return offset == kDMA_S2MM_0_Start_Queue ||
+           offset == kDMA_S2MM_1_Start_Queue ||
+           offset == kDMA_MM2S_0_Start_Queue ||
+           offset == kDMA_MM2S_1_Start_Queue;
+  }
+
+private:
+  struct BDKey {
+    int col, row, bdIndex;
+
+    bool operator<(const BDKey &other) const {
+      if (col != other.col) return col < other.col;
+      if (row != other.row) return row < other.row;
+      return bdIndex < other.bdIndex;
+    }
+  };
+
+  std::map<BDKey, Channel> bdChannelMap;
 };
 
 #ifdef HAVE_BOOTGEN
@@ -754,6 +958,9 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
   LockAddressParser lockParser(/*numMemTileRows=*/1);
   LockAccumulator lockAccum;
 
+  // Initialize DMA channel tracker
+  DMAChannelTracker dmaChannelTracker;
+
   std::unique_ptr<LiftedBDEmitter> liftedEmitter;
 
   if (emitLifted) {
@@ -814,6 +1021,16 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
       // Check if this is a BD register write and accumulate
       auto completedBD = bdAccum.addWrite(addr, value, bdParser);
 
+      // Check if this is a DMA Start_Queue write and track channel assignment
+      auto channelAssignment = dmaChannelTracker.parseStartQueue(addr, value);
+      if (channelAssignment.has_value()) {
+        int col = (addr >> 20) & 0xFF;
+        int row = ((addr >> 20) >> 8) & 0xFF;
+        int bdIndex = channelAssignment->first;
+        DMAChannelTracker::Channel channel = channelAssignment->second;
+        dmaChannelTracker.recordAssignment(col, row, bdIndex, channel);
+      }
+
       // Check if this is a switchbox register write and accumulate
       auto switchConn = switchAccum.addMasterWrite(addr, value, switchParser);
 
@@ -845,7 +1062,11 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
       // If a BD configuration was completed, record it for lifted emission
       if (completedBD.has_value()) {
         if (emitLifted && liftedEmitter) {
-          liftedEmitter->recordBD(*completedBD);
+          // Assign DMA channel to BD before recording
+          auto &bd = *completedBD;
+          auto channel = dmaChannelTracker.getChannel(bd.column, bd.row, bd.bdIndex);
+          bd.dmaChannel = static_cast<int>(channel);
+          liftedEmitter->recordBD(bd);
         }
       }
 
@@ -929,7 +1150,10 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
   if (!pendingBDs.empty()) {
     if (emitLifted && liftedEmitter) {
       // Record incomplete BDs for lifted emission too
-      for (const auto &bd : pendingBDs) {
+      for (auto &bd : pendingBDs) {
+        // Assign DMA channel to BD before recording
+        auto channel = dmaChannelTracker.getChannel(bd.column, bd.row, bd.bdIndex);
+        bd.dmaChannel = static_cast<int>(channel);
         liftedEmitter->recordBD(bd);
       }
     } else {
