@@ -476,6 +476,13 @@ private:
       }
     }
 
+    // If there are no channels with BDs, just end the memBlock directly
+    if (bdsByChannel.empty()) {
+      builder.setInsertionPointToEnd(memBlock);
+      AIE::EndOp::create(builder, builder.getUnknownLoc());
+      return;
+    }
+
     // Emit end block
     if (!endBlock) {
       endBlock = new Block();
@@ -1217,9 +1224,48 @@ void extractBDsFromTransaction(ModuleOp txnModule, AIE::DeviceOp deviceOp,
                                 BDAddressParser &bdParser, BDAccumulator &bdAccum,
                                 DMAChannelTracker &dmaChannelTracker,
                                 LiftedBDEmitter &emitter) {
-  // Walk the transaction module to find blockwrite operations
+  // Walk the transaction module to find write32 operations that configure BDs
+  int write32ProcessedCount = 0;
+  txnModule.walk([&](AIEX::NpuWrite32Op writeOp) {
+    write32ProcessedCount++;
+    uint32_t address = writeOp.getAddress();
+    uint32_t value = writeOp.getValue();
+
+    // Check if this write is configuring a BD register
+    if (!bdParser.isBDAddress(address)) {
+      return WalkResult::advance();
+    }
+
+    // Feed this write to the BD accumulator
+    auto completedBD = bdAccum.addWrite(address, value, bdParser);
+
+    // If this write completed a BD, record it
+    if (completedBD.has_value()) {
+      // Assign DMA channel to BD before recording
+      auto &bd = *completedBD;
+      auto channel = dmaChannelTracker.getChannel(bd.column, bd.row, bd.bdIndex);
+      bd.dmaChannel = static_cast<int>(channel);
+      emitter.recordBD(bd);
+
+      llvm::errs() << "Extracted BD from transaction write32: tile(" << bd.column << "," << bd.row
+                   << ") BD#" << bd.bdIndex
+                   << " channel=" << bd.dmaChannel
+                   << " length=" << bd.bufferLength << "\n";
+    }
+
+    return WalkResult::advance();
+  });
+
+  llvm::errs() << "Processed " << write32ProcessedCount << " write32 ops from transaction\n";
+
+  // Also walk the transaction module to find blockwrite operations (if any)
+  int blockwriteProcessedCount = 0;
   txnModule.walk([&](AIEX::NpuBlockWriteOp blockwriteOp) {
+    blockwriteProcessedCount++;
     uint32_t address = blockwriteOp.getAddress();
+
+    llvm::errs() << "Processing blockwrite at address 0x" << llvm::format_hex(address, 8)
+                 << ", isBDAddress=" << bdParser.isBDAddress(address) << "\n";
 
     // Check if this blockwrite is configuring a BD
     if (!bdParser.isBDAddress(address)) {
@@ -1229,15 +1275,34 @@ void extractBDsFromTransaction(ModuleOp txnModule, AIE::DeviceOp deviceOp,
     // Get the BD address info
     BDAddressInfo addrInfo = bdParser.parse(address);
 
+    llvm::errs() << "  BD address recognized: tile(" << addrInfo.column << "," << addrInfo.row
+                 << ") BD#" << addrInfo.bdIndex << " reg#" << addrInfo.regIndex << "\n";
+
     // Get the data being written from the blockwrite
     auto dataMemref = blockwriteOp.getData();
 
     // Trace back to the memref.global that contains the actual data
     if (auto getGlobalOp = dataMemref.getDefiningOp<memref::GetGlobalOp>()) {
-      auto globalOp = txnModule.lookupSymbol<memref::GlobalOp>(getGlobalOp.getName());
-      if (!globalOp) {
+      llvm::errs() << "  Found getGlobalOp: " << getGlobalOp.getName().str() << "\n";
+
+      // Look up the global in the transaction module's device op
+      AIE::DeviceOp txnDeviceOp;
+      txnModule.walk([&](AIE::DeviceOp dev) {
+        txnDeviceOp = dev;
+        return WalkResult::interrupt();
+      });
+
+      if (!txnDeviceOp) {
+        llvm::errs() << "  ERROR: No device op in transaction module\n";
         return WalkResult::advance();
       }
+
+      auto globalOp = txnDeviceOp.lookupSymbol<memref::GlobalOp>(getGlobalOp.getName());
+      if (!globalOp) {
+        llvm::errs() << "  ERROR: Failed to lookup global symbol in device op\n";
+        return WalkResult::advance();
+      }
+      llvm::errs() << "  Found globalOp\n";
 
       // Extract the data values from the global
       auto dataAttr = globalOp.getInitialValue();
@@ -1245,14 +1310,18 @@ void extractBDsFromTransaction(ModuleOp txnModule, AIE::DeviceOp deviceOp,
         return WalkResult::advance();
       }
 
-      auto denseAttr = llvm::dyn_cast<DenseIntElementsAttr>(dataAttr);
+      if (!dataAttr.has_value()) {
+        return WalkResult::advance();
+      }
+
+      auto denseAttr = llvm::dyn_cast<DenseIntElementsAttr>(*dataAttr);
       if (!denseAttr) {
         return WalkResult::advance();
       }
 
       // Convert the dense attribute to a vector of uint32_t values
       llvm::SmallVector<uint32_t> words;
-      for (auto val : denseAttr.getValues<APInt>()) {
+      for (auto val : denseAttr.getValues<llvm::APInt>()) {
         words.push_back(val.getZExtValue());
       }
 
@@ -1260,7 +1329,6 @@ void extractBDsFromTransaction(ModuleOp txnModule, AIE::DeviceOp deviceOp,
       // For shim/memtile, there are 8 registers. We need to feed these into the BD accumulator.
 
       // Determine which BD register this blockwrite is targeting
-      int bdIndex = addrInfo.bdIndex;
       int column = addrInfo.column;
       int row = addrInfo.row;
 
@@ -1298,6 +1366,8 @@ void extractBDsFromTransaction(ModuleOp txnModule, AIE::DeviceOp deviceOp,
 
     return WalkResult::advance();
   });
+
+  llvm::errs() << "Processed " << blockwriteProcessedCount << " blockwrite ops from transaction\n";
 
   // Also look for NpuPushQueueOp operations to determine channel assignments
   txnModule.walk([&](AIEX::NpuPushQueueOp pushOp) {
@@ -1389,6 +1459,16 @@ LogicalResult AIETranslateFromXclbin(ModuleOp module, StringRef filename,
     }
 
     llvm::errs() << "Successfully parsed transaction binary from " << npuInstsPath << "\n";
+
+    // Debug: Count operations in transaction module
+    int write32Count = 0, blockwriteCount = 0, pushQueueCount = 0;
+    txnModule->walk([&](AIEX::NpuWrite32Op) { write32Count++; });
+    txnModule->walk([&](AIEX::NpuBlockWriteOp) { blockwriteCount++; });
+    txnModule->walk([&](AIEX::NpuPushQueueOp) { pushQueueCount++; });
+    llvm::errs() << "Transaction module contains: "
+                 << write32Count << " write32, "
+                 << blockwriteCount << " blockwrite, "
+                 << pushQueueCount << " pushqueue ops\n";
   }
 
   // Step 5: Emit MLIR operations (lifted or raw mode)
