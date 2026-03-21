@@ -2039,6 +2039,36 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
     }
   }
 
+  // If transaction module provided, copy its runtime operations to the output
+  if (txnModule.has_value()) {
+    llvm::errs() << "Attempting to copy operations from transaction module...\n";
+    int copiedOps = 0;
+
+    // The transaction module has operations directly in the DeviceOp body
+    // (not wrapped in a RuntimeSequenceOp), so walk the DeviceOp
+    txnModule->walk([&](AIE::DeviceOp txnDeviceOp) {
+      llvm::errs() << "Found DeviceOp in transaction module\n";
+
+      // Walk through all operations in the transaction's device body
+      for (Operation &op : txnDeviceOp.getBody()->getOperations()) {
+        // Skip the terminator (aie.end) and non-runtime operations
+        if (isa<AIE::EndOp>(&op) || isa<memref::GlobalOp>(&op)) {
+          continue;
+        }
+
+        llvm::errs() << "Copying operation: " << op.getName() << "\n";
+
+        // Clone the operation into the output runtime_sequence
+        builder.setInsertionPointToEnd(seqBlock);
+        builder.clone(op);
+        copiedOps++;
+      }
+      return WalkResult::interrupt();  // Only process the first DeviceOp
+    });
+
+    llvm::errs() << "Copied " << copiedOps << " operations from transaction module\n";
+  }
+
   // Add terminator to runtime_sequence block
   builder.setInsertionPointToEnd(seqBlock);
   AIE::EndOp::create(builder, builder.getUnknownLoc());
