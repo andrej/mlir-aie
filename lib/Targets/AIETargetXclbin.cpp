@@ -1607,6 +1607,55 @@ int scanForMaxColumn(llvm::ArrayRef<CdoCommand *> commands) {
   return maxCol;
 }
 
+/// Check if a maskwrite is a core control operation (enable/disable/reset).
+/// Core control register is at offset 0x32000 with:
+///   Bit 0 (mask=1): Enable
+///   Bit 1 (mask=2): Reset
+/// These operations are boilerplate inserted by the compiler and can be omitted.
+static bool isCoreControlOperation(uint32_t addr, uint32_t mask) {
+  uint32_t row = (addr >> 20) & 0x7;
+  uint32_t tileBase = row << 20;
+  uint32_t offset = addr - tileBase;
+
+  // Core_Control register at offset 0x32000
+  // Only applies to compute tiles (row >= 2)
+  if (offset == 0x32000 && row >= 2 && (mask == 1 || mask == 2)) {
+    return true;
+  }
+
+  return false;
+}
+
+/// Check if a maskwrite is a DMA control operation (channel enable).
+/// MemTile DMA control registers are at:
+///   0xA0600: DMA_S2MM_0_Ctrl
+///   0xA0608: DMA_S2MM_1_Ctrl
+///   0xA0630: DMA_MM2S_0_Ctrl
+///   0xA0638: DMA_MM2S_1_Ctrl
+///   0xA0640: DMA_MM2S_2_Ctrl
+///   0xA0648: DMA_MM2S_3_Ctrl
+/// These operations enable DMA channels and are derivable from BD configuration.
+static bool isDMAControlOperation(uint32_t addr, uint32_t mask, uint32_t value) {
+  uint32_t row = (addr >> 20) & 0x7;
+  uint32_t tileBase = row << 20;
+  uint32_t offset = addr - tileBase;
+
+  // Check if this is a memtile (row == 1)
+  if (row != 1) {
+    return false;
+  }
+
+  // DMA control registers for memtile
+  if ((offset == 0xA0600 || offset == 0xA0608 ||  // S2MM channels
+       offset == 0xA0630 || offset == 0xA0638 ||  // MM2S channels
+       offset == 0xA0640 || offset == 0xA0648) &&  // More MM2S channels
+      mask == 0 && value == 1) {  // Enable operation
+    return true;
+  }
+
+  return false;
+}
+
 /// Check if a register write is an initialization/reset operation that can be
 /// omitted from decompiled MLIR. These are writes with value=0 that clear
 /// registers to a known state before configuration.
@@ -1917,6 +1966,22 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
           int col = ShimMuxAddressParser::getColumn(addr);
           liftedEmitter->recordShimMuxConnections(col, shimMuxConns);
           shouldEmitRaw = false;  // Don't emit raw write for shim mux registers
+          liftedEmitter->markLifted(addr);
+        }
+      }
+
+      // If lifted mode and this is a core control operation, suppress it
+      if (emitLifted && isCoreControlOperation(addr, mask)) {
+        shouldEmitRaw = false;  // Don't emit core control boilerplate
+        if (liftedEmitter) {
+          liftedEmitter->markLifted(addr);
+        }
+      }
+
+      // If lifted mode and this is a DMA control operation, suppress it
+      if (emitLifted && isDMAControlOperation(addr, mask, value)) {
+        shouldEmitRaw = false;  // Don't emit DMA control boilerplate
+        if (liftedEmitter) {
           liftedEmitter->markLifted(addr);
         }
       }
