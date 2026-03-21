@@ -716,9 +716,23 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
   builder.setInsertionPointToStart(module.getBody());
 
   // create aie.device
-  std::vector<AIEDevice> devices{AIEDevice::npu1_1col, AIEDevice::npu1_2col,
-                                 AIEDevice::npu1_3col, AIEDevice::npu1};
-  auto device = DeviceOp::create(builder, loc, devices[columns - 1],
+  // Map column count to device type (columns is 1-indexed)
+  AIEDevice deviceType;
+  switch (columns) {
+    case 1: deviceType = AIEDevice::npu1_1col; break;
+    case 2: deviceType = AIEDevice::npu1_2col; break;
+    case 3: deviceType = AIEDevice::npu1_3col; break;
+    case 4:
+    default:
+      // For 4+ columns, use npu1 (generic 4-column device)
+      deviceType = AIEDevice::npu1;
+      if (columns > 4) {
+        llvm::errs() << "Warning: Transaction binary indicates " << columns
+                     << " columns, using npu1 (4-column) device model\n";
+      }
+      break;
+  }
+  auto device = DeviceOp::create(builder, loc, deviceType,
                                  DeviceOp::getDefaultDeviceName());
   device.getRegion().emplaceBlock();
   DeviceOp::ensureTerminator(device.getBodyRegion(), builder, loc);

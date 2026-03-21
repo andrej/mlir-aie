@@ -306,13 +306,16 @@ public:
       }
     }
 
-    // Second pass: Create mem/shim_dma ops
+    // Second pass: Create mem/shim_dma/memtile_dma ops
     for (const auto &[tileId, bds] : tileBDs) {
       if (targetModel.isShimNOCorPLTile(tileId.col, tileId.row)) {
-        // Shim tiles use aie.shim_dma instead of aie.mem
+        // Shim tiles use aie.shim_dma
         emitShimDmaOpForTile(tileId, bds);
+      } else if (targetModel.isMemTile(tileId.col, tileId.row)) {
+        // Memory tiles use aie.memtile_dma
+        emitMemTileDmaOpForTile(tileId, bds);
       } else {
-        // Compute and memory tiles use aie.mem
+        // Core/compute tiles use aie.mem
         emitMemOpForTile(tileId, bds);
       }
     }
@@ -431,7 +434,6 @@ private:
     OpBuilder::InsertionGuard guard(builder);
     // Set insertion point after the last buffer/lock
     builder.setInsertionPointAfter(lastTileOp);
-    llvm::errs() << "About to create memOp for tile(" << tileId.col << "," << tileId.row << ") after op at line " << lastTileOp->getLoc() << "\n";
 
     auto memOp = builder.create<AIE::MemOp>(builder.getUnknownLoc(),
                                              builder.getIndexType(), tile);
@@ -598,6 +600,178 @@ private:
     if (!endBlock) {
       endBlock = new Block();
       memBlock->getParent()->push_back(endBlock);
+    }
+    builder.setInsertionPointToEnd(endBlock);
+    AIE::EndOp::create(builder, builder.getUnknownLoc());
+  }
+
+  void emitMemTileDmaOpForTile(TileID tileId, const llvm::SmallVector<ParsedBDConfig> &bds) {
+    auto tile = getOrCreateTile(tileId.col, tileId.row);
+
+    // Find the last operation associated with this tile
+    Operation *lastTileOp = tile;
+    Block *deviceBlock = tile->getBlock();
+    for (auto it = std::next(Block::iterator(tile)); it != deviceBlock->end(); ++it) {
+      Operation *op = &*it;
+      if (auto bufOp = dyn_cast<AIE::BufferOp>(op)) {
+        if (bufOp.getTile() == tile) {
+          lastTileOp = op;
+        }
+      } else if (auto lockOp = dyn_cast<AIE::LockOp>(op)) {
+        if (lockOp.getTile() == tile) {
+          lastTileOp = op;
+        }
+      } else if (isa<AIE::TileOp>(op)) {
+        break;
+      }
+    }
+
+    OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointAfter(lastTileOp);
+
+    // Create MemTileDMAOp instead of MemOp for memory tiles
+    auto memTileDmaOp = builder.create<AIE::MemTileDMAOp>(builder.getUnknownLoc(),
+                                                           builder.getIndexType(), tile);
+    Block *dmaBlock = &memTileDmaOp.getBody().emplaceBlock();
+    builder.setInsertionPointToEnd(dmaBlock);
+
+    // Group BDs by DMA channel (same logic as MemOp)
+    llvm::DenseMap<int, llvm::SmallVector<const ParsedBDConfig*>> bdsByChannel;
+    for (const auto &bd : bds) {
+      if (bd.dmaChannel >= 0) {
+        bdsByChannel[bd.dmaChannel].push_back(&bd);
+      }
+    }
+
+    if (bdsByChannel.empty()) {
+      llvm::SmallVector<const ParsedBDConfig*> unassignedBDs;
+      for (const auto &bd : bds) {
+        if (bd.dmaChannel < 0) {
+          unassignedBDs.push_back(&bd);
+        }
+      }
+
+      if (!unassignedBDs.empty()) {
+        llvm::errs() << "Warning: Emitting " << unassignedBDs.size()
+                     << " BDs with inferred channel S2MM_0 for memtile("
+                     << tileId.col << "," << tileId.row << ")\n";
+        bdsByChannel[0] = unassignedBDs;
+      }
+    }
+
+    llvm::DenseMap<int, Block*> bdBlocks;
+    Block *endBlock = nullptr;
+
+    // Emit DMA channels
+    for (int channelIdx = 0; channelIdx < 4; channelIdx++) {
+      auto it = bdsByChannel.find(channelIdx);
+      if (it == bdsByChannel.end() || it->second.empty()) {
+        continue;
+      }
+
+      const auto &channelBDs = it->second;
+
+      AIE::DMAChannelDir channelDir;
+      int channelNum;
+      if (channelIdx == 0) {
+        channelDir = AIE::DMAChannelDir::S2MM;
+        channelNum = 0;
+      } else if (channelIdx == 1) {
+        channelDir = AIE::DMAChannelDir::S2MM;
+        channelNum = 1;
+      } else if (channelIdx == 2) {
+        channelDir = AIE::DMAChannelDir::MM2S;
+        channelNum = 0;
+      } else {
+        channelDir = AIE::DMAChannelDir::MM2S;
+        channelNum = 1;
+      }
+
+      for (const auto *bd : channelBDs) {
+        Block *bdBlock = new Block();
+        dmaBlock->getParent()->push_back(bdBlock);
+        bdBlocks[bd->bdIndex] = bdBlock;
+      }
+
+      const ParsedBDConfig *firstBD = channelBDs[0];
+
+      if (!endBlock) {
+        endBlock = new Block();
+        dmaBlock->getParent()->push_back(endBlock);
+      }
+
+      Block *firstBDBlock = bdBlocks[firstBD->bdIndex];
+      Block *nextChain = endBlock;
+
+      (void) AIE::DMAStartOp::create(
+          builder,
+          builder.getUnknownLoc(),
+          channelDir,
+          channelNum,
+          0,
+          firstBDBlock,
+          nextChain
+      );
+
+      for (const auto *bd : channelBDs) {
+        Block *bdBlock = bdBlocks[bd->bdIndex];
+        builder.setInsertionPointToEnd(bdBlock);
+
+        emitLockAcquire(*bd);
+
+        auto buffer = getOrCreateBuffer(*bd);
+        auto dimAttrs = buildDimensionAttrs(*bd);
+
+        if (dimAttrs) {
+          AIE::DMABDOp::create(
+              builder,
+              builder.getUnknownLoc(),
+              buffer,
+              0,
+              bd->bufferLength,
+              dimAttrs
+          );
+        } else {
+          AIE::DMABDOp::create(
+              builder,
+              builder.getUnknownLoc(),
+              buffer,
+              0,
+              bd->bufferLength
+          );
+        }
+
+        emitLockRelease(*bd);
+
+        Block *nextBlock = nullptr;
+        if (bd->useNextBd) {
+          auto nextIt = bdBlocks.find(bd->nextBd);
+          if (nextIt != bdBlocks.end()) {
+            nextBlock = nextIt->second;
+          }
+        }
+
+        if (!nextBlock) {
+          nextBlock = bdBlocks[firstBD->bdIndex];
+        }
+
+        AIE::NextBDOp::create(
+            builder,
+            builder.getUnknownLoc(),
+            nextBlock
+        );
+      }
+    }
+
+    if (bdsByChannel.empty()) {
+      builder.setInsertionPointToEnd(dmaBlock);
+      AIE::EndOp::create(builder, builder.getUnknownLoc());
+      return;
+    }
+
+    if (!endBlock) {
+      endBlock = new Block();
+      dmaBlock->getParent()->push_back(endBlock);
     }
     builder.setInsertionPointToEnd(endBlock);
     AIE::EndOp::create(builder, builder.getUnknownLoc());
