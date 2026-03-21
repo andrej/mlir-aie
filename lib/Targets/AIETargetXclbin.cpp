@@ -193,6 +193,69 @@ public:
     lockConfigs[key] = lock;
   }
 
+  /// Record a tile reference from a register address
+  /// This ensures all tiles (including shim tiles) are emitted even if they
+  /// don't have BDs, switchboxes, or locks configured via CDO
+  void recordTileReference(int col, int row) {
+    TileID id{col, row};
+    referencedTiles.insert(id);
+  }
+
+  /// Extract tile coordinates from a register address
+  /// Returns true if coordinates were successfully extracted
+  static bool extractTileCoordinates(uint32_t addr, int &col, int &row) {
+    // AIE2 address format: base + (col * 32 + row_offset) * 0x100000
+    // Extract tile offset from address
+    constexpr uint32_t kTileAddrShift = 20;  // 0x100000 per tile
+    uint32_t tileOffset = (addr >> kTileAddrShift) & 0xFFF;
+
+    col = tileOffset / 32;
+    int rowPart = tileOffset % 32;
+
+    // Row mapping:
+    // rowPart 0 = row 0 (shim)
+    // rowPart 1 = row 1 (memory tile)
+    // rowPart 2-5 = rows 2-5 (compute tiles)
+    row = rowPart;
+
+    // Validate coordinates are reasonable
+    // Column should be < 64, row should be < 32
+    return (col < 64 && row < 32);
+  }
+
+  /// Emit standalone tile declarations for tiles that were referenced
+  /// but don't have BDs, switchboxes, or locks
+  void emitStandaloneTiles() {
+    // Build a set of tiles that already have operations (BDs, switchboxes, locks)
+    llvm::DenseSet<TileID> tilesWithOps;
+
+    // Tiles with BDs
+    for (const auto &[tileId, _] : tileBDs) {
+      tilesWithOps.insert(tileId);
+    }
+
+    // Tiles with switchboxes
+    for (const auto &[key, _] : switchboxes) {
+      TileID id{key.col, key.row};
+      tilesWithOps.insert(id);
+    }
+
+    // Tiles with locks
+    for (const auto &[key, _] : lockConfigs) {
+      auto [col, row, lockId] = key;
+      TileID id{col, row};
+      tilesWithOps.insert(id);
+    }
+
+    // Emit standalone tiles for referenced tiles without operations
+    for (const auto &tileId : referencedTiles) {
+      if (!tilesWithOps.contains(tileId)) {
+        // Just ensure the tile exists - getOrCreateTile will emit it
+        getOrCreateTile(tileId.col, tileId.row);
+      }
+    }
+  }
+
   /// Emit all collected BDs as aie.mem or aie.shim_dma operations
   void emitAllBDs() {
     auto &targetModel = getTargetModel(device);
@@ -436,6 +499,9 @@ private:
 
   // Lock storage
   std::map<LockAccumulator::LockKey, ParsedLockConfig> lockConfigs;
+
+  // Track all tiles referenced by any register write (including shim tiles)
+  llvm::DenseSet<TileID> referencedTiles;
 };
 
 #ifdef HAVE_BOOTGEN
@@ -687,6 +753,14 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
       uint32_t addr = static_cast<uint32_t>(cmd->dstaddr & 0xFFFFFFFF);
       uint32_t value = cmd->value;
 
+      // Track tile reference from this register write
+      if (emitLifted && liftedEmitter) {
+        int col, row;
+        if (LiftedBDEmitter::extractTileCoordinates(addr, col, row)) {
+          liftedEmitter->recordTileReference(col, row);
+        }
+      }
+
       // Check if this is a BD register write and accumulate
       auto completedBD = bdAccum.addWrite(addr, value, bdParser);
 
@@ -746,6 +820,14 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
       uint32_t addr = static_cast<uint32_t>(cmd->dstaddr & 0xFFFFFFFF);
       uint32_t mask = cmd->mask;
       uint32_t value = cmd->value;
+
+      // Track tile reference from this register write
+      if (emitLifted && liftedEmitter) {
+        int col, row;
+        if (LiftedBDEmitter::extractTileCoordinates(addr, col, row)) {
+          liftedEmitter->recordTileReference(col, row);
+        }
+      }
 
       // Check if this is a lock register write and accumulate
       lockAccum.addMaskWrite(addr, value, mask, lockParser);
@@ -822,6 +904,10 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
     for (const auto &[key, lock] : allLocks) {
       liftedEmitter->recordLock(lock);
     }
+
+    // Emit standalone tiles first (tiles referenced but without BDs/switchboxes/locks)
+    // This ensures all tiles (including shim tiles) are declared
+    liftedEmitter->emitStandaloneTiles();
 
     liftedEmitter->emitAllLocks();
     liftedEmitter->emitAllBDs();
