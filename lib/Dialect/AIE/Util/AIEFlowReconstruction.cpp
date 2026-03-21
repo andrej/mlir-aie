@@ -133,6 +133,73 @@ void FlowReconstructionGraph::addSwitchboxConfig(
   }
 }
 
+void FlowReconstructionGraph::addShimMuxConfig(
+    const ParsedShimMuxConfig &config) {
+  // Shim mux connections are at row 0 (shim tiles)
+  // Special handling: shim_mux North port connects to switchbox South port
+  // at the SAME tile (not to the neighbor tile)
+  int col = config.column;
+  int row = 0;
+
+  for (const auto &conn : config.connections) {
+    WireBundle srcBundle, dstBundle;
+    int srcChannel, dstChannel;
+
+    // Map ShimMuxSource to WireBundle (same logic as emitShimMuxForTile)
+    WireBundle localBundle;
+    switch (conn.source) {
+      case ShimMuxSource::PL:
+        localBundle = WireBundle::South;  // PL connects via South
+        break;
+      case ShimMuxSource::DMA:
+        localBundle = WireBundle::DMA;
+        break;
+      case ShimMuxSource::NOC:
+        // NoC uses special addressing - skip for now
+        continue;
+      default:
+        continue;  // Skip invalid sources
+    }
+
+    if (conn.isInput) {
+      // Mux: Input stream receives from local resource (DMA/PL) and sends North
+      // Example: DMA:0 -> North:3
+      // The North output connects to the switchbox South input at the SAME tile
+      srcBundle = localBundle;
+      srcChannel = 0;  // DMA/PL channel 0
+      dstBundle = WireBundle::North;
+      dstChannel = conn.streamIndex;
+
+      // Add connection within shim_mux
+      addConnection(col, row, srcBundle, srcChannel, dstBundle, dstChannel);
+
+      // Add explicit connection from shim_mux North to switchbox South
+      // (at the same tile, not neighbor)
+      Node shimMuxNorthOutput{col, row, WireBundle::North, dstChannel, true};
+      Node switchboxSouthInput{col, row, WireBundle::South, dstChannel, false};
+      addEdge(shimMuxNorthOutput, switchboxSouthInput);
+
+    } else {
+      // Demux: Output stream receives from North and sends to local resource
+      // Example: North:2 -> DMA:0
+      // The switchbox South output connects to shim_mux North input at the SAME tile
+      srcBundle = WireBundle::North;
+      srcChannel = conn.streamIndex;
+      dstBundle = localBundle;
+      dstChannel = 0;  // DMA/PL channel 0
+
+      // Add explicit connection from switchbox South to shim_mux North
+      // (at the same tile, not neighbor)
+      Node switchboxSouthOutput{col, row, WireBundle::South, srcChannel, true};
+      Node shimMuxNorthInput{col, row, WireBundle::North, srcChannel, false};
+      addEdge(switchboxSouthOutput, shimMuxNorthInput);
+
+      // Add connection within shim_mux
+      addConnection(col, row, srcBundle, srcChannel, dstBundle, dstChannel);
+    }
+  }
+}
+
 void FlowReconstructionGraph::addConnection(
     int col, int row,
     WireBundle sourceBundle, int sourceChannel,

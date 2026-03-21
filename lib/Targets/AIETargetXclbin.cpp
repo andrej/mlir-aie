@@ -371,6 +371,12 @@ public:
       flowGraph.addSwitchboxConfig(config);
     }
 
+    // Add shim mux configs to the flow graph
+    // Shim mux connections represent DMA endpoints (flow sources/sinks)
+    for (const auto &[column, config] : shimMuxes) {
+      flowGraph.addShimMuxConfig(config);
+    }
+
     // Reconstruct end-to-end flows
     auto flows = flowGraph.reconstructFlows();
 
@@ -1003,12 +1009,10 @@ private:
       return;
     }
 
-    // Skip shim tiles (row 0) - they use aie.shim_mux instead of aie.switchbox
-    // Also skip if this is ShimNOC or ShimPL tile type
-    if (config.row == 0 || config.tileType == TileType::ShimNOC ||
-        config.tileType == TileType::ShimPL) {
-      return;
-    }
+    // Note: Shim tiles (row 0) have BOTH aie.shim_mux AND aie.switchbox
+    // - shim_mux: handles local DMA/NOC/PL connections
+    // - switchbox: handles routing to/from neighboring tiles
+    // Do not skip shim tiles here!
 
     auto tile = getOrCreateTile(config.column, config.row);
 

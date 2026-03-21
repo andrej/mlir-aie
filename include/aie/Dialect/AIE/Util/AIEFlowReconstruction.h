@@ -61,6 +61,9 @@ public:
   /// Add all connections from a parsed switchbox config
   void addSwitchboxConfig(const ParsedSwitchboxConfig &config);
 
+  /// Add all connections from a parsed shim mux config
+  void addShimMuxConfig(const ParsedShimMuxConfig &config);
+
   /// Add a single connection
   void addConnection(int col, int row,
                      WireBundle sourceBundle, int sourceChannel,
