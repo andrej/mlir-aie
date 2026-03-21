@@ -203,6 +203,35 @@ public:
     referencedTiles.insert(id);
   }
 
+  /// Get the maximum column index used in the xclbin
+  /// Returns -1 if no tiles were referenced
+  int getMaxColumn() const {
+    int maxCol = -1;
+
+    // Check referenced tiles
+    for (const auto &tileId : referencedTiles) {
+      if (tileId.col > maxCol) {
+        maxCol = tileId.col;
+      }
+    }
+
+    // Also check tiles with BDs
+    for (const auto &[tileId, _] : tileBDs) {
+      if (tileId.col > maxCol) {
+        maxCol = tileId.col;
+      }
+    }
+
+    // Also check tiles with switchboxes
+    for (const auto &[key, _] : switchboxes) {
+      if (key.col > maxCol) {
+        maxCol = key.col;
+      }
+    }
+
+    return maxCol;
+  }
+
   /// Extract tile coordinates from a register address
   /// Returns true if coordinates were successfully extracted
   static bool extractTileCoordinates(uint32_t addr, int &col, int &row) {
@@ -1081,6 +1110,57 @@ void extractBDsFromTransaction(ModuleOp txnModule, AIE::DeviceOp deviceOp,
                                 DMAChannelTracker &dmaChannelTracker,
                                 LiftedBDEmitter &emitter);
 
+/// Determine device type from maximum column index
+AIE::AIEDevice getDeviceFromMaxColumn(int maxCol) {
+  // Default to 1 column if no columns detected
+  if (maxCol < 0) {
+    llvm::errs() << "Warning: No tile columns detected in xclbin, defaulting to npu1_1col\n";
+    return AIE::AIEDevice::npu1_1col;
+  }
+
+  // Map max column index to device type
+  // Column indices are 0-based, so maxCol=0 means 1 column
+  if (maxCol == 0) {
+    return AIE::AIEDevice::npu1_1col;
+  } else if (maxCol == 1) {
+    return AIE::AIEDevice::npu1_2col;
+  } else if (maxCol == 2) {
+    return AIE::AIEDevice::npu1_3col;
+  } else {
+    // For more than 3 columns, default to npu1 (generic NPU1 device)
+    llvm::errs() << "Warning: Max column " << maxCol
+                 << " exceeds npu1_3col, using generic npu1 device\n";
+    return AIE::AIEDevice::npu1;
+  }
+}
+
+/// Scan CDO commands to determine maximum column index
+int scanForMaxColumn(llvm::ArrayRef<CdoCommand *> commands) {
+  int maxCol = -1;
+
+  for (CdoCommand *cmd : commands) {
+    if (cmd->type == CdoCmdWrite || cmd->type == CdoCmdMaskWrite) {
+      uint32_t addr = static_cast<uint32_t>(cmd->dstaddr & 0xFFFFFFFF);
+      int col, row;
+      if (LiftedBDEmitter::extractTileCoordinates(addr, col, row)) {
+        if (col > maxCol) {
+          maxCol = col;
+        }
+      }
+    } else if (cmd->type == CdoCmdSetBlock) {
+      uint32_t addr = static_cast<uint32_t>(cmd->dstaddr & 0xFFFFFFFF);
+      int col, row;
+      if (LiftedBDEmitter::extractTileCoordinates(addr, col, row)) {
+        if (col > maxCol) {
+          maxCol = col;
+        }
+      }
+    }
+  }
+
+  return maxCol;
+}
+
 /// Emit MLIR operations from decoded CDO commands.
 /// Creates aie.device, runtime_sequence, and MLIR operations for register writes.
 LogicalResult emitMLIRFromCDO(ModuleOp module,
@@ -1090,10 +1170,17 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
   OpBuilder builder(module.getContext());
   builder.setInsertionPointToEnd(module.getBody());
 
-  // Create aie.device
+  // Pre-scan CDO commands to determine device column count
+  int maxCol = scanForMaxColumn(commands);
+  AIE::AIEDevice deviceType = getDeviceFromMaxColumn(maxCol);
+
+  llvm::errs() << "Detected max column: " << maxCol
+               << " -> device type: " << stringifyAIEDevice(deviceType) << "\n";
+
+  // Create aie.device with detected device type
   auto deviceOp = AIE::DeviceOp::create(
       builder, builder.getUnknownLoc(),
-      AIE::AIEDeviceAttr::get(builder.getContext(), AIE::AIEDevice::npu1_1col),
+      AIE::AIEDeviceAttr::get(builder.getContext(), deviceType),
       mlir::StringAttr::get(builder.getContext(), "xclbin_device"));
 
   Block *deviceBlock = &deviceOp.getRegion().emplaceBlock();
