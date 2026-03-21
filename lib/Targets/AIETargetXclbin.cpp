@@ -471,14 +471,24 @@ private:
         auto buffer = getOrCreateBuffer(*bd);
         auto dimAttrs = buildDimensionAttrs(*bd);
 
-        AIE::DMABDOp::create(
-            builder,
-            builder.getUnknownLoc(),
-            buffer,
-            0,  // offset
-            bd->bufferLength,
-            dimAttrs
-        );
+        if (dimAttrs) {
+          AIE::DMABDOp::create(
+              builder,
+              builder.getUnknownLoc(),
+              buffer,
+              0,  // offset
+              bd->bufferLength,
+              dimAttrs
+          );
+        } else {
+          AIE::DMABDOp::create(
+              builder,
+              builder.getUnknownLoc(),
+              buffer,
+              0,  // offset
+              bd->bufferLength
+          );
+        }
 
         // Emit lock release
         emitLockRelease(*bd);
@@ -542,6 +552,32 @@ private:
     for (const auto &bd : bds) {
       if (bd.dmaChannel >= 0) {
         bdsByChannel[bd.dmaChannel].push_back(&bd);
+      }
+    }
+
+    // If there are no channels with BDs, we may have BDs without channel assignments.
+    // For shim tiles, BDs are often configured dynamically at runtime rather than statically.
+    // Check if we have any BDs at all to emit with inferred channel assignments
+    if (bdsByChannel.empty()) {
+      // Collect BDs without channel assignments
+      llvm::SmallVector<const ParsedBDConfig*> unassignedBDs;
+      for (const auto &bd : bds) {
+        if (bd.dmaChannel < 0) {
+          unassignedBDs.push_back(&bd);
+        }
+      }
+
+      if (!unassignedBDs.empty()) {
+        // Emit BDs with default channel assignment (MM2S_0 is most common for shim output)
+        // Channel assignment inference: BDs without explicit channel assignment are
+        // assumed to be MM2S_0 (memory-to-stream, channel 0) which is the typical
+        // pattern for shim tiles outputting data.
+        llvm::errs() << "Warning: Emitting " << unassignedBDs.size()
+                     << " BDs with inferred channel MM2S_0 for tile("
+                     << tileId.col << "," << tileId.row << ")\n";
+
+        // Assign to channel MM2S_0 (channelIdx = 2)
+        bdsByChannel[2] = unassignedBDs;
       }
     }
 
@@ -617,14 +653,24 @@ private:
         auto buffer = getOrCreateExternalBuffer(*bd);
         auto dimAttrs = buildDimensionAttrs(*bd);
 
-        AIE::DMABDOp::create(
-            builder,
-            builder.getUnknownLoc(),
-            buffer,
-            0,  // offset
-            bd->bufferLength,
-            dimAttrs
-        );
+        if (dimAttrs) {
+          AIE::DMABDOp::create(
+              builder,
+              builder.getUnknownLoc(),
+              buffer,
+              0,  // offset
+              bd->bufferLength,
+              dimAttrs
+          );
+        } else {
+          AIE::DMABDOp::create(
+              builder,
+              builder.getUnknownLoc(),
+              buffer,
+              0,  // offset
+              bd->bufferLength
+          );
+        }
 
         // Emit lock release (if applicable)
         emitLockRelease(*bd);
@@ -651,28 +697,8 @@ private:
       }
     }
 
-    // If there are no channels with BDs, we may have BDs without channel assignments.
-    // For shim tiles, BDs are often configured dynamically at runtime rather than statically.
-    // Check if we have any BDs at all to emit as fallback
+    // If no BDs were emitted, add an end terminator to shimDmaBlock
     if (bdsByChannel.empty()) {
-      // Check if there are any BDs without channel assignments
-      bool hasUnassignedBDs = false;
-      for (const auto &bd : bds) {
-        if (bd.dmaChannel < 0) {
-          hasUnassignedBDs = true;
-          break;
-        }
-      }
-
-      if (hasUnassignedBDs) {
-        // TODO: Consider emitting aie.shim_dma_allocation instead for unassigned BDs
-        // For now, just emit end - shim DMAs are configured dynamically at runtime
-        builder.setInsertionPointToEnd(shimDmaBlock);
-        AIE::EndOp::create(builder, builder.getUnknownLoc());
-        return;
-      }
-
-      // No BDs at all, just emit end
       builder.setInsertionPointToEnd(shimDmaBlock);
       AIE::EndOp::create(builder, builder.getUnknownLoc());
       return;
