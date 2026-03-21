@@ -581,13 +581,17 @@ static void parseBDFields(const std::array<int32_t, 32> &bd_data,
 
   // BD word 3: d0_size and d0_stride
   uint32_t word3 = bd_data[3];
-  d0_size = (word3 >> 20) & 0xFFF;
+  d0_size = (word3 >> 20) & 0x3FF;  // Fixed: should be 10 bits, not 12
   d0_stride = word3 & 0xFFFFF;
 
   // BD word 4: burst_length, d1_size, d1_stride
   uint32_t word4 = bd_data[4];
-  burst_length = (word4 >> 28) & 0xF;
-  d1_size = (word4 >> 20) & 0xFF;
+  // Burst length is encoded in bits [31:30]:
+  // 00 = 64 bytes, 01 = 128 bytes, 10 = 256 bytes
+  uint32_t burst_encoding = (word4 >> 30) & 0x3;
+  const int burst_lengths[] = {64, 128, 256, 0};  // 0 for undefined encoding (11)
+  burst_length = burst_lengths[burst_encoding];
+  d1_size = (word4 >> 20) & 0x3FF;  // Fixed: should be 10 bits, not 8
   d1_stride = word4 & 0xFFFFF;
 
   // BD word 5: d2_stride (and AXCache)
@@ -596,9 +600,9 @@ static void parseBDFields(const std::array<int32_t, 32> &bd_data,
 
   // BD word 6: iteration info
   uint32_t word6 = bd_data[6];
-  iteration_current = (word6 >> 16) & 0x3F;
-  iteration_size = (word6 >> 6) & 0x3F;
-  iteration_stride = word6 & 0x3F;
+  iteration_current = (word6 >> 26) & 0x3F;  // Fixed: should be bits [31:26]
+  iteration_size = (word6 >> 20) & 0x3F;     // Fixed: should be bits [25:20]
+  iteration_stride = word6 & 0xFFFFF;        // Fixed: should be 20 bits, not 6
 
   // BD word 7: control and lock info
   uint32_t word7 = bd_data[7];
