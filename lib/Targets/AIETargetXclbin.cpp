@@ -504,14 +504,13 @@ private:
       }
 
       // Create blocks for each BD in this channel
-      for (const auto *bd : channelBDs) {
+      // Use a unique index for each BD in the vector, not bd->bdIndex,
+      // because multiple BDs can have the same bdIndex (reconfiguration)
+      for (size_t i = 0; i < channelBDs.size(); i++) {
         Block *bdBlock = new Block();
         memBlock->getParent()->push_back(bdBlock);
-        bdBlocks[bd->bdIndex] = bdBlock;
+        bdBlocks[i] = bdBlock;
       }
-
-      // Find the first BD (one with lowest index, or follow hardware convention)
-      const ParsedBDConfig *firstBD = channelBDs[0];
 
       // Create end block if not already created
       if (!endBlock) {
@@ -520,7 +519,7 @@ private:
       }
 
       // Emit dma_start operation
-      Block *firstBDBlock = bdBlocks[firstBD->bdIndex];
+      Block *firstBDBlock = bdBlocks[0];  // First BD in the vector
       Block *nextChain = endBlock;  // Chain to end or next channel
 
       (void) AIE::DMAStartOp::create(
@@ -534,8 +533,9 @@ private:
       );
 
       // Now emit each BD block
-      for (const auto *bd : channelBDs) {
-        Block *bdBlock = bdBlocks[bd->bdIndex];
+      for (size_t i = 0; i < channelBDs.size(); i++) {
+        const auto *bd = channelBDs[i];
+        Block *bdBlock = bdBlocks[i];
         builder.setInsertionPointToEnd(bdBlock);
 
         // Emit lock acquire
@@ -570,15 +570,18 @@ private:
         // Emit next_bd terminator
         Block *nextBlock = nullptr;
         if (bd->useNextBd) {
-          auto nextIt = bdBlocks.find(bd->nextBd);
-          if (nextIt != bdBlocks.end()) {
-            nextBlock = nextIt->second;
+          // Find the BD with the specified bdIndex in our vector
+          for (size_t j = 0; j < channelBDs.size(); j++) {
+            if (channelBDs[j]->bdIndex == bd->nextBd) {
+              nextBlock = bdBlocks[j];
+              break;
+            }
           }
         }
 
         if (!nextBlock) {
-          // If no valid next_bd, loop back to first BD
-          nextBlock = bdBlocks[firstBD->bdIndex];
+          // If no valid next_bd, loop back to first BD (index 0)
+          nextBlock = bdBlocks[0];
         }
 
         AIE::NextBDOp::create(
@@ -687,20 +690,20 @@ private:
         channelNum = 1;
       }
 
-      for (const auto *bd : channelBDs) {
+      // Use a unique index for each BD in the vector, not bd->bdIndex,
+      // because multiple BDs can have the same bdIndex (reconfiguration)
+      for (size_t i = 0; i < channelBDs.size(); i++) {
         Block *bdBlock = new Block();
         dmaBlock->getParent()->push_back(bdBlock);
-        bdBlocks[bd->bdIndex] = bdBlock;
+        bdBlocks[i] = bdBlock;
       }
-
-      const ParsedBDConfig *firstBD = channelBDs[0];
 
       if (!endBlock) {
         endBlock = new Block();
         dmaBlock->getParent()->push_back(endBlock);
       }
 
-      Block *firstBDBlock = bdBlocks[firstBD->bdIndex];
+      Block *firstBDBlock = bdBlocks[0];  // First BD in the vector
       Block *nextChain = endBlock;
 
       (void) AIE::DMAStartOp::create(
@@ -713,8 +716,9 @@ private:
           nextChain
       );
 
-      for (const auto *bd : channelBDs) {
-        Block *bdBlock = bdBlocks[bd->bdIndex];
+      for (size_t i = 0; i < channelBDs.size(); i++) {
+        const auto *bd = channelBDs[i];
+        Block *bdBlock = bdBlocks[i];
         builder.setInsertionPointToEnd(bdBlock);
 
         emitLockAcquire(*bd);
@@ -745,14 +749,18 @@ private:
 
         Block *nextBlock = nullptr;
         if (bd->useNextBd) {
-          auto nextIt = bdBlocks.find(bd->nextBd);
-          if (nextIt != bdBlocks.end()) {
-            nextBlock = nextIt->second;
+          // Find the BD with the specified bdIndex in our vector
+          for (size_t j = 0; j < channelBDs.size(); j++) {
+            if (channelBDs[j]->bdIndex == bd->nextBd) {
+              nextBlock = bdBlocks[j];
+              break;
+            }
           }
         }
 
         if (!nextBlock) {
-          nextBlock = bdBlocks[firstBD->bdIndex];
+          // If no valid next_bd, loop back to first BD (index 0)
+          nextBlock = bdBlocks[0];
         }
 
         AIE::NextBDOp::create(
@@ -858,14 +866,13 @@ private:
       }
 
       // Create blocks for each BD in this channel
-      for (const auto *bd : channelBDs) {
+      // Use a unique index for each BD in the vector, not bd->bdIndex,
+      // because multiple BDs can have the same bdIndex (reconfiguration)
+      for (size_t i = 0; i < channelBDs.size(); i++) {
         Block *bdBlock = new Block();
         shimDmaBlock->getParent()->push_back(bdBlock);
-        bdBlocks[bd->bdIndex] = bdBlock;
+        bdBlocks[i] = bdBlock;
       }
-
-      // Find the first BD (one with lowest index, or follow hardware convention)
-      const ParsedBDConfig *firstBD = channelBDs[0];
 
       // Create end block if not already created
       if (!endBlock) {
@@ -874,7 +881,7 @@ private:
       }
 
       // Emit dma_start operation
-      Block *firstBDBlock = bdBlocks[firstBD->bdIndex];
+      Block *firstBDBlock = bdBlocks[0];  // First BD in the vector
       Block *nextChain = endBlock;  // Chain to end or next channel
 
       (void) AIE::DMAStartOp::create(
@@ -888,8 +895,9 @@ private:
       );
 
       // Now emit each BD block
-      for (const auto *bd : channelBDs) {
-        Block *bdBlock = bdBlocks[bd->bdIndex];
+      for (size_t i = 0; i < channelBDs.size(); i++) {
+        const auto *bd = channelBDs[i];
+        Block *bdBlock = bdBlocks[i];
         builder.setInsertionPointToEnd(bdBlock);
 
         // Emit lock acquire (if applicable)
@@ -924,15 +932,18 @@ private:
         // Emit next_bd terminator
         Block *nextBlock = nullptr;
         if (bd->useNextBd) {
-          auto nextIt = bdBlocks.find(bd->nextBd);
-          if (nextIt != bdBlocks.end()) {
-            nextBlock = nextIt->second;
+          // Find the BD with the specified bdIndex in our vector
+          for (size_t j = 0; j < channelBDs.size(); j++) {
+            if (channelBDs[j]->bdIndex == bd->nextBd) {
+              nextBlock = bdBlocks[j];
+              break;
+            }
           }
         }
 
         if (!nextBlock) {
-          // If no valid next_bd, loop back to first BD
-          nextBlock = bdBlocks[firstBD->bdIndex];
+          // If no valid next_bd, loop back to first BD (index 0)
+          nextBlock = bdBlocks[0];
         }
 
         AIE::NextBDOp::create(
