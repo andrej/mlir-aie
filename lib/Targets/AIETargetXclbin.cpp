@@ -289,10 +289,6 @@ public:
 
   /// Emit all collected BDs as aie.mem or aie.shim_dma operations
   void emitAllBDs() {
-    llvm::errs() << "emitAllBDs: tileBDs.size() = " << tileBDs.size() << "\n";
-    for (const auto &[tileId, bds] : tileBDs) {
-      llvm::errs() << "  Emitting " << bds.size() << " BDs for tile(" << tileId.col << "," << tileId.row << ")\n";
-    }
     auto &targetModel = getTargetModel(device);
 
     // First pass: Create all buffers for all tiles
@@ -329,26 +325,21 @@ public:
   }
 
   /// Reconstruct and emit aie.flow operations from switchbox connections
+  /// NOTE: For NPU xclbins, switchbox routing configuration is not stored in the
+  /// binary format (architectural limitation). This code is preserved for potential
+  /// future use with other target architectures or enhanced binary formats.
   void emitAllFlows() {
-    llvm::errs() << "emitAllFlows: switchboxes.size() = " << switchboxes.size() << "\n";
-
     // Build flow reconstruction graph from all switchbox configs
     FlowReconstructionGraph flowGraph;
     for (const auto &[key, config] : switchboxes) {
-      llvm::errs() << "  Adding switchbox config for tile(" << config.column << "," << config.row
-                   << ") with " << config.connections.size() << " connections\n";
       flowGraph.addSwitchboxConfig(config);
     }
-
-    llvm::errs() << "  flowGraph.edgeCount() = " << flowGraph.edgeCount() << "\n";
 
     // Reconstruct end-to-end flows
     auto flows = flowGraph.reconstructFlows();
 
-    llvm::errs() << "  Reconstructed " << flows.size() << " flows\n";
-
     if (flows.empty()) {
-      return;  // No flows to emit
+      return;  // No flows to emit (expected for NPU xclbins)
     }
 
     // Emit aie.flow operations
@@ -1323,13 +1314,6 @@ LogicalResult extractAIEMetadata(StringRef xclbinData,
 
   uint32_t numSections = header->m_header.m_numSections;
 
-  // Debug: list all sections
-  llvm::errs() << "Xclbin has " << numSections << " sections:\n";
-  for (uint32_t i = 0; i < numSections; i++) {
-    llvm::errs() << "  Section " << i << ": kind=" << sections[i].m_sectionKind
-                 << " size=" << sections[i].m_sectionSize << " bytes\n";
-  }
-
   // Find AIE_METADATA section (kind 25)
   for (uint32_t i = 0; i < numSections; i++) {
     if (sections[i].m_sectionKind == AIE_METADATA) {
@@ -1343,7 +1327,6 @@ LogicalResult extractAIEMetadata(StringRef xclbinData,
 
       // Copy metadata as string (assuming it's JSON text)
       metadataJson.assign(reinterpret_cast<const char *>(data + offset), len);
-      llvm::errs() << "Found AIE_METADATA section, size = " << len << " bytes\n";
       return success();
     }
   }
