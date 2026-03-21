@@ -673,6 +673,42 @@ static bool tryParseBDBlockwrite(uint32_t address, const uint32_t *data,
   return true;
 }
 
+// Check if a blockwrite is a zero-value shim DMA BD initialization.
+// These writes are used to disable/initialize unused BDs with zero values.
+// Returns true if this should be suppressed (not emitted as raw blockwrite).
+static bool isZeroValueShimDMABDInit(uint32_t address, const uint32_t *data,
+                                     uint32_t size_in_words) {
+  // Extract column and row from address
+  int32_t row = (address >> 20) & 0x1F;
+
+  // Only applies to shim tiles (row 0)
+  if (row != 0)
+    return false;
+
+  uint32_t tile_base = ((address >> 25) & 0xFF) << 25;
+  uint32_t offset = address - tile_base;
+
+  // Check if this is in the shim DMA BD address range
+  // Shim tile DMA BD base: 0x1D000, each BD is 0x20 bytes
+  uint32_t bd_base = 0x1D000;
+  uint32_t bd_end = bd_base + (16 * 0x20); // Assuming max 16 BDs
+
+  if (offset < bd_base || offset >= bd_end)
+    return false;
+
+  // Check if offset is aligned to BD boundary
+  if ((offset - bd_base) % 0x20 != 0)
+    return false;
+
+  // Check if all data values are zero (initialization)
+  for (uint32_t i = 0; i < size_in_words; i++) {
+    if (data[i] != 0)
+      return false;
+  }
+
+  return true;
+}
+
 // Parse BD fields from the raw register values
 static void parseBDFields(const std::array<int32_t, 32> &bd_data,
                           int32_t &buffer_length, int32_t &buffer_offset,
@@ -878,12 +914,29 @@ emitTransactionOps(OpBuilder &builder,
             builder.getI32IntegerAttr(d2_zero_after),
             builder.getI32IntegerAttr(burst_length));
       } else {
-        // Emit raw blockwrite
-        auto memref = memref::GetGlobalOp::create(builder, loc, payload.getType(),
-                                                  payload.getName());
-        AIEX::NpuBlockWriteOp::create(
-            builder, loc, builder.getUI32IntegerAttr(op.cmd.RegOff),
-            memref.getResult(), nullptr, nullptr, nullptr);
+        // Check if this is a zero-value shim DMA BD initialization
+        const uint32_t *data = reinterpret_cast<const uint32_t *>(op.cmd.DataPtr);
+        uint32_t size_in_words = op.cmd.Size / 4;
+
+        if (isZeroValueShimDMABDInit(op.cmd.RegOff, data, size_in_words)) {
+          // Suppress zero-value shim DMA BD initialization writes
+          int32_t column = (op.cmd.RegOff >> 25) & 0xFF;
+          int32_t row = (op.cmd.RegOff >> 20) & 0x1F;
+          uint32_t tile_base = (column << 25) | (row << 20);
+          uint32_t offset = op.cmd.RegOff - tile_base;
+          int32_t bd_id = (offset - 0x1D000) / 0x20;
+
+          llvm::errs() << "Note: Suppressing shim DMA BD zero-value initialization at tile("
+                       << column << "," << row << ") BD " << bd_id << "\n";
+          // Skip emission - don't emit raw blockwrite
+        } else {
+          // Emit raw blockwrite for non-zero or non-BD writes
+          auto memref = memref::GetGlobalOp::create(builder, loc, payload.getType(),
+                                                    payload.getName());
+          AIEX::NpuBlockWriteOp::create(
+              builder, loc, builder.getUI32IntegerAttr(op.cmd.RegOff),
+              memref.getResult(), nullptr, nullptr, nullptr);
+        }
       }
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
       // Try to parse as a DMA Controller_ID configuration
