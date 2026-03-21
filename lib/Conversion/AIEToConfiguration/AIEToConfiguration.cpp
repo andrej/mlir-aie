@@ -447,6 +447,174 @@ static LogicalResult generateTransactions(AIERTControl &ctl,
   return success();
 }
 
+// DMA Control register base offsets (relative to tile base)
+// For shim tiles (row 0):
+static constexpr uint32_t kDMA_Control_Base_Shim = 0x1D200;
+// For core tiles (row >= 1):
+static constexpr uint32_t kDMA_Control_Base_Core = 0x1DE00;
+// Queue register is at control + 0x4
+
+// Try to parse a write32 operation as a queue push operation.
+// Returns true if this is a queue push, false otherwise.
+// If true, populates the output parameters.
+static bool tryParseQueuePush(uint32_t address, uint32_t value,
+                              int32_t &column, int32_t &row,
+                              int32_t &direction, int32_t &channel,
+                              bool &issue_token, int32_t &repeat_count,
+                              int32_t &bd_id) {
+  // Extract column from tile base address
+  column = (address >> 25) & 0xFF;
+
+  // Extract row from tile base address
+  row = (address >> 20) & 0x1F;
+
+  // Get the offset within the tile
+  uint32_t tile_base = (column << 25) | (row << 20);
+  uint32_t offset = address - tile_base;
+
+  // Determine the control base based on tile type
+  uint32_t control_base;
+  if (row == 0) {
+    // Shim tile
+    control_base = kDMA_Control_Base_Shim;
+  } else {
+    // Core or mem tile
+    control_base = kDMA_Control_Base_Core;
+  }
+
+  // Queue register is control + 0x4
+  // Check if this offset matches a queue register pattern:
+  // control_base + (channel * 8) + (MM2S ? 0x10 : 0) + 0x4
+
+  // Try to match S2MM channels
+  if (offset == control_base + 0 * 8 + 0x4) {
+    direction = 0; // S2MM
+    channel = 0;
+  } else if (offset == control_base + 1 * 8 + 0x4) {
+    direction = 0; // S2MM
+    channel = 1;
+  } else if (offset == control_base + 0x10 + 0 * 8 + 0x4) {
+    direction = 1; // MM2S
+    channel = 0;
+  } else if (offset == control_base + 0x10 + 1 * 8 + 0x4) {
+    direction = 1; // MM2S
+    channel = 1;
+  } else {
+    return false;
+  }
+
+  // Decode the value
+  bd_id = value & 0xF;
+  repeat_count = (value >> 16) & 0xFF;
+  issue_token = (value & 0x80000000) != 0;
+
+  return true;
+}
+
+// Try to parse a blockwrite operation as a BD configuration.
+// Returns true if this is a BD blockwrite, false otherwise.
+static bool tryParseBDBlockwrite(uint32_t address, const uint32_t *data,
+                                 uint32_t size_in_words,
+                                 int32_t &column, int32_t &row,
+                                 int32_t &bd_id,
+                                 std::array<int32_t, 32> &bd_fields) {
+  // Extract column and row from address
+  column = (address >> 25) & 0xFF;
+  row = (address >> 20) & 0x1F;
+
+  // Check if this is a shim tile (row 0) or mem tile (row 1)
+  if (row != 0 && row != 1)
+    return false;
+
+  uint32_t tile_base = (column << 25) | (row << 20);
+  uint32_t offset = address - tile_base;
+
+  // Check if this is a BD base address
+  // Shim tile DMA BD base: 0x1D000, mem tile: 0xA0000
+  uint32_t bd_base = (row == 0) ? 0x1D000 : 0xA0000;
+
+  // Each BD is 0x20 (32) bytes = 8 words
+  if ((offset < bd_base) || ((offset - bd_base) % 0x20 != 0))
+    return false;
+
+  bd_id = (offset - bd_base) / 0x20;
+
+  // We need at least 6-8 words for a BD
+  if (size_in_words < 6)
+    return false;
+
+  // Copy the BD data (up to 8 words)
+  bd_fields.fill(0);
+  for (uint32_t i = 0; i < std::min(size_in_words, 8u); i++) {
+    bd_fields[i] = data[i];
+  }
+
+  return true;
+}
+
+// Parse BD fields from the raw register values
+static void parseBDFields(const std::array<int32_t, 32> &bd_data,
+                          int32_t &buffer_length, int32_t &buffer_offset,
+                          int32_t &enable_packet, int32_t &out_of_order_id,
+                          int32_t &packet_id, int32_t &packet_type,
+                          int32_t &d0_size, int32_t &d0_stride,
+                          int32_t &d1_size, int32_t &d1_stride,
+                          int32_t &d2_size, int32_t &d2_stride,
+                          int32_t &iteration_current, int32_t &iteration_size,
+                          int32_t &iteration_stride, int32_t &next_bd,
+                          int32_t &use_next_bd, int32_t &valid_bd,
+                          int32_t &lock_rel_val, int32_t &lock_rel_id,
+                          int32_t &lock_acq_enable, int32_t &lock_acq_val,
+                          int32_t &lock_acq_id, int32_t &burst_length) {
+  // BD word 0: buffer_length
+  buffer_length = bd_data[0];
+
+  // BD word 1: buffer_offset (will be patched by address_patch)
+  buffer_offset = bd_data[1];
+
+  // BD word 2: packet info
+  uint32_t word2 = bd_data[2];
+  enable_packet = (word2 >> 30) & 0x1;
+  out_of_order_id = (word2 >> 24) & 0x3F;
+  packet_id = (word2 >> 16) & 0x1F;
+  packet_type = word2 & 0x7;
+
+  // BD word 3: d0_size and d0_stride
+  uint32_t word3 = bd_data[3];
+  d0_size = (word3 >> 20) & 0xFFF;
+  d0_stride = word3 & 0xFFFFF;
+
+  // BD word 4: burst_length, d1_size, d1_stride
+  uint32_t word4 = bd_data[4];
+  burst_length = (word4 >> 28) & 0xF;
+  d1_size = (word4 >> 20) & 0xFF;
+  d1_stride = word4 & 0xFFFFF;
+
+  // BD word 5: d2_stride (and AXCache)
+  uint32_t word5 = bd_data[5];
+  d2_stride = word5 & 0xFFFFF;
+
+  // BD word 6: iteration info
+  uint32_t word6 = bd_data[6];
+  iteration_current = (word6 >> 16) & 0x3F;
+  iteration_size = (word6 >> 6) & 0x3F;
+  iteration_stride = word6 & 0x3F;
+
+  // BD word 7: control and lock info
+  uint32_t word7 = bd_data[7];
+  next_bd = (word7 >> 27) & 0x1F;
+  use_next_bd = (word7 >> 26) & 0x1;
+  valid_bd = (word7 >> 25) & 0x1;
+  lock_rel_val = (word7 >> 18) & 0x7F;
+  lock_rel_id = (word7 >> 13) & 0x1F;
+  lock_acq_enable = (word7 >> 12) & 0x1;
+  lock_acq_val = (word7 >> 5) & 0x7F;
+  lock_acq_id = word7 & 0x1F;
+
+  // Default values for fields not in basic BD
+  d2_size = 0;
+}
+
 // Translate vector of TransactionBinaryOperation to a sequence of transaction
 // ops (npu.write32, npu.maskwrite32, npu.blockwrite).
 static LogicalResult
@@ -455,19 +623,111 @@ emitTransactionOps(OpBuilder &builder,
                    std::vector<memref::GlobalOp> &global_data) {
 
   auto loc = builder.getUnknownLoc();
+  auto ctx = builder.getContext();
 
   // create the txn ops
   for (auto [op, payload] : llvm::zip(operations, global_data)) {
 
     if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
-      AIEX::NpuWrite32Op::create(builder, loc, op.cmd.RegOff, op.cmd.Value,
-                                 nullptr, nullptr, nullptr);
+      // Try to lift write32 to queue push
+      int32_t column, row, direction, channel, repeat_count, bd_id;
+      bool issue_token;
+
+      if (tryParseQueuePush(op.cmd.RegOff, op.cmd.Value,
+                           column, row, direction, channel,
+                           issue_token, repeat_count, bd_id)) {
+        // Emit NpuPushQueueOp
+        auto dirAttr = AIE::DMAChannelDirAttr::get(
+            ctx, direction == 0 ? AIE::DMAChannelDir::S2MM : AIE::DMAChannelDir::MM2S);
+        AIEX::NpuPushQueueOp::create(
+            builder, loc,
+            builder.getI32IntegerAttr(column),
+            builder.getI32IntegerAttr(row),
+            dirAttr,
+            builder.getI32IntegerAttr(channel),
+            builder.getBoolAttr(issue_token),
+            builder.getI32IntegerAttr(repeat_count),
+            builder.getI32IntegerAttr(bd_id));
+      } else {
+        // Emit raw write32
+        AIEX::NpuWrite32Op::create(builder, loc, op.cmd.RegOff, op.cmd.Value,
+                                   nullptr, nullptr, nullptr);
+      }
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_BLOCKWRITE) {
-      auto memref = memref::GetGlobalOp::create(builder, loc, payload.getType(),
-                                                payload.getName());
-      AIEX::NpuBlockWriteOp::create(
-          builder, loc, builder.getUI32IntegerAttr(op.cmd.RegOff),
-          memref.getResult(), nullptr, nullptr, nullptr);
+      // Try to lift blockwrite to BD configuration
+      int32_t column, row, bd_id;
+      std::array<int32_t, 32> bd_fields;
+
+      const uint32_t *data = reinterpret_cast<const uint32_t *>(op.cmd.DataPtr);
+      uint32_t size_in_words = op.cmd.Size / 4;
+
+      if (tryParseBDBlockwrite(op.cmd.RegOff, data, size_in_words,
+                              column, row, bd_id, bd_fields)) {
+        // Parse the BD fields
+        int32_t buffer_length, buffer_offset, enable_packet, out_of_order_id;
+        int32_t packet_id, packet_type, d0_size, d0_stride;
+        int32_t d1_size, d1_stride, d2_size, d2_stride;
+        int32_t iteration_current, iteration_size, iteration_stride;
+        int32_t next_bd, use_next_bd, valid_bd;
+        int32_t lock_rel_val, lock_rel_id, lock_acq_enable;
+        int32_t lock_acq_val, lock_acq_id, burst_length;
+
+        parseBDFields(bd_fields, buffer_length, buffer_offset,
+                     enable_packet, out_of_order_id, packet_id, packet_type,
+                     d0_size, d0_stride, d1_size, d1_stride, d2_size, d2_stride,
+                     iteration_current, iteration_size, iteration_stride,
+                     next_bd, use_next_bd, valid_bd,
+                     lock_rel_val, lock_rel_id, lock_acq_enable,
+                     lock_acq_val, lock_acq_id, burst_length);
+
+        // Emit NpuWriteBdOp with all fields (matching the signature)
+        // Setting zero padding fields to 0
+        int32_t d0_zero_before = 0, d1_zero_before = 0, d2_zero_before = 0;
+        int32_t d0_zero_after = 0, d1_zero_after = 0, d2_zero_after = 0;
+
+        AIEX::NpuWriteBdOp::create(
+            builder, loc,
+            builder.getI32IntegerAttr(column),
+            builder.getI32IntegerAttr(bd_id),
+            builder.getI32IntegerAttr(buffer_length),
+            builder.getI32IntegerAttr(buffer_offset),
+            builder.getI32IntegerAttr(enable_packet),
+            builder.getI32IntegerAttr(out_of_order_id),
+            builder.getI32IntegerAttr(packet_id),
+            builder.getI32IntegerAttr(packet_type),
+            builder.getI32IntegerAttr(d0_size),
+            builder.getI32IntegerAttr(d0_stride),
+            builder.getI32IntegerAttr(d1_size),
+            builder.getI32IntegerAttr(d1_stride),
+            builder.getI32IntegerAttr(d2_size),
+            builder.getI32IntegerAttr(d2_stride),
+            builder.getI32IntegerAttr(iteration_current),
+            builder.getI32IntegerAttr(iteration_size),
+            builder.getI32IntegerAttr(iteration_stride),
+            builder.getI32IntegerAttr(next_bd),
+            builder.getI32IntegerAttr(row),
+            builder.getI32IntegerAttr(use_next_bd),
+            builder.getI32IntegerAttr(valid_bd),
+            builder.getI32IntegerAttr(lock_rel_val),
+            builder.getI32IntegerAttr(lock_rel_id),
+            builder.getI32IntegerAttr(lock_acq_enable),
+            builder.getI32IntegerAttr(lock_acq_val),
+            builder.getI32IntegerAttr(lock_acq_id),
+            builder.getI32IntegerAttr(d0_zero_before),
+            builder.getI32IntegerAttr(d1_zero_before),
+            builder.getI32IntegerAttr(d2_zero_before),
+            builder.getI32IntegerAttr(d0_zero_after),
+            builder.getI32IntegerAttr(d1_zero_after),
+            builder.getI32IntegerAttr(d2_zero_after),
+            builder.getI32IntegerAttr(burst_length));
+      } else {
+        // Emit raw blockwrite
+        auto memref = memref::GetGlobalOp::create(builder, loc, payload.getType(),
+                                                  payload.getName());
+        AIEX::NpuBlockWriteOp::create(
+            builder, loc, builder.getUI32IntegerAttr(op.cmd.RegOff),
+            memref.getResult(), nullptr, nullptr, nullptr);
+      }
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
       AIEX::NpuMaskWrite32Op::create(builder, loc, op.cmd.RegOff, op.cmd.Value,
                                      op.cmd.Mask, nullptr, nullptr, nullptr);
