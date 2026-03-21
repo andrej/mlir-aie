@@ -141,6 +141,8 @@ void FlowReconstructionGraph::addShimMuxConfig(
   int col = config.column;
   int row = 0;
 
+  llvm::errs() << "DEBUG addShimMuxConfig: column " << col << "\n";
+
   for (const auto &conn : config.connections) {
     WireBundle srcBundle, dstBundle;
     int srcChannel, dstChannel;
@@ -170,6 +172,9 @@ void FlowReconstructionGraph::addShimMuxConfig(
       dstBundle = WireBundle::North;
       dstChannel = conn.streamIndex;
 
+      llvm::errs() << "  Shim mux INPUT (mux mode): " << (int)srcBundle << ":" << srcChannel
+                   << " -> North:" << dstChannel << "\n";
+
       // Add connection within shim_mux
       addConnection(col, row, srcBundle, srcChannel, dstBundle, dstChannel);
 
@@ -177,6 +182,7 @@ void FlowReconstructionGraph::addShimMuxConfig(
       // (at the same tile, not neighbor)
       Node shimMuxNorthOutput{col, row, WireBundle::North, dstChannel, true};
       Node switchboxSouthInput{col, row, WireBundle::South, dstChannel, false};
+      llvm::errs() << "  Adding explicit edge: shim_mux North:" << dstChannel << " (output) -> switchbox South:" << dstChannel << " (input)\n";
       addEdge(shimMuxNorthOutput, switchboxSouthInput);
 
     } else {
@@ -188,10 +194,14 @@ void FlowReconstructionGraph::addShimMuxConfig(
       dstBundle = localBundle;
       dstChannel = 0;  // DMA/PL channel 0
 
+      llvm::errs() << "  Shim mux OUTPUT (demux mode): North:" << srcChannel
+                   << " -> " << (int)dstBundle << ":" << dstChannel << "\n";
+
       // Add explicit connection from switchbox South to shim_mux North
       // (at the same tile, not neighbor)
       Node switchboxSouthOutput{col, row, WireBundle::South, srcChannel, true};
       Node shimMuxNorthInput{col, row, WireBundle::North, srcChannel, false};
+      llvm::errs() << "  Adding explicit edge: switchbox South:" << srcChannel << " (output) -> shim_mux North:" << srcChannel << " (input)\n";
       addEdge(switchboxSouthOutput, shimMuxNorthInput);
 
       // Add connection within shim_mux
@@ -211,15 +221,26 @@ void FlowReconstructionGraph::addConnection(
   // Create intra-switchbox edge: source (input to switchbox) -> dest (output)
   Node srcNode{col, row, sourceBundle, sourceChannel, false};
   Node dstNode{col, row, destBundle, destChannel, true};
+
+  llvm::errs() << "DEBUG addConnection: tile(" << col << "," << row << ") "
+               << (int)sourceBundle << ":" << sourceChannel << " -> "
+               << (int)destBundle << ":" << destChannel << "\n";
+  llvm::errs() << "  Adding edge: (" << srcNode.col << "," << srcNode.row << ") "
+               << (int)srcNode.bundle << ":" << srcNode.channel << " isOut=" << srcNode.isOutput
+               << " -> (" << dstNode.col << "," << dstNode.row << ") "
+               << (int)dstNode.bundle << ":" << dstNode.channel << " isOut=" << dstNode.isOutput << "\n";
+
   addEdge(srcNode, dstNode);
 
   // Track flow sources (endpoint outputs -> data originates here)
   if (isEndpointBundle(sourceBundle)) {
+    llvm::errs() << "  -> FLOW SOURCE detected\n";
     flowSources_.push_back(srcNode);
   }
 
   // Track flow sinks (endpoint inputs -> data terminates here)
   if (isEndpointBundle(destBundle)) {
+    llvm::errs() << "  -> FLOW SINK detected\n";
     flowSinks_.push_back(dstNode);
   }
 
@@ -227,6 +248,8 @@ void FlowReconstructionGraph::addConnection(
   if (isPassThroughBundle(destBundle)) {
     auto neighbor = getNeighborNode(col, row, destBundle, destChannel);
     if (neighbor.has_value()) {
+      llvm::errs() << "  Adding inter-tile edge to neighbor: (" << neighbor->col << "," << neighbor->row << ") "
+                   << (int)neighbor->bundle << ":" << neighbor->channel << " isOut=" << neighbor->isOutput << "\n";
       addEdge(dstNode, *neighbor);
     }
   }
@@ -281,6 +304,9 @@ FlowReconstructionGraph::reconstructFlows() const {
 
   // For each flow source, BFS to find all reachable sinks using synthesized edges
   for (const auto &source : flowSources_) {
+    llvm::errs() << "DEBUG: BFS starting from source (" << source.col << "," << source.row << ") "
+                 << (int)source.bundle << ":" << source.channel << " isOut=" << source.isOutput << "\n";
+
     // BFS state
     std::queue<std::pair<Node, int>> worklist;  // (node, hop count)
     std::set<Node> visited;
@@ -295,8 +321,13 @@ FlowReconstructionGraph::reconstructFlows() const {
       if (visited.count(current)) continue;
       visited.insert(current);
 
+      llvm::errs() << "  BFS visiting: (" << current.col << "," << current.row << ") "
+                   << (int)current.bundle << ":" << current.channel << " isOut=" << current.isOutput
+                   << " hops=" << hops << "\n";
+
       // Check if current is an output to an endpoint (flow sink)
       if (current.isOutput && isEndpointBundle(current.bundle)) {
+        llvm::errs() << "    -> FOUND SINK!\n";
         // Found a sink - record the flow
         ReconstructedFlow flow;
         flow.sourceCol = source.col;
@@ -316,6 +347,7 @@ FlowReconstructionGraph::reconstructFlows() const {
       // Continue traversal through successors
       auto it = synthesizedEdges.find(current);
       if (it != synthesizedEdges.end()) {
+        llvm::errs() << "    Found " << it->second.size() << " successors\n";
         for (const auto &next : it->second) {
           if (!visited.count(next)) {
             // Increment hop count when crossing tile boundary
@@ -323,9 +355,13 @@ FlowReconstructionGraph::reconstructFlows() const {
             if (current.col != next.col || current.row != next.row) {
               newHops++;
             }
+            llvm::errs() << "      -> successor: (" << next.col << "," << next.row << ") "
+                         << (int)next.bundle << ":" << next.channel << " isOut=" << next.isOutput << "\n";
             worklist.push({next, newHops});
           }
         }
+      } else {
+        llvm::errs() << "    No successors found in synthesizedEdges\n";
       }
     }
   }
