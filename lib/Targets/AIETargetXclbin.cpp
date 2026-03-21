@@ -29,6 +29,7 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/Support/LogicalResult.h"
 
 #include "llvm/Support/MemoryBuffer.h"
@@ -2044,16 +2045,29 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
     // The transaction module has operations directly in the DeviceOp body
     // (not wrapped in a RuntimeSequenceOp), so walk the DeviceOp
     txnModule->walk([&](AIE::DeviceOp txnDeviceOp) {
-      // Walk through all operations in the transaction's device body
+      // Use IRMapping to track SSA value mappings when cloning
+      IRMapping mapper;
+
+      // First, copy any global memrefs from the transaction module to the output device
+      // These are needed for operations like NpuBlockWriteOp that reference them
       for (Operation &op : txnDeviceOp.getBody()->getOperations()) {
-        // Skip the terminator (aie.end) and non-runtime operations
+        if (isa<memref::GlobalOp>(&op)) {
+          builder.setInsertionPointToStart(deviceBlock);
+          builder.clone(op, mapper);
+        }
+      }
+
+      // Then, walk through all operations in the transaction's device body
+      for (Operation &op : txnDeviceOp.getBody()->getOperations()) {
+        // Skip the terminator and globals (already copied above)
         if (isa<AIE::EndOp>(&op) || isa<memref::GlobalOp>(&op)) {
           continue;
         }
 
-        // Clone the operation into the output runtime_sequence
+        // Clone the operation into the output runtime_sequence, using the mapper
+        // to ensure SSA values are properly remapped
         builder.setInsertionPointToEnd(seqBlock);
-        builder.clone(op);
+        builder.clone(op, mapper);
       }
       return WalkResult::interrupt();  // Only process the first DeviceOp
     });
