@@ -1607,6 +1607,70 @@ int scanForMaxColumn(llvm::ArrayRef<CdoCommand *> commands) {
   return maxCol;
 }
 
+/// Check if a register write is an initialization/reset operation that can be
+/// omitted from decompiled MLIR. These are writes with value=0 that clear
+/// registers to a known state before configuration.
+static bool isInitializationWrite(uint32_t addr, uint32_t value) {
+  // Only consider writes with value=0 as initialization
+  if (value != 0) {
+    return false;
+  }
+
+  // Extract tile offset from address
+  uint32_t row = (addr >> 20) & 0x7;
+  uint32_t tileBase = row << 20;
+  uint32_t offset = addr - tileBase;
+
+  // DMA BD register ranges (these get cleared before configuration)
+  // Core/MemTile: BD registers at 0x1D000-0x1E000 range
+  if (offset >= 0x1D000 && offset < 0x1E000) {
+    return true;  // DMA BD initialization
+  }
+
+  // MemTile DMA BD range: 0x1F000-0x20000
+  if (offset >= 0x1F000 && offset < 0x20000) {
+    return true;  // MemTile BD initialization
+  }
+
+  // Memory module base (offset 0x20000) - data memory base address
+  if (offset == 0x20000) {
+    return true;  // Memory module initialization
+  }
+
+  // MemTile address ranges (row 1, memtile addresses around 0xC0000-0xE0000)
+  if (offset >= 0xC0000 && offset < 0xE0000) {
+    return true;  // MemTile region initialization
+  }
+
+  // MemTile DMA BD region (larger range for memtiles)
+  if (offset >= 0xA0000 && offset < 0xB0000) {
+    return true;  // MemTile DMA BD initialization
+  }
+
+  // DMA control/status registers: 0x1DE00-0x1E000 (Start_Queue, Control, Status)
+  if (offset >= 0x1DE00 && offset < 0x1E000) {
+    return true;  // DMA control initialization
+  }
+
+  // DMA registers in core tile: around 0x300-0x500 range
+  if (offset >= 0x300 && offset < 0x600) {
+    return true;  // Core DMA initialization
+  }
+
+  // Core module base register
+  if (offset == 0x0) {
+    return true;  // Core base initialization
+  }
+
+  // Other common initialization addresses
+  // Shim tile region (row=0, low addresses)
+  if (row == 0 && addr < 0x100000) {
+    return true;  // Shim initialization
+  }
+
+  return false;
+}
+
 /// Emit MLIR operations from decoded CDO commands.
 /// Creates aie.device, runtime_sequence, and MLIR operations for register writes.
 LogicalResult emitMLIRFromCDO(ModuleOp module,
@@ -1784,6 +1848,14 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
           int col = ShimMuxAddressParser::getColumn(addr);
           liftedEmitter->recordShimMuxConnections(col, shimMuxConns);
           shouldEmitRaw = false;  // Don't emit raw write for shim mux registers
+          liftedEmitter->markLifted(addr);
+        }
+      }
+
+      // If lifted mode and this is an initialization write (value=0), suppress it
+      if (emitLifted && isInitializationWrite(addr, value)) {
+        shouldEmitRaw = false;  // Don't emit initialization writes
+        if (liftedEmitter) {
           liftedEmitter->markLifted(addr);
         }
       }
