@@ -1,0 +1,37 @@
+{
+    "aie_partition": {
+        "name": "",
+        "operations_per_cycle": "2048",
+        "inference_fingerprint": "23423",
+        "pre_post_fingerprint": "12345",
+        "kernel_commit_id": "",
+        "partition": {
+            "column_width": "1",
+            "start_columns": [
+                "1",
+                "2",
+                "3",
+                "4"
+            ]
+        },
+        "PDIs": [
+            {
+                "uuid": "abe74023-6536-41c4-99c0-62500c16cd30",
+                "file_name": "abe74023-6536-41c4-99c0-62500c16cd30.pdi",
+                "cdo_groups": [
+                    {
+                        "name": "DPU",
+                        "type": "PRIMARY",
+                        "pdi_id": "0x1",
+                        "dpu_kernel_ids": [
+                            "0x901"
+                        ],
+                        "pre_cdo_groups": [
+                            "0xc1"
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+}
