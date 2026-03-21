@@ -289,7 +289,24 @@ public:
 
   /// Emit all collected BDs as aie.mem or aie.shim_dma operations
   void emitAllBDs() {
+    llvm::errs() << "emitAllBDs: tileBDs.size() = " << tileBDs.size() << "\n";
+    for (const auto &[tileId, bds] : tileBDs) {
+      llvm::errs() << "  Emitting " << bds.size() << " BDs for tile(" << tileId.col << "," << tileId.row << ")\n";
+    }
     auto &targetModel = getTargetModel(device);
+
+    // First pass: Create all buffers for all tiles
+    // This ensures buffers are created before any mem/shim_dma ops
+    for (const auto &[tileId, bds] : tileBDs) {
+      if (!targetModel.isShimNOCorPLTile(tileId.col, tileId.row)) {
+        // Only create buffers for non-shim tiles (shim tiles use external buffers)
+        for (const auto &bd : bds) {
+          getOrCreateBuffer(bd);
+        }
+      }
+    }
+
+    // Second pass: Create mem/shim_dma ops
     for (const auto &[tileId, bds] : tileBDs) {
       if (targetModel.isShimNOCorPLTile(tileId.col, tileId.row)) {
         // Shim tiles use aie.shim_dma instead of aie.mem
@@ -378,13 +395,35 @@ private:
   void emitMemOpForTile(TileID tileId, const llvm::SmallVector<ParsedBDConfig> &bds) {
     auto tile = getOrCreateTile(tileId.col, tileId.row);
 
-    // Create buffers for all BDs in this tile
-    for (const auto &bd : bds) {
-      getOrCreateBuffer(bd);
+    // Find the last operation associated with this tile (locks, buffers, etc.)
+    // by scanning operations after the tile in the device block
+    Operation *lastTileOp = tile;
+    Block *deviceBlock = tile->getBlock();
+    for (auto it = std::next(Block::iterator(tile)); it != deviceBlock->end(); ++it) {
+      Operation *op = &*it;
+      // Check if this operation is associated with our tile
+      // (BufferOp, LockOp, or other tile-associated ops)
+      if (auto bufOp = dyn_cast<AIE::BufferOp>(op)) {
+        if (bufOp.getTile() == tile) {
+          lastTileOp = op;
+        }
+      } else if (auto lockOp = dyn_cast<AIE::LockOp>(op)) {
+        if (lockOp.getTile() == tile) {
+          lastTileOp = op;
+        }
+      } else if (isa<AIE::TileOp>(op)) {
+        // Stop when we hit another tile
+        break;
+      }
     }
 
+    // Buffers should have been created already in emitAllBDs first pass
+    // Just set insertion point after the last tile-associated operation
+
     OpBuilder::InsertionGuard guard(builder);
-    builder.setInsertionPointAfter(tile);
+    // Set insertion point after the last buffer/lock
+    builder.setInsertionPointAfter(lastTileOp);
+    llvm::errs() << "About to create memOp for tile(" << tileId.col << "," << tileId.row << ") after op at line " << lastTileOp->getLoc() << "\n";
 
     auto memOp = builder.create<AIE::MemOp>(builder.getUnknownLoc(),
                                              builder.getIndexType(), tile);
@@ -396,6 +435,31 @@ private:
     for (const auto &bd : bds) {
       if (bd.dmaChannel >= 0) {
         bdsByChannel[bd.dmaChannel].push_back(&bd);
+      }
+    }
+
+    // If there are no channels with BDs, we may have BDs without channel assignments.
+    // Check if we have any BDs at all to emit with inferred channel assignments
+    if (bdsByChannel.empty()) {
+      // Collect BDs without channel assignments
+      llvm::SmallVector<const ParsedBDConfig*> unassignedBDs;
+      for (const auto &bd : bds) {
+        if (bd.dmaChannel < 0) {
+          unassignedBDs.push_back(&bd);
+        }
+      }
+
+      if (!unassignedBDs.empty()) {
+        // Emit BDs with default channel assignment (S2MM_0 is common for input)
+        // Channel assignment inference: BDs without explicit channel assignment are
+        // assumed to be S2MM_0 (stream-to-memory, channel 0) which is a typical
+        // pattern for memory tiles receiving data.
+        llvm::errs() << "Warning: Emitting " << unassignedBDs.size()
+                     << " BDs with inferred channel S2MM_0 for tile("
+                     << tileId.col << "," << tileId.row << ")\n";
+
+        // Assign to channel S2MM_0 (channelIdx = 0)
+        bdsByChannel[0] = unassignedBDs;
       }
     }
 
