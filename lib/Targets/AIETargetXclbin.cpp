@@ -21,6 +21,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Util/AIEDMABDLifting.h"
 #include "aie/Dialect/AIE/Util/AIESwitchboxLifting.h"
+#include "aie/Dialect/AIE/Util/AIELockLifting.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -128,7 +129,7 @@ public:
   }
 
   /// Get or create a lock operation
-  Value getOrCreateLock(int col, int row, int lockId) {
+  Value getOrCreateLock(int col, int row, int lockId, std::optional<int32_t> initValue = std::nullopt) {
     // Create a unique key for this lock
     auto lockKey = std::make_tuple(col, row, lockId);
     auto it = locks.find(lockKey);
@@ -141,13 +142,19 @@ public:
     OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointAfter(tile);
 
+    // Create init attribute if value provided
+    IntegerAttr initAttr = nullptr;
+    if (initValue.has_value()) {
+      initAttr = builder.getI32IntegerAttr(initValue.value());
+    }
+
     auto lockOp = builder.create<AIE::LockOp>(
         builder.getUnknownLoc(),
         builder.getIndexType(),
         tile,
         builder.getI32IntegerAttr(lockId),
-        nullptr,  // init
-        nullptr   // sym_name
+        initAttr,  // init value
+        nullptr    // sym_name
     );
 
     locks[lockKey] = lockOp.getResult();
@@ -180,6 +187,12 @@ public:
     config.connections.push_back(newConn);
   }
 
+  /// Record a lock configuration for later emission
+  void recordLock(const ParsedLockConfig &lock) {
+    LockAccumulator::LockKey key{lock.column, lock.row, lock.lockId};
+    lockConfigs[key] = lock;
+  }
+
   /// Emit all collected BDs as aie.mem or aie.shim_dma operations
   void emitAllBDs() {
     auto &targetModel = getTargetModel(device);
@@ -198,6 +211,13 @@ public:
   void emitAllSwitchboxes() {
     for (const auto &[key, config] : switchboxes) {
       emitSwitchboxForTile(config);
+    }
+  }
+
+  /// Emit all collected locks as aie.lock operations
+  void emitAllLocks() {
+    for (const auto &[key, lock] : lockConfigs) {
+      emitLockForTile(lock);
     }
   }
 
@@ -230,7 +250,7 @@ private:
     // TODO: Properly implement DMA channel reconstruction to emit aie.dma_start operations
     // For now, emit aie.end without DMA BD blocks to avoid unreachable blocks
     builder.setInsertionPointToEnd(memBlock);
-    builder.create<AIE::EndOp>(builder.getUnknownLoc());
+    AIE::EndOp::create(builder, builder.getUnknownLoc());
   }
 
   void emitShimDmaOpForTile(TileID tileId, const llvm::SmallVector<ParsedBDConfig> &bds) {
@@ -251,7 +271,7 @@ private:
     // TODO: Properly implement DMA channel reconstruction to emit aie.dma_start operations
     // For now, emit aie.end without DMA BD blocks to avoid unreachable blocks
     builder.setInsertionPointToEnd(shimDmaBlock);
-    builder.create<AIE::EndOp>(builder.getUnknownLoc());
+    AIE::EndOp::create(builder, builder.getUnknownLoc());
   }
 
 
@@ -277,7 +297,8 @@ private:
 
     // Emit all connections
     for (const auto &conn : config.connections) {
-      builder.create<AIE::ConnectOp>(
+      AIE::ConnectOp::create(
+          builder,
           builder.getUnknownLoc(),
           conn.sourceBundle,
           conn.sourceChannel,
@@ -287,7 +308,19 @@ private:
     }
 
     // Terminate with aie.end
-    builder.create<AIE::EndOp>(builder.getUnknownLoc());
+    AIE::EndOp::create(builder, builder.getUnknownLoc());
+  }
+
+  void emitLockForTile(const ParsedLockConfig &lock) {
+    // Check if lock already exists (might have been created by BD lifting)
+    auto lockKey = std::make_tuple(lock.column, lock.row, lock.lockId);
+    if (locks.find(lockKey) != locks.end()) {
+      // Already created, skip
+      return;
+    }
+
+    // Create the lock with init value
+    getOrCreateLock(lock.column, lock.row, lock.lockId, lock.initValue);
   }
 
   /// Helper: Emit lock acquire operation if BD has lock acquire
@@ -309,7 +342,8 @@ private:
       lockValue = bd.lockAcquire.value;
     }
 
-    builder.create<AIE::UseLockOp>(
+    AIE::UseLockOp::create(
+        builder,
         builder.getUnknownLoc(),
         lock,
         action,
@@ -378,7 +412,8 @@ private:
 
     auto lock = getOrCreateLock(bd.column, bd.row, bd.lockRelId);
 
-    builder.create<AIE::UseLockOp>(
+    AIE::UseLockOp::create(
+        builder,
         builder.getUnknownLoc(),
         lock,
         AIE::LockAction::Release,
@@ -398,6 +433,9 @@ private:
 
   // Switchbox storage
   std::map<SwitchboxAccumulator::SwitchboxKey, ParsedSwitchboxConfig> switchboxes;
+
+  // Lock storage
+  std::map<LockAccumulator::LockKey, ParsedLockConfig> lockConfigs;
 };
 
 #ifdef HAVE_BOOTGEN
@@ -596,6 +634,10 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
   SwitchAddressParser switchParser(/*numMemTileRows=*/1);
   SwitchboxAccumulator switchAccum;
 
+  // Initialize lock semantic lifting utilities
+  LockAddressParser lockParser(/*numMemTileRows=*/1);
+  LockAccumulator lockAccum;
+
   std::unique_ptr<LiftedBDEmitter> liftedEmitter;
 
   if (emitLifted) {
@@ -705,8 +747,23 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
       uint32_t mask = cmd->mask;
       uint32_t value = cmd->value;
 
-      AIEX::NpuMaskWrite32Op::create(builder, loc, addr, value, mask,
-                                     nullptr, nullptr, nullptr);
+      // Check if this is a lock register write and accumulate
+      lockAccum.addMaskWrite(addr, value, mask, lockParser);
+
+      // If lifted mode and this is a lock write, mark for suppression
+      bool shouldEmitRaw = true;
+      if (emitLifted && lockParser.isLockAddress(addr)) {
+        shouldEmitRaw = false;  // Don't emit raw write for lock registers
+        if (liftedEmitter) {
+          liftedEmitter->markLifted(addr);
+        }
+      }
+
+      // Emit raw write only if not suppressed
+      if (shouldEmitRaw) {
+        AIEX::NpuMaskWrite32Op::create(builder, loc, addr, value, mask,
+                                       nullptr, nullptr, nullptr);
+      }
       break;
     }
 
@@ -754,18 +811,26 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
 
   // Add terminator to runtime_sequence block
   builder.setInsertionPointToEnd(seqBlock);
-  builder.create<AIE::EndOp>(builder.getUnknownLoc());
+  AIE::EndOp::create(builder, builder.getUnknownLoc());
 
-  // Emit all lifted BDs and switchboxes
+  // Emit all lifted BDs, switchboxes, and locks
   if (emitLifted && liftedEmitter) {
     builder.setInsertionPointToStart(deviceBlock);
+
+    // Get all accumulated locks and record them for emission
+    auto allLocks = lockAccum.getAllLocks();
+    for (const auto &[key, lock] : allLocks) {
+      liftedEmitter->recordLock(lock);
+    }
+
+    liftedEmitter->emitAllLocks();
     liftedEmitter->emitAllBDs();
     liftedEmitter->emitAllSwitchboxes();
   }
 
   // Add terminator to device block
   builder.setInsertionPointToEnd(deviceBlock);
-  builder.create<AIE::EndOp>(builder.getUnknownLoc());
+  AIE::EndOp::create(builder, builder.getUnknownLoc());
 
   return success();
 }
