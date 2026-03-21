@@ -327,14 +327,22 @@ public:
 
   /// Reconstruct and emit aie.flow operations from switchbox connections
   void emitAllFlows() {
+    llvm::errs() << "emitAllFlows: switchboxes.size() = " << switchboxes.size() << "\n";
+
     // Build flow reconstruction graph from all switchbox configs
     FlowReconstructionGraph flowGraph;
     for (const auto &[key, config] : switchboxes) {
+      llvm::errs() << "  Adding switchbox config for tile(" << config.column << "," << config.row
+                   << ") with " << config.connections.size() << " connections\n";
       flowGraph.addSwitchboxConfig(config);
     }
 
+    llvm::errs() << "  flowGraph.edgeCount() = " << flowGraph.edgeCount() << "\n";
+
     // Reconstruct end-to-end flows
     auto flows = flowGraph.reconstructFlows();
+
+    llvm::errs() << "  Reconstructed " << flows.size() << " flows\n";
 
     if (flows.empty()) {
       return;  // No flows to emit
@@ -1108,6 +1116,75 @@ LogicalResult extractPDIFromXclbin(StringRef xclbinData,
   return failure();
 }
 
+/// Extract AIE_METADATA section from xclbin binary data.
+/// This section contains JSON metadata that may include routing/switchbox information.
+LogicalResult extractAIEMetadata(StringRef xclbinData,
+                                 std::string &metadataJson) {
+  const uint8_t *data = reinterpret_cast<const uint8_t *>(xclbinData.data());
+  size_t size = xclbinData.size();
+
+  // Parse xclbin header
+  if (size < sizeof(axlf)) {
+    llvm::errs() << "File too small to be a valid xclbin\n";
+    return failure();
+  }
+
+  const axlf *header = reinterpret_cast<const axlf *>(data);
+
+  // Get sections array
+  size_t headerSize = sizeof(axlf) - sizeof(axlf_section_header);
+  const axlf_section_header *sections =
+      reinterpret_cast<const axlf_section_header *>(data + headerSize);
+
+  uint32_t numSections = header->m_header.m_numSections;
+
+  // Debug: list all sections
+  llvm::errs() << "Xclbin has " << numSections << " sections:\n";
+  for (uint32_t i = 0; i < numSections; i++) {
+    llvm::errs() << "  Section " << i << ": kind=" << sections[i].m_sectionKind
+                 << " size=" << sections[i].m_sectionSize << " bytes\n";
+  }
+
+  // Find AIE_METADATA section (kind 25)
+  for (uint32_t i = 0; i < numSections; i++) {
+    if (sections[i].m_sectionKind == AIE_METADATA) {
+      uint64_t offset = sections[i].m_sectionOffset;
+      uint64_t len = sections[i].m_sectionSize;
+
+      if (offset + len > size) {
+        llvm::errs() << "AIE_METADATA section offset/size extends beyond file\n";
+        return failure();
+      }
+
+      // Copy metadata as string (assuming it's JSON text)
+      metadataJson.assign(reinterpret_cast<const char *>(data + offset), len);
+      llvm::errs() << "Found AIE_METADATA section, size = " << len << " bytes\n";
+      return success();
+    }
+  }
+
+  // Try EMBEDDED_METADATA section (kind 2) as fallback
+  for (uint32_t i = 0; i < numSections; i++) {
+    if (sections[i].m_sectionKind == EMBEDDED_METADATA) {
+      uint64_t offset = sections[i].m_sectionOffset;
+      uint64_t len = sections[i].m_sectionSize;
+
+      if (offset + len > size) {
+        llvm::errs() << "EMBEDDED_METADATA section offset/size extends beyond file\n";
+        return failure();
+      }
+
+      // Copy metadata as string
+      metadataJson.assign(reinterpret_cast<const char *>(data + offset), len);
+      llvm::errs() << "Found EMBEDDED_METADATA section, size = " << len << " bytes\n";
+      return success();
+    }
+  }
+
+  llvm::errs() << "No AIE_METADATA or EMBEDDED_METADATA section found in xclbin\n";
+  return failure();
+}
+
 /// Extract CDO (Configuration Data Object) from PDI binary.
 /// Scans the PDI for CDO magic bytes and extracts the CDO section.
 LogicalResult extractCDOFromPDI(const uint8_t *pdiData, size_t pdiSize,
@@ -1757,6 +1834,12 @@ LogicalResult AIETranslateFromXclbin(ModuleOp module, StringRef filename,
   std::vector<uint8_t> pdiData;
   if (failed(extractPDIFromXclbin(filename, pdiData))) {
     return module.emitError("Failed to extract PDI from xclbin");
+  }
+
+  // Step 1.5: Try to extract AIE_METADATA section (contains routing info)
+  std::string metadataJson;
+  if (succeeded(extractAIEMetadata(filename, metadataJson))) {
+    llvm::errs() << "Extracted metadata, full content:\n" << metadataJson << "\n";
   }
 
   // Step 2: Extract CDO from PDI
