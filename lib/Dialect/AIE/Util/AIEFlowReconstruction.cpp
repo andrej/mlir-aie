@@ -236,7 +236,50 @@ std::vector<ReconstructedFlow>
 FlowReconstructionGraph::reconstructFlows() const {
   std::vector<ReconstructedFlow> flows;
 
-  // For each flow source, BFS to find all reachable sinks
+  llvm::errs() << "DEBUG: Flow reconstruction starting\n";
+  llvm::errs() << "DEBUG: Number of flow sources: " << flowSources_.size() << "\n";
+  for (const auto &src : flowSources_) {
+    llvm::errs() << "DEBUG: Source at (" << src.col << "," << src.row << ") "
+                 << (int)src.bundle << ":" << src.channel << " isOutput=" << src.isOutput << "\n";
+  }
+  llvm::errs() << "DEBUG: Number of edges: " << edges_.size() << "\n";
+
+  // Pre-process: synthesize missing pass-through edges for memory tiles.
+  // Memory tiles often only have routing configured in one direction in the CDO.
+  // We synthesize the reverse direction to enable bidirectional flow reconstruction.
+  std::map<Node, std::vector<Node>> synthesizedEdges = edges_;
+
+  // For each existing output node to a pass-through port, check if the incoming
+  // data from the neighbor would have a path through this tile
+  for (const auto &[node, successors] : edges_) {
+    // Look for outputs to pass-through ports (data leaving this tile)
+    if (node.isOutput && isPassThroughBundle(node.bundle)) {
+      // This is data exiting via a pass-through port (e.g., South:1 output)
+      // The neighbor tile's opposite input receives this data
+      auto neighborInput = getNeighborNode(node.col, node.row, node.bundle, node.channel);
+      if (neighborInput.has_value()) {
+        // Check if this neighbor input has any outgoing edges
+        if (synthesizedEdges.find(*neighborInput) == synthesizedEdges.end()) {
+          // The neighbor input has no edges - synthesize pass-through
+          WireBundle oppositeBundle = getOppositeBundle(neighborInput->bundle);
+          Node neighborOutput{neighborInput->col, neighborInput->row, oppositeBundle,
+                             neighborInput->channel, true};
+
+          // Add the intra-tile pass-through edge
+          synthesizedEdges[*neighborInput].push_back(neighborOutput);
+
+          // Add the inter-tile edge to the next neighbor
+          auto nextNeighbor = getNeighborNode(neighborOutput.col, neighborOutput.row,
+                                             neighborOutput.bundle, neighborOutput.channel);
+          if (nextNeighbor.has_value()) {
+            synthesizedEdges[neighborOutput].push_back(*nextNeighbor);
+          }
+        }
+      }
+    }
+  }
+
+  // For each flow source, BFS to find all reachable sinks using synthesized edges
   for (const auto &source : flowSources_) {
     // BFS state
     std::queue<std::pair<Node, int>> worklist;  // (node, hop count)
@@ -271,8 +314,8 @@ FlowReconstructionGraph::reconstructFlows() const {
       }
 
       // Continue traversal through successors
-      auto it = edges_.find(current);
-      if (it != edges_.end()) {
+      auto it = synthesizedEdges.find(current);
+      if (it != synthesizedEdges.end()) {
         for (const auto &next : it->second) {
           if (!visited.count(next)) {
             // Increment hop count when crossing tile boundary
