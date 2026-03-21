@@ -75,7 +75,8 @@ mlir::LogicalResult AIETranslateToTargetArch(mlir::ModuleOp module,
 
 mlir::LogicalResult AIETranslateFromXclbin(mlir::ModuleOp module,
                                            llvm::StringRef filename,
-                                           bool emitLifted = false);
+                                           bool emitLifted = false,
+                                           llvm::StringRef npuInstsPath = "");
 
 } // namespace AIE
 

@@ -18,6 +18,7 @@
 
 #include "aie/Targets/AIETargets.h"
 
+#include "aie/Conversion/AIEToConfiguration/AIEToConfiguration.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Util/AIEDMABDLifting.h"
 #include "aie/Dialect/AIE/Util/AIESwitchboxLifting.h"
@@ -1204,7 +1205,7 @@ namespace AIE {
 
 /// Main entry point: translate xclbin binary to MLIR module.
 LogicalResult AIETranslateFromXclbin(ModuleOp module, StringRef filename,
-                                     bool emitLifted) {
+                                     bool emitLifted, StringRef npuInstsPath) {
 #ifdef HAVE_BOOTGEN
   // Step 1: Extract PDI from xclbin
   std::vector<uint8_t> pdiData;
@@ -1228,6 +1229,34 @@ LogicalResult AIETranslateFromXclbin(ModuleOp module, StringRef filename,
   // Step 4: Emit MLIR operations (lifted or raw mode)
   if (failed(emitMLIRFromCDO(module, commands, emitLifted))) {
     return module.emitError("Failed to emit MLIR from CDO commands");
+  }
+
+  // Step 5: If transaction binary provided, parse it to extract BD configuration
+  if (!npuInstsPath.empty()) {
+    // Load transaction binary from file
+    auto fileOrErr = llvm::MemoryBuffer::getFile(npuInstsPath);
+    if (!fileOrErr) {
+      return module.emitError("Failed to open NPU instructions file: ")
+             << npuInstsPath;
+    }
+
+    llvm::MemoryBuffer *buffer = fileOrErr.get().get();
+    std::vector<uint8_t> txnData(
+        reinterpret_cast<const uint8_t*>(buffer->getBufferStart()),
+        reinterpret_cast<const uint8_t*>(buffer->getBufferEnd()));
+
+    // Parse transaction binary to MLIR using existing converter
+    auto txnModule = convertTransactionBinaryToMLIR(module.getContext(), txnData);
+    if (!txnModule) {
+      return module.emitError("Failed to parse transaction binary");
+    }
+
+    // TODO: Extract BD configuration from the parsed transaction operations
+    // and use it to populate the aie.mem operations in the main module.
+    // For now, we'll just log that we successfully parsed it.
+    llvm::errs() << "Successfully parsed transaction binary from "
+                 << npuInstsPath << "\n";
+    llvm::errs() << "Note: BD extraction from transaction operations not yet implemented\n";
   }
 
   return success();

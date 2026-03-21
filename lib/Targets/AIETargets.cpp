@@ -171,6 +171,10 @@ void registerAIETranslations() {
       llvm::cl::desc(
           "Emit lifted aie.dma_bd operations instead of raw register writes"));
 
+  static llvm::cl::opt<std::string> npuInstsPath(
+      "npu-insts", llvm::cl::init(""),
+      llvm::cl::desc("Path to NPU instruction binary (insts.bin) for xclbin decompilation"));
+
   TranslateFromMLIRRegistration registrationMMap(
       "aie-generate-mmap", "Generate AIE memory map",
       [](ModuleOp module, raw_ostream &output) {
@@ -427,7 +431,7 @@ void registerAIETranslations() {
 
         auto module =
             ModuleOp::create(FileLineColLoc::get(context, inputFilename, 0, 0));
-        if (failed(AIETranslateFromXclbin(module, inputFilename, emitLifted))) {
+        if (failed(AIETranslateFromXclbin(module, inputFilename, emitLifted, npuInstsPath))) {
           return OwningOpRef<ModuleOp>();
         }
         return OwningOpRef<ModuleOp>(module);
