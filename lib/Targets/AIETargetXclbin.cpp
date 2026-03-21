@@ -923,11 +923,18 @@ LogicalResult decodeCDOToCmds(const uint8_t *data, size_t len,
   return success();
 }
 
+// Forward declaration
+void extractBDsFromTransaction(ModuleOp txnModule, AIE::DeviceOp deviceOp,
+                                BDAddressParser &bdParser, BDAccumulator &bdAccum,
+                                DMAChannelTracker &dmaChannelTracker,
+                                LiftedBDEmitter &emitter);
+
 /// Emit MLIR operations from decoded CDO commands.
 /// Creates aie.device, runtime_sequence, and MLIR operations for register writes.
 LogicalResult emitMLIRFromCDO(ModuleOp module,
                               llvm::ArrayRef<CdoCommand *> commands,
-                              bool emitLifted = false) {
+                              bool emitLifted = false,
+                              std::optional<ModuleOp> txnModule = std::nullopt) {
   OpBuilder builder(module.getContext());
   builder.setInsertionPointToEnd(module.getBody());
 
@@ -1180,6 +1187,12 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
       liftedEmitter->recordLock(lock);
     }
 
+    // If transaction module provided, extract BDs from it before emitting
+    if (txnModule.has_value()) {
+      extractBDsFromTransaction(*txnModule, deviceOp, bdParser, bdAccum,
+                                dmaChannelTracker, *liftedEmitter);
+    }
+
     // Emit standalone tiles first (tiles referenced but without BDs/switchboxes/locks)
     // This ensures all tiles (including shim tiles) are declared
     liftedEmitter->emitStandaloneTiles();
@@ -1196,6 +1209,134 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
 
   return success();
 }
+
+/// Extract BD configurations from parsed transaction module.
+/// This walks the transaction module looking for aiex.npu.blockwrite operations that configure
+/// DMA buffer descriptors, parses the BD fields, and adds them to the LiftedBDEmitter.
+void extractBDsFromTransaction(ModuleOp txnModule, AIE::DeviceOp deviceOp,
+                                BDAddressParser &bdParser, BDAccumulator &bdAccum,
+                                DMAChannelTracker &dmaChannelTracker,
+                                LiftedBDEmitter &emitter) {
+  // Walk the transaction module to find blockwrite operations
+  txnModule.walk([&](AIEX::NpuBlockWriteOp blockwriteOp) {
+    uint32_t address = blockwriteOp.getAddress();
+
+    // Check if this blockwrite is configuring a BD
+    if (!bdParser.isBDAddress(address)) {
+      return WalkResult::advance();
+    }
+
+    // Get the BD address info
+    BDAddressInfo addrInfo = bdParser.parse(address);
+
+    // Get the data being written from the blockwrite
+    auto dataMemref = blockwriteOp.getData();
+
+    // Trace back to the memref.global that contains the actual data
+    if (auto getGlobalOp = dataMemref.getDefiningOp<memref::GetGlobalOp>()) {
+      auto globalOp = txnModule.lookupSymbol<memref::GlobalOp>(getGlobalOp.getName());
+      if (!globalOp) {
+        return WalkResult::advance();
+      }
+
+      // Extract the data values from the global
+      auto dataAttr = globalOp.getInitialValue();
+      if (!dataAttr) {
+        return WalkResult::advance();
+      }
+
+      auto denseAttr = llvm::dyn_cast<DenseIntElementsAttr>(dataAttr);
+      if (!denseAttr) {
+        return WalkResult::advance();
+      }
+
+      // Convert the dense attribute to a vector of uint32_t values
+      llvm::SmallVector<uint32_t> words;
+      for (auto val : denseAttr.getValues<APInt>()) {
+        words.push_back(val.getZExtValue());
+      }
+
+      // The blockwrite data contains the BD registers. For compute tiles, there are 6 registers.
+      // For shim/memtile, there are 8 registers. We need to feed these into the BD accumulator.
+
+      // Determine which BD register this blockwrite is targeting
+      int bdIndex = addrInfo.bdIndex;
+      int column = addrInfo.column;
+      int row = addrInfo.row;
+
+      // The blockwrite address points to the start of the BD (DMA_BDx_0)
+      // We need to simulate writing each register in sequence
+      const auto &targetModel = getTargetModel(deviceOp);
+      int numRegs = 6;  // Default for compute tiles
+      if (targetModel.isShimNOCorPLTile(column, row) || targetModel.isMemTile(column, row)) {
+        numRegs = 8;
+      }
+
+      // Feed each word to the BD accumulator as a separate register write
+      uint32_t baseAddr = address;
+      for (size_t i = 0; i < words.size() && i < static_cast<size_t>(numRegs); i++) {
+        uint32_t regAddr = baseAddr + (i * 4);  // Each register is 4 bytes apart
+        uint32_t regValue = words[i];
+
+        auto completedBD = bdAccum.addWrite(regAddr, regValue, bdParser);
+
+        // If this write completed a BD, record it
+        if (completedBD.has_value()) {
+          // Assign DMA channel to BD before recording
+          auto &bd = *completedBD;
+          auto channel = dmaChannelTracker.getChannel(bd.column, bd.row, bd.bdIndex);
+          bd.dmaChannel = static_cast<int>(channel);
+          emitter.recordBD(bd);
+
+          llvm::errs() << "Extracted BD from transaction: tile(" << bd.column << "," << bd.row
+                       << ") BD#" << bd.bdIndex
+                       << " channel=" << bd.dmaChannel
+                       << " length=" << bd.bufferLength << "\n";
+        }
+      }
+    }
+
+    return WalkResult::advance();
+  });
+
+  // Also look for NpuPushQueueOp operations to determine channel assignments
+  txnModule.walk([&](AIEX::NpuPushQueueOp pushOp) {
+    int col = pushOp.getColumn();
+    int row = pushOp.getRow();
+    int bdId = pushOp.getBdId();
+
+    // Determine the channel from direction and channel index
+    auto dir = pushOp.getDirection();
+    int chanIdx = pushOp.getChannel();
+
+    DMAChannelTracker::Channel channel;
+    if (dir == AIE::DMAChannelDir::S2MM) {
+      channel = (chanIdx == 0) ? DMAChannelTracker::Channel::S2MM_0
+                                : DMAChannelTracker::Channel::S2MM_1;
+    } else {  // MM2S
+      channel = (chanIdx == 0) ? DMAChannelTracker::Channel::MM2S_0
+                                : DMAChannelTracker::Channel::MM2S_1;
+    }
+
+    dmaChannelTracker.recordAssignment(col, row, bdId, channel);
+    return WalkResult::advance();
+  });
+
+  // Flush any pending BDs from the accumulator
+  auto pendingBDs = bdAccum.flush();
+  for (auto &bd : pendingBDs) {
+    // Assign channel if we found it in push_queue operations
+    auto channel = dmaChannelTracker.getChannel(bd.column, bd.row, bd.bdIndex);
+    bd.dmaChannel = static_cast<int>(channel);
+    emitter.recordBD(bd);
+
+    llvm::errs() << "Extracted BD from transaction (flushed): tile(" << bd.column << "," << bd.row
+                 << ") BD#" << bd.bdIndex
+                 << " channel=" << bd.dmaChannel
+                 << " length=" << bd.bufferLength << "\n";
+  }
+}
+
 #endif // HAVE_BOOTGEN
 
 } // namespace
@@ -1226,12 +1367,8 @@ LogicalResult AIETranslateFromXclbin(ModuleOp module, StringRef filename,
     return module.emitError("Failed to decode CDO binary");
   }
 
-  // Step 4: Emit MLIR operations (lifted or raw mode)
-  if (failed(emitMLIRFromCDO(module, commands, emitLifted))) {
-    return module.emitError("Failed to emit MLIR from CDO commands");
-  }
-
-  // Step 5: If transaction binary provided, parse it to extract BD configuration
+  // Step 4: If transaction binary provided, parse it first
+  std::optional<ModuleOp> txnModule = std::nullopt;
   if (!npuInstsPath.empty()) {
     // Load transaction binary from file
     auto fileOrErr = llvm::MemoryBuffer::getFile(npuInstsPath);
@@ -1246,17 +1383,18 @@ LogicalResult AIETranslateFromXclbin(ModuleOp module, StringRef filename,
         reinterpret_cast<const uint8_t*>(buffer->getBufferEnd()));
 
     // Parse transaction binary to MLIR using existing converter
-    auto txnModule = convertTransactionBinaryToMLIR(module.getContext(), txnData);
+    txnModule = convertTransactionBinaryToMLIR(module.getContext(), txnData);
     if (!txnModule) {
       return module.emitError("Failed to parse transaction binary");
     }
 
-    // TODO: Extract BD configuration from the parsed transaction operations
-    // and use it to populate the aie.mem operations in the main module.
-    // For now, we'll just log that we successfully parsed it.
-    llvm::errs() << "Successfully parsed transaction binary from "
-                 << npuInstsPath << "\n";
-    llvm::errs() << "Note: BD extraction from transaction operations not yet implemented\n";
+    llvm::errs() << "Successfully parsed transaction binary from " << npuInstsPath << "\n";
+  }
+
+  // Step 5: Emit MLIR operations (lifted or raw mode)
+  // Pass the transaction module so BDs can be extracted from it
+  if (failed(emitMLIRFromCDO(module, commands, emitLifted, txnModule))) {
+    return module.emitError("Failed to emit MLIR from CDO commands");
   }
 
   return success();
