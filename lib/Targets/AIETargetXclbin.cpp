@@ -506,10 +506,155 @@ private:
     auto shimDmaOp = builder.create<AIE::ShimDMAOp>(builder.getUnknownLoc(),
                                                      builder.getIndexType(), tile);
     Block *shimDmaBlock = &shimDmaOp.getBody().emplaceBlock();
-
-    // TODO: Properly implement DMA channel reconstruction to emit aie.dma_start operations
-    // For now, emit aie.end without DMA BD blocks to avoid unreachable blocks
     builder.setInsertionPointToEnd(shimDmaBlock);
+
+    // Group BDs by DMA channel
+    llvm::DenseMap<int, llvm::SmallVector<const ParsedBDConfig*>> bdsByChannel;
+    for (const auto &bd : bds) {
+      if (bd.dmaChannel >= 0) {
+        bdsByChannel[bd.dmaChannel].push_back(&bd);
+      }
+    }
+
+    // Track blocks for BD chains
+    llvm::DenseMap<int, Block*> bdBlocks;  // bdIndex -> Block*
+    Block *endBlock = nullptr;
+
+    // Emit DMA channels in order: S2MM_0, S2MM_1, MM2S_0, MM2S_1
+    for (int channelIdx = 0; channelIdx < 4; channelIdx++) {
+      auto it = bdsByChannel.find(channelIdx);
+      if (it == bdsByChannel.end() || it->second.empty()) {
+        continue;
+      }
+
+      const auto &channelBDs = it->second;
+
+      // Determine channel direction
+      AIE::DMAChannelDir channelDir;
+      int channelNum;
+      if (channelIdx == 0) {  // S2MM_0
+        channelDir = AIE::DMAChannelDir::S2MM;
+        channelNum = 0;
+      } else if (channelIdx == 1) {  // S2MM_1
+        channelDir = AIE::DMAChannelDir::S2MM;
+        channelNum = 1;
+      } else if (channelIdx == 2) {  // MM2S_0
+        channelDir = AIE::DMAChannelDir::MM2S;
+        channelNum = 0;
+      } else {  // MM2S_1
+        channelDir = AIE::DMAChannelDir::MM2S;
+        channelNum = 1;
+      }
+
+      // Create blocks for each BD in this channel
+      for (const auto *bd : channelBDs) {
+        Block *bdBlock = new Block();
+        shimDmaBlock->getParent()->push_back(bdBlock);
+        bdBlocks[bd->bdIndex] = bdBlock;
+      }
+
+      // Find the first BD (one with lowest index, or follow hardware convention)
+      const ParsedBDConfig *firstBD = channelBDs[0];
+
+      // Create end block if not already created
+      if (!endBlock) {
+        endBlock = new Block();
+        shimDmaBlock->getParent()->push_back(endBlock);
+      }
+
+      // Emit dma_start operation
+      Block *firstBDBlock = bdBlocks[firstBD->bdIndex];
+      Block *nextChain = endBlock;  // Chain to end or next channel
+
+      (void) AIE::DMAStartOp::create(
+          builder,
+          builder.getUnknownLoc(),
+          channelDir,
+          channelNum,
+          0,  // repeat_count
+          firstBDBlock,
+          nextChain
+      );
+
+      // Now emit each BD block
+      for (const auto *bd : channelBDs) {
+        Block *bdBlock = bdBlocks[bd->bdIndex];
+        builder.setInsertionPointToEnd(bdBlock);
+
+        // Emit lock acquire (if applicable)
+        emitLockAcquire(*bd);
+
+        // Emit dma_bd operation
+        auto buffer = getOrCreateExternalBuffer(*bd);
+        auto dimAttrs = buildDimensionAttrs(*bd);
+
+        AIE::DMABDOp::create(
+            builder,
+            builder.getUnknownLoc(),
+            buffer,
+            0,  // offset
+            bd->bufferLength,
+            dimAttrs
+        );
+
+        // Emit lock release (if applicable)
+        emitLockRelease(*bd);
+
+        // Emit next_bd terminator
+        Block *nextBlock = nullptr;
+        if (bd->useNextBd) {
+          auto nextIt = bdBlocks.find(bd->nextBd);
+          if (nextIt != bdBlocks.end()) {
+            nextBlock = nextIt->second;
+          }
+        }
+
+        if (!nextBlock) {
+          // If no valid next_bd, loop back to first BD
+          nextBlock = bdBlocks[firstBD->bdIndex];
+        }
+
+        AIE::NextBDOp::create(
+            builder,
+            builder.getUnknownLoc(),
+            nextBlock
+        );
+      }
+    }
+
+    // If there are no channels with BDs, we may have BDs without channel assignments.
+    // For shim tiles, BDs are often configured dynamically at runtime rather than statically.
+    // Check if we have any BDs at all to emit as fallback
+    if (bdsByChannel.empty()) {
+      // Check if there are any BDs without channel assignments
+      bool hasUnassignedBDs = false;
+      for (const auto &bd : bds) {
+        if (bd.dmaChannel < 0) {
+          hasUnassignedBDs = true;
+          break;
+        }
+      }
+
+      if (hasUnassignedBDs) {
+        // TODO: Consider emitting aie.shim_dma_allocation instead for unassigned BDs
+        // For now, just emit end - shim DMAs are configured dynamically at runtime
+        builder.setInsertionPointToEnd(shimDmaBlock);
+        AIE::EndOp::create(builder, builder.getUnknownLoc());
+        return;
+      }
+
+      // No BDs at all, just emit end
+      builder.setInsertionPointToEnd(shimDmaBlock);
+      AIE::EndOp::create(builder, builder.getUnknownLoc());
+      return;
+    }
+
+    // Emit end block
+    if (!endBlock) {
+      endBlock = new Block();
+      shimDmaBlock->getParent()->push_back(endBlock);
+    }
+    builder.setInsertionPointToEnd(endBlock);
     AIE::EndOp::create(builder, builder.getUnknownLoc());
   }
 
@@ -1224,12 +1369,25 @@ void extractBDsFromTransaction(ModuleOp txnModule, AIE::DeviceOp deviceOp,
                                 BDAddressParser &bdParser, BDAccumulator &bdAccum,
                                 DMAChannelTracker &dmaChannelTracker,
                                 LiftedBDEmitter &emitter) {
-  // Walk the transaction module to find write32 operations that configure BDs
+  // Walk the transaction module to find write32 operations that configure BDs or Start_Queue
   int write32ProcessedCount = 0;
   txnModule.walk([&](AIEX::NpuWrite32Op writeOp) {
     write32ProcessedCount++;
     uint32_t address = writeOp.getAddress();
     uint32_t value = writeOp.getValue();
+
+    // Check if this is a DMA Start_Queue write and track channel assignment
+    auto channelAssignment = dmaChannelTracker.parseStartQueue(address, value);
+    if (channelAssignment.has_value()) {
+      int col = (address >> 20) & 0xFF;
+      int row = (address >> 28) & 0xFF;
+      int bdIndex = channelAssignment->first;
+      DMAChannelTracker::Channel channel = channelAssignment->second;
+      dmaChannelTracker.recordAssignment(col, row, bdIndex, channel);
+      llvm::errs() << "Found Start_Queue in transaction: tile(" << col << "," << row
+                   << ") BD#" << bdIndex << " -> channel " << static_cast<int>(channel) << "\n";
+      return WalkResult::advance();
+    }
 
     // Check if this write is configuring a BD register
     if (!bdParser.isBDAddress(address)) {
