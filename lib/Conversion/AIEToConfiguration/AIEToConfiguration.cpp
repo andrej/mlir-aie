@@ -794,9 +794,6 @@ emitTransactionOps(OpBuilder &builder,
       int32_t column, row, direction, channel, repeat_count, bd_id;
       bool issue_token;
 
-      llvm::errs() << "Processing WRITE at address 0x" << llvm::utohexstr(op.cmd.RegOff)
-                   << " value 0x" << llvm::utohexstr(op.cmd.Value) << "\n";
-
       if (tryParseQueuePush(op.cmd.RegOff, op.cmd.Value,
                            column, row, direction, channel,
                            issue_token, repeat_count, bd_id)) {
