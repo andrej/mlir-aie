@@ -195,6 +195,34 @@ public:
     lockConfigs[key] = lock;
   }
 
+  /// Record shim mux connections for later emission
+  void recordShimMuxConnections(int column, const std::vector<ShimMuxConnection> &conns) {
+    if (conns.empty()) return;
+
+    ParsedShimMuxConfig &config = shimMuxes[column];
+    config.column = column;
+
+    // Add or update connections - if the same stream is configured multiple times,
+    // keep only the latest configuration
+    for (const auto &newConn : conns) {
+      // Check if we already have a connection for this stream
+      bool found = false;
+      for (auto &existingConn : config.connections) {
+        if (existingConn.streamIndex == newConn.streamIndex &&
+            existingConn.isInput == newConn.isInput) {
+          // Update existing connection
+          existingConn = newConn;
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        // Add new connection
+        config.connections.push_back(newConn);
+      }
+    }
+  }
+
   /// Record a tile reference from a register address
   /// This ensures all tiles (including shim tiles) are emitted even if they
   /// don't have BDs, switchboxes, or locks configured via CDO
@@ -321,6 +349,13 @@ public:
   void emitAllSwitchboxes() {
     for (const auto &[key, config] : switchboxes) {
       emitSwitchboxForTile(config);
+    }
+  }
+
+  /// Emit all collected shim mux configurations as aie.shim_mux operations
+  void emitAllShimMuxes() {
+    for (const auto &[column, config] : shimMuxes) {
+      emitShimMuxForTile(config);
     }
   }
 
@@ -998,6 +1033,79 @@ private:
     AIE::EndOp::create(builder, builder.getUnknownLoc());
   }
 
+  void emitShimMuxForTile(const ParsedShimMuxConfig &config) {
+    if (!config.hasConnections()) {
+      return;
+    }
+
+    // Shim tiles are always at row 0
+    auto tile = getOrCreateTile(config.column, 0);
+
+    OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointAfter(tile);
+
+    // Create aie.shim_mux operation
+    auto shimMuxOp = builder.create<AIE::ShimMuxOp>(
+        builder.getUnknownLoc(),
+        builder.getIndexType(),
+        tile
+    );
+
+    Block *shimMuxBlock = &shimMuxOp.getRegion().emplaceBlock();
+    builder.setInsertionPointToEnd(shimMuxBlock);
+
+    // Emit connections for each configured stream
+    // The shim mux connects between local resources (DMA/PL) and the tile array (North)
+    for (const auto &conn : config.connections) {
+      WireBundle srcBundle, dstBundle;
+      int srcChannel, dstChannel;
+
+      // Map ShimMuxSource to WireBundle
+      WireBundle localBundle;
+      switch (conn.source) {
+        case ShimMuxSource::PL:
+          localBundle = WireBundle::South;  // PL connects via South
+          break;
+        case ShimMuxSource::DMA:
+          localBundle = WireBundle::DMA;
+          break;
+        case ShimMuxSource::NOC:
+          // NoC uses special addressing - for now skip
+          continue;
+        default:
+          continue;  // Skip invalid sources
+      }
+
+      if (conn.isInput) {
+        // Mux: Input stream receives from local resource (DMA/PL) and sends North
+        // Example: South3 <- DMA means DMA:0 -> North:3
+        srcBundle = localBundle;
+        srcChannel = 0;  // DMA/PL channel 0
+        dstBundle = WireBundle::North;
+        dstChannel = conn.streamIndex;
+      } else {
+        // Demux: Output stream receives from North and sends to local resource
+        // Example: South2 -> DMA means North:2 -> DMA:0
+        srcBundle = WireBundle::North;
+        srcChannel = conn.streamIndex;
+        dstBundle = localBundle;
+        dstChannel = 0;  // DMA/PL channel 0
+      }
+
+      AIE::ConnectOp::create(
+          builder,
+          builder.getUnknownLoc(),
+          srcBundle,
+          srcChannel,
+          dstBundle,
+          dstChannel
+      );
+    }
+
+    // Terminate with aie.end
+    AIE::EndOp::create(builder, builder.getUnknownLoc());
+  }
+
   void emitLockForTile(const ParsedLockConfig &lock) {
     // Check if lock already exists (might have been created by BD lifting)
     auto lockKey = std::make_tuple(lock.column, lock.row, lock.lockId);
@@ -1120,6 +1228,9 @@ private:
 
   // Switchbox storage
   std::map<SwitchboxAccumulator::SwitchboxKey, ParsedSwitchboxConfig> switchboxes;
+
+  // Shim mux storage (indexed by column)
+  std::map<int, ParsedShimMuxConfig> shimMuxes;
 
   // Lock storage
   std::map<LockAccumulator::LockKey, ParsedLockConfig> lockConfigs;
@@ -1536,6 +1647,9 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
   SwitchAddressParser switchParser(/*numMemTileRows=*/1);
   SwitchboxAccumulator switchAccum;
 
+  // Initialize shim mux semantic lifting utilities
+  ShimMuxAddressParser shimMuxParser;
+
   // Initialize lock semantic lifting utilities
   LockAddressParser lockParser(/*numMemTileRows=*/1);
   LockAccumulator lockAccum;
@@ -1616,6 +1730,9 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
       // Check if this is a switchbox register write and accumulate
       auto switchConn = switchAccum.addMasterWrite(addr, value, switchParser);
 
+      // Check if this is a shim mux register write
+      auto shimMuxConns = shimMuxParser.parseShimMux(addr, value);
+
       // If lifted mode and this is a BD write, mark addresses for suppression
       // However, skip shim tiles since they don't have local memory and can't
       // have aie.mem operations - keep them as raw writes
@@ -1656,6 +1773,18 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
       if (switchConn.has_value()) {
         if (emitLifted && liftedEmitter) {
           liftedEmitter->recordSwitchboxConnection(*switchConn);
+          shouldEmitRaw = false;  // Don't emit raw write for switchbox registers
+          liftedEmitter->markLifted(addr);
+        }
+      }
+
+      // If shim mux connections were configured, record them for lifted emission
+      if (!shimMuxConns.empty()) {
+        if (emitLifted && liftedEmitter) {
+          int col = ShimMuxAddressParser::getColumn(addr);
+          liftedEmitter->recordShimMuxConnections(col, shimMuxConns);
+          shouldEmitRaw = false;  // Don't emit raw write for shim mux registers
+          liftedEmitter->markLifted(addr);
         }
       }
 
@@ -1685,11 +1814,37 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
       // Check if this is a lock register write and accumulate
       lockAccum.addMaskWrite(addr, value, mask, lockParser);
 
+      // Check if this is a switchbox register write and accumulate
+      // Note: maskwrite32 is used for switchbox configuration in some cases
+      auto switchConn = switchAccum.addMasterWrite(addr, value, switchParser);
+
+      // Check if this is a shim mux register write
+      auto shimMuxConns = shimMuxParser.parseShimMux(addr, value, mask);
+
       // If lifted mode and this is a lock write, mark for suppression
       bool shouldEmitRaw = true;
       if (emitLifted && lockParser.isLockAddress(addr)) {
         shouldEmitRaw = false;  // Don't emit raw write for lock registers
         if (liftedEmitter) {
+          liftedEmitter->markLifted(addr);
+        }
+      }
+
+      // If a switchbox connection was configured, record it for lifted emission
+      if (switchConn.has_value()) {
+        if (emitLifted && liftedEmitter) {
+          liftedEmitter->recordSwitchboxConnection(*switchConn);
+          shouldEmitRaw = false;  // Don't emit raw write for switchbox registers
+          liftedEmitter->markLifted(addr);
+        }
+      }
+
+      // If shim mux connections were configured, record them for lifted emission
+      if (!shimMuxConns.empty()) {
+        if (emitLifted && liftedEmitter) {
+          int col = ShimMuxAddressParser::getColumn(addr);
+          liftedEmitter->recordShimMuxConnections(col, shimMuxConns);
+          shouldEmitRaw = false;  // Don't emit raw write for shim mux registers
           liftedEmitter->markLifted(addr);
         }
       }
@@ -1775,6 +1930,7 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
     liftedEmitter->emitAllBDs();
     liftedEmitter->emitAllFlows();
     liftedEmitter->emitAllSwitchboxes();
+    liftedEmitter->emitAllShimMuxes();
   }
 
   // Add terminator to device block

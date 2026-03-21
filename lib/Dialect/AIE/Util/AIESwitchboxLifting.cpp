@@ -495,3 +495,145 @@ void SwitchboxPrettyPrinter::printSwitchboxConfig(
     os << "\n";
   }
 }
+
+//===----------------------------------------------------------------------===//
+// ShimMuxAddressParser Implementation
+//===----------------------------------------------------------------------===//
+
+bool ShimMuxAddressParser::isShimMuxAddress(uint32_t addr) const {
+  uint32_t regOffset = addr & 0xFFFFF;
+  return regOffset == kMuxConfigOffset || regOffset == kDemuxConfigOffset;
+}
+
+int ShimMuxAddressParser::getColumn(uint32_t addr) {
+  constexpr uint32_t kTileAddrShift = 20;
+  uint32_t tileOffset = (addr >> kTileAddrShift) & 0xFFF;
+  return tileOffset / 32;
+}
+
+std::vector<ShimMuxConnection> ShimMuxAddressParser::parseShimMux(
+    uint32_t addr, uint32_t value, uint32_t mask) const {
+  std::vector<ShimMuxConnection> connections;
+
+  uint32_t regOffset = addr & 0xFFFFF;
+
+  if (regOffset == kMuxConfigOffset) {
+    // Mux_Config register - input streams
+    // Bit fields: South7[15:14], South6[13:12], South3[11:10], South2[9:8]
+
+    // Apply mask to value to get actual fields being configured
+    uint32_t effectiveValue = value & mask;
+
+    // South7 - bits [15:14]
+    if (mask & 0xC000) {
+      ShimMuxConnection conn;
+      conn.streamIndex = 7;
+      conn.isInput = true;
+      uint32_t sel = (effectiveValue >> 14) & 0x3;
+      conn.source = static_cast<ShimMuxSource>(sel);
+      // Only emit connections that are actively configured (skip PL=0 which may mean disabled)
+      if (conn.source == ShimMuxSource::DMA || conn.source == ShimMuxSource::NOC) {
+        connections.push_back(conn);
+      }
+    }
+
+    // South6 - bits [13:12]
+    if (mask & 0x3000) {
+      ShimMuxConnection conn;
+      conn.streamIndex = 6;
+      conn.isInput = true;
+      uint32_t sel = (effectiveValue >> 12) & 0x3;
+      conn.source = static_cast<ShimMuxSource>(sel);
+      // Only emit connections that are actively configured (skip PL=0 which may mean disabled)
+      if (conn.source == ShimMuxSource::DMA || conn.source == ShimMuxSource::NOC) {
+        connections.push_back(conn);
+      }
+    }
+
+    // South3 - bits [11:10]
+    if (mask & 0x0C00) {
+      ShimMuxConnection conn;
+      conn.streamIndex = 3;
+      conn.isInput = true;
+      uint32_t sel = (effectiveValue >> 10) & 0x3;
+      conn.source = static_cast<ShimMuxSource>(sel);
+      // Only emit connections that are actively configured (skip PL=0 which may mean disabled)
+      if (conn.source == ShimMuxSource::DMA || conn.source == ShimMuxSource::NOC) {
+        connections.push_back(conn);
+      }
+    }
+
+    // South2 - bits [9:8]
+    if (mask & 0x0300) {
+      ShimMuxConnection conn;
+      conn.streamIndex = 2;
+      conn.isInput = true;
+      uint32_t sel = (effectiveValue >> 8) & 0x3;
+      conn.source = static_cast<ShimMuxSource>(sel);
+      // Only emit connections that are actively configured (skip PL=0 which may mean disabled)
+      if (conn.source == ShimMuxSource::DMA || conn.source == ShimMuxSource::NOC) {
+        connections.push_back(conn);
+      }
+    }
+
+  } else if (regOffset == kDemuxConfigOffset) {
+    // Demux_Config register - output streams
+    // Bit fields: South5[11:10], South4[9:8], South3[7:6], South2[5:4]
+
+    uint32_t effectiveValue = value & mask;
+
+    // South5 - bits [11:10]
+    if (mask & 0x0C00) {
+      ShimMuxConnection conn;
+      conn.streamIndex = 5;
+      conn.isInput = false;
+      uint32_t sel = (effectiveValue >> 10) & 0x3;
+      conn.source = static_cast<ShimMuxSource>(sel);
+      // Only emit connections that are actively configured (skip PL=0 which may mean disabled)
+      if (conn.source == ShimMuxSource::DMA || conn.source == ShimMuxSource::NOC) {
+        connections.push_back(conn);
+      }
+    }
+
+    // South4 - bits [9:8]
+    if (mask & 0x0300) {
+      ShimMuxConnection conn;
+      conn.streamIndex = 4;
+      conn.isInput = false;
+      uint32_t sel = (effectiveValue >> 8) & 0x3;
+      conn.source = static_cast<ShimMuxSource>(sel);
+      // Only emit connections that are actively configured (skip PL=0 which may mean disabled)
+      if (conn.source == ShimMuxSource::DMA || conn.source == ShimMuxSource::NOC) {
+        connections.push_back(conn);
+      }
+    }
+
+    // South3 - bits [7:6]
+    if (mask & 0x00C0) {
+      ShimMuxConnection conn;
+      conn.streamIndex = 3;
+      conn.isInput = false;
+      uint32_t sel = (effectiveValue >> 6) & 0x3;
+      conn.source = static_cast<ShimMuxSource>(sel);
+      // Only emit connections that are actively configured (skip PL=0 which may mean disabled)
+      if (conn.source == ShimMuxSource::DMA || conn.source == ShimMuxSource::NOC) {
+        connections.push_back(conn);
+      }
+    }
+
+    // South2 - bits [5:4]
+    if (mask & 0x0030) {
+      ShimMuxConnection conn;
+      conn.streamIndex = 2;
+      conn.isInput = false;
+      uint32_t sel = (effectiveValue >> 4) & 0x3;
+      conn.source = static_cast<ShimMuxSource>(sel);
+      // Only emit connections that are actively configured (skip PL=0 which may mean disabled)
+      if (conn.source == ShimMuxSource::DMA || conn.source == ShimMuxSource::NOC) {
+        connections.push_back(conn);
+      }
+    }
+  }
+
+  return connections;
+}

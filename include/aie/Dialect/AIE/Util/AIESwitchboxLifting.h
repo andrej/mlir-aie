@@ -227,6 +227,53 @@ private:
 };
 
 //===----------------------------------------------------------------------===//
+// Shim Mux Configuration - For shim tile routing (0x1F000 registers)
+//===----------------------------------------------------------------------===//
+
+/// Shim mux source selection
+enum class ShimMuxSource {
+  PL = 0,   // Programmable Logic
+  DMA = 1,  // DMA
+  NOC = 2,  // Network-on-Chip
+  INVALID = 3
+};
+
+/// Parsed shim mux configuration for a single stream
+struct ShimMuxConnection {
+  int streamIndex;           // Which stream (South 2, 3, 6, 7 for input)
+  ShimMuxSource source;      // What it connects to
+  bool isInput;              // true for Mux, false for Demux
+};
+
+/// Complete shim mux configuration for a shim tile
+struct ParsedShimMuxConfig {
+  int column = 0;
+  std::vector<ShimMuxConnection> connections;
+
+  bool hasConnections() const { return !connections.empty(); }
+};
+
+//===----------------------------------------------------------------------===//
+// Shim Mux Address Parser - Detect and parse shim mux registers
+//===----------------------------------------------------------------------===//
+
+class ShimMuxAddressParser {
+public:
+  static constexpr uint32_t kMuxConfigOffset = 0x1F000;    // Input stream mux
+  static constexpr uint32_t kDemuxConfigOffset = 0x1F004;  // Output stream demux
+
+  /// Check if address is a shim mux register
+  bool isShimMuxAddress(uint32_t addr) const;
+
+  /// Parse mux/demux configuration and return connections
+  /// Returns empty vector if not a shim mux register
+  std::vector<ShimMuxConnection> parseShimMux(uint32_t addr, uint32_t value, uint32_t mask = 0xFFFFFFFF) const;
+
+  /// Extract column from address
+  static int getColumn(uint32_t addr);
+};
+
+//===----------------------------------------------------------------------===//
 // Switchbox Pretty Printer - For annotated output
 //===----------------------------------------------------------------------===//
 
