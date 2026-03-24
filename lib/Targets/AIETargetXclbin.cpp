@@ -578,6 +578,10 @@ private:
         auto buffer = getOrCreateBuffer(*bd);
         auto dimAttrs = buildDimensionAttrs(*bd);
 
+        llvm::errs() << "[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile("
+                     << bd->column << "," << bd->row << ") BD" << bd->bdIndex
+                     << " with bufferLength=" << bd->bufferLength << "\n";
+
         if (dimAttrs) {
           AIE::DMABDOp::create(
               builder,
@@ -1861,24 +1865,52 @@ void extractBDFromCDO(const uint8_t *data, size_t len,
   const uint8_t *cmdData = data + (headerWords * 4);
   size_t cmdLen = len - (headerWords * 4);
 
+  llvm::errs() << "[DEBUG extractBDFromCDO] Scanning CDO binary (size=" << len
+               << " bytes, cmd region=" << cmdLen << " bytes) for SetBlock commands to BD regions...\n";
+  llvm::errs() << "[DEBUG extractBDFromCDO] First 32 bytes of cmd region:";
+  for (size_t i = 0; i < 32 && i < cmdLen; i++) {
+    if (i % 4 == 0) llvm::errs() << "\n  " << llvm::format("%04zx", i) << ":";
+    llvm::errs() << " " << llvm::format("%02X", cmdData[i]);
+  }
+  llvm::errs() << "\n";
+
   // BD address ranges (from memory)
   // Compute tile BDs: 0x1D000 - 0x1D200 (within tile local offset)
   // MemTile BDs: 0xA0000 - 0xA0600 (within tile local offset)
+
+  int setBlockCount = 0;
+  int bdSetBlockCount = 0;
+  int allCmdCount = 0;
 
   // Find all blockwrite commands to BD regions
   // Pattern: [prev_data] [address] [0xXXXX0104] [data...]
   for (size_t i = 0; i + 12 < cmdLen; i += 4) {
     uint32_t word = *reinterpret_cast<const uint32_t *>(cmdData + i);
+    uint16_t cmdId = word & 0xFFFF;
+
+    // Log all command types we see
+    if (cmdId != 0 && allCmdCount < 20) {
+      llvm::errs() << "[DEBUG extractBDFromCDO] Offset " << llvm::format("%04zx", i)
+                   << ": cmdId=0x" << llvm::format("%04X", cmdId)
+                   << " word=0x" << llvm::format("%08X", word) << "\n";
+      allCmdCount++;
+    }
 
     // Check for SET_BLOCK command (ID 0x0104 in lower 16 bits)
     if ((word & 0xFFFF) == 0x0104 && i >= 4) {
+      setBlockCount++;
       // Address is 4 bytes before the command word
       uint32_t addr = *reinterpret_cast<const uint32_t *>(cmdData + i - 4);
 
       // Check if this address is in a BD region
       if (bdParser.isBDAddress(addr)) {
+        bdSetBlockCount++;
         // Data length is in upper 16 bits of command word (in 32-bit words)
         uint32_t dataWords = (word >> 16) & 0xFFFF;
+
+        llvm::errs() << "[DEBUG extractBDFromCDO] Found SetBlock #" << bdSetBlockCount
+                     << " to BD region: addr=0x" << llvm::format("%08X", addr)
+                     << " dataWords=" << dataWords << "\n";
 
         // Data starts immediately after the command word
         size_t dataStart = i + 4;
@@ -1889,7 +1921,15 @@ void extractBDFromCDO(const uint8_t *data, size_t len,
           uint32_t writeAddr = addr + (offset * 4);
 
           // Feed to BD accumulator for semantic lifting
-          bdAccum.addWrite(writeAddr, value, bdParser);
+          auto completedBD = bdAccum.addWrite(writeAddr, value, bdParser);
+
+          if (completedBD.has_value()) {
+            auto &bd = *completedBD;
+            llvm::errs() << "[DEBUG extractBDFromCDO] *** COMPLETED BD from CDO: tile("
+                         << bd.column << "," << bd.row << ") BD" << bd.bdIndex
+                         << " bufferLength=" << bd.bufferLength
+                         << " baseAddress=0x" << llvm::format("%08X", bd.baseAddress) << "\n";
+          }
         }
 
         // Skip past the data we just processed
@@ -1897,6 +1937,9 @@ void extractBDFromCDO(const uint8_t *data, size_t len,
       }
     }
   }
+
+  llvm::errs() << "[DEBUG extractBDFromCDO] Summary: found " << setBlockCount
+               << " total SetBlock commands, " << bdSetBlockCount << " targeting BD regions\n";
 }
 
 /// Decode CDO binary using bootgen's decoder.
@@ -2608,6 +2651,11 @@ void extractBDsFromTransaction(ModuleOp txnModule, AIE::DeviceOp deviceOp,
                                 LiftedBDEmitter &emitter) {
   // Walk the transaction module to find write32 operations that configure BDs or Start_Queue
   int write32ProcessedCount = 0;
+  int bdWriteCount = 0;
+  int completedBDCount = 0;
+
+  llvm::errs() << "[DEBUG extractBDsFromTransaction] Starting to walk transaction module for NPU write32 ops...\n";
+
   txnModule.walk([&](AIEX::NpuWrite32Op writeOp) {
     write32ProcessedCount++;
     uint32_t address = writeOp.getAddress();
@@ -2621,6 +2669,8 @@ void extractBDsFromTransaction(ModuleOp txnModule, AIE::DeviceOp deviceOp,
       int bdIndex = channelAssignment->first;
       DMAChannelTracker::Channel channel = channelAssignment->second;
       dmaChannelTracker.recordAssignment(col, row, bdIndex, channel);
+      llvm::errs() << "[DEBUG extractBDsFromTransaction] Found Start_Queue: tile(" << col << "," << row
+                   << ") BD" << bdIndex << " -> channel " << static_cast<int>(channel) << "\n";
       return WalkResult::advance();
     }
 
@@ -2629,20 +2679,39 @@ void extractBDsFromTransaction(ModuleOp txnModule, AIE::DeviceOp deviceOp,
       return WalkResult::advance();
     }
 
+    bdWriteCount++;
+    llvm::errs() << "[DEBUG extractBDsFromTransaction] BD write #" << bdWriteCount
+                 << ": addr=0x" << llvm::format("%08X", address)
+                 << " value=0x" << llvm::format("%08X", value) << "\n";
+
     // Feed this write to the BD accumulator
     auto completedBD = bdAccum.addWrite(address, value, bdParser);
 
     // If this write completed a BD, record it
     if (completedBD.has_value()) {
+      completedBDCount++;
       // Assign DMA channel to BD before recording
       auto &bd = *completedBD;
       auto channel = dmaChannelTracker.getChannel(bd.column, bd.row, bd.bdIndex);
       bd.dmaChannel = static_cast<int>(channel);
+
+      llvm::errs() << "[DEBUG extractBDsFromTransaction] *** COMPLETED BD #" << completedBDCount
+                   << ": tile(" << bd.column << "," << bd.row << ") BD" << bd.bdIndex
+                   << " bufferLength=" << bd.bufferLength
+                   << " baseAddress=0x" << llvm::format("%08X", bd.baseAddress)
+                   << " channel=" << bd.dmaChannel
+                   << " lockAcqId=" << (int)bd.lockAcquire.lockId
+                   << " lockRelId=" << (int)bd.lockRelId
+                   << " nextBd=" << (int)bd.nextBd << " useNextBd=" << bd.useNextBd << "\n";
+
       emitter.recordBD(bd);
     }
 
     return WalkResult::advance();
   });
+
+  llvm::errs() << "[DEBUG extractBDsFromTransaction] Summary: processed " << write32ProcessedCount
+               << " write32 ops, " << bdWriteCount << " BD writes, " << completedBDCount << " completed BDs\n";
 
   // Also walk the transaction module to find blockwrite operations (if any)
   int blockwriteProcessedCount = 0;
