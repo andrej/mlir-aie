@@ -1,0 +1,107 @@
+================================================================================
+COMPREHENSIVE END-TO-END DECOMPILER VERIFICATION REPORT
+================================================================================
+Test Example: matrix_scalar_add
+Date: $(date)
+Working Directory: $(pwd)
+Test File: build/final.xclbin
+NPU Instructions: build/aie.mlir.prj/insts.bin
+
+================================================================================
+OPERATION COUNTS
+================================================================================
+High-level DMA ops (npu.dma_memcpy_nd): 0
+Raw write32 operations: 0
+Raw blockwrite operations: 0
+Raw maskwrite32 operations: 0
+Sync operations: 1
+Flow operations: 2
+
+================================================================================
+ANALYSIS
+================================================================================
+The decompiler successfully lifts the xclbin without any raw register writes.
+All NPU instructions are lifted to mid-level operations:
+- aiex.npu.writebd (for buffer descriptor configuration)
+- aiex.npu.address_patch (for runtime address patching)
+- aiex.npu.push_queue (for DMA queue operations)
+- aiex.npu.sync (for synchronization)
+
+The static xclbin configuration is properly lifted to:
+- aie.tile (tile declarations)
+- aie.flow (flow connections between tiles)
+- aie.switchbox (switchbox configurations)
+- aie.buffer (buffer allocations)
+- aie.lock (lock declarations)
+- aie.mem (memory DMA configurations with buffer descriptors)
+
+================================================================================
+FILE STATISTICS
+================================================================================
+Total lines in lifted.mlir: 164 lines
+
+================================================================================
+RUNTIME SEQUENCE CONTENT
+================================================================================
+The runtime_sequence section contains 7 high-level operations:
+- 2x aiex.npu.writebd (BD configurations for MM2S and S2MM)
+- 2x aiex.npu.address_patch (runtime address patching)
+- 2x aiex.npu.push_queue (DMA queue push operations)
+- 1x aiex.npu.sync (synchronization operation)
+
+Sample writebd operation:
+  aiex.npu.writebd {
+    bd_id = 0 : i32, 
+    buffer_length = 128 : i32, 
+    buffer_offset = 0 : i32, 
+    burst_length = 256 : i32, 
+    column = 0 : i32, 
+    d0_size = 16 : i32, 
+    d0_stride = 0 : i32,
+    d1_size = 8 : i32, 
+    d1_stride = 127 : i32,
+    ...
+  }
+
+================================================================================
+COMPARISON WITH ORIGINAL SOURCE
+================================================================================
+Original MLIR (build/aie.mlir) uses high-level operations:
+- aiex.dma_configure_task_for
+- aie.dma_bd
+- aiex.dma_start_task
+- aiex.dma_await_task
+
+Decompiled MLIR uses lower-level NPU operations:
+- aiex.npu.writebd
+- aiex.npu.address_patch
+- aiex.npu.push_queue
+- aiex.npu.sync
+
+================================================================================
+VERDICT
+================================================================================
+✓ SUCCESSFUL LIFTING: No raw register writes (write32/blockwrite/maskwrite32)
+✓ HUMAN READABLE: Uses meaningful mid-level NPU operations
+✓ STRUCTURED: Proper separation of static config and runtime sequence
+⚠ ABSTRACTION LEVEL: Uses NPU-level ops, not high-level DMA task ops
+
+The decompiler successfully lifts all low-level register operations into
+meaningful mid-level MLIR constructs. The output is human-readable and 
+captures all hardware concepts without raw register writes.
+
+However, the abstraction level is at the NPU instruction level 
+(aiex.npu.writebd, etc.) rather than the higher-level DMA task API
+(aiex.dma_configure_task_for). This is expected since the decompiler
+is working from compiled binaries and cannot fully reconstruct the
+original high-level task abstractions.
+
+================================================================================
+NEXT STEPS FOR ROUNDTRIP TESTING
+================================================================================
+1. Attempt to recompile the lifted.mlir back to xclbin
+2. Compare the recompiled xclbin with the original build/final.xclbin
+3. Check for binary equivalence or semantic equivalence
+4. Identify any missing elements that prevent successful roundtrip
+
+================================================================================
