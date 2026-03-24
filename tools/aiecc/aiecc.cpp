@@ -1815,6 +1815,47 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     return success(); // Skip compilation
   }
 
+  // ROUNDTRIP DECOMPILER SUPPORT: If elf_file attribute is present and the
+  // file exists, use it directly instead of compiling from the core body.
+  // This allows recompiling decompiled MLIR with extracted ELF files.
+  if (!core.elfFile.empty()) {
+    // Try to resolve the path relative to current working directory first
+    SmallString<256> elfPath(core.elfFile);
+
+    // Make it absolute if it's not already
+    if (!sys::path::is_absolute(elfPath)) {
+      SmallString<256> absPath;
+      if (auto ec = sys::fs::current_path(absPath)) {
+        std::lock_guard<std::mutex> lock(outputMutex);
+        llvm::errs() << "Warning: Could not get current directory: "
+                     << ec.message() << "\n";
+      } else {
+        sys::path::append(absPath, elfPath);
+        sys::path::remove_dots(absPath, /*remove_dot_dot=*/true);
+        elfPath = absPath;
+      }
+    }
+
+    // Check if the ELF file exists
+    if (sys::fs::exists(elfPath)) {
+      if (verbose) {
+        std::lock_guard<std::mutex> lock(outputMutex);
+        llvm::outs() << "Using existing ELF for core (" << core.col << ", "
+                     << core.row << "): " << elfPath << "\n";
+      }
+      outElfPath = std::string(elfPath);
+      return success();
+    } else {
+      if (verbose) {
+        std::lock_guard<std::mutex> lock(outputMutex);
+        llvm::outs() << "ELF file not found (" << elfPath
+                     << "), compiling core body for core (" << core.col << ", "
+                     << core.row << ")\n";
+      }
+      // ELF file doesn't exist, fall through to compile from core body
+    }
+  }
+
   // When --no-unified is explicitly set with xchesscc, compile and link are
   // combined into one step. If --no-link is also set, skip compilation entirely
   // since xchesscc cannot produce object files without linking in this mode.
@@ -2821,6 +2862,43 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
   }
 
   for (const auto &core : cores) {
+    // ROUNDTRIP DECOMPILER SUPPORT: If elf_file attribute is present and the
+    // file exists, use it directly instead of linking from the unified object.
+    // This allows recompiling decompiled MLIR with extracted ELF files.
+    if (!core.elfFile.empty()) {
+      SmallString<256> existingElfPath(core.elfFile);
+
+      // Make it absolute if it's not already
+      if (!sys::path::is_absolute(existingElfPath)) {
+        SmallString<256> absPath;
+        if (auto ec = sys::fs::current_path(absPath)) {
+          llvm::errs() << "Warning: Could not get current directory: "
+                       << ec.message() << "\n";
+        } else {
+          sys::path::append(absPath, existingElfPath);
+          sys::path::remove_dots(absPath, /*remove_dot_dot=*/true);
+          existingElfPath = absPath;
+        }
+      }
+
+      // Check if the ELF file exists
+      if (sys::fs::exists(existingElfPath)) {
+        if (verbose) {
+          llvm::outs() << "Using existing ELF for core (" << core.col << ", "
+                       << core.row << "): " << existingElfPath << "\n";
+        }
+        elfPaths[{core.col, core.row}] = std::string(existingElfPath);
+        continue; // Skip to next core
+      } else {
+        if (verbose) {
+          llvm::outs() << "ELF file not found (" << existingElfPath
+                       << "), linking from unified object for core ("
+                       << core.col << ", " << core.row << ")\n";
+        }
+        // Fall through to link from unified object
+      }
+    }
+
     if (verbose) {
       llvm::outs() << "Linking core (" << core.col << ", " << core.row
                    << ") from unified object\n";
