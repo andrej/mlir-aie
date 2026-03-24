@@ -3240,7 +3240,7 @@ LogicalResult AIETranslateFromXclbin(ModuleOp module, StringRef filename,
   // Step 4: If transaction binary provided, parse it first
   std::optional<ModuleOp> txnModule = std::nullopt;
   if (!npuInstsPath.empty()) {
-    // Load transaction binary from file
+    // Load NPU instructions file (could be ELF or raw binary)
     auto fileOrErr = llvm::MemoryBuffer::getFile(npuInstsPath);
     if (!fileOrErr) {
       return module.emitError("Failed to open NPU instructions file: ")
@@ -3248,9 +3248,66 @@ LogicalResult AIETranslateFromXclbin(ModuleOp module, StringRef filename,
     }
 
     llvm::MemoryBuffer *buffer = fileOrErr.get().get();
-    std::vector<uint8_t> txnData(
-        reinterpret_cast<const uint8_t*>(buffer->getBufferStart()),
-        reinterpret_cast<const uint8_t*>(buffer->getBufferEnd()));
+    std::vector<uint8_t> txnData;
+
+    // Check if this is an ELF file (magic: 0x7F 'E' 'L' 'F')
+    const uint8_t *data = reinterpret_cast<const uint8_t*>(buffer->getBufferStart());
+    size_t size = buffer->getBufferSize();
+
+    if (size >= 4 && data[0] == 0x7F && data[1] == 'E' && data[2] == 'L' && data[3] == 'F') {
+      // ELF file - extract .ctrltext section
+      // The .ctrltext section is at offset 0xA0 (160) with size 0x12C (300) for typical NPU insts
+      // However, we should parse the ELF header properly
+      // For now, use a simple extraction based on section header at offset 0x34
+
+      // Simple ELF32 parser: section header table offset is at bytes 32-35
+      if (size < 52) {  // Minimum ELF32 header size
+        return module.emitError("ELF file too small");
+      }
+
+      uint32_t sh_off = *reinterpret_cast<const uint32_t*>(data + 32);  // Section header table offset
+      uint16_t sh_entsize = *reinterpret_cast<const uint16_t*>(data + 46);  // Section header entry size
+      uint16_t sh_num = *reinterpret_cast<const uint16_t*>(data + 48);  // Number of section headers
+      uint16_t sh_strndx = *reinterpret_cast<const uint16_t*>(data + 50);  // Section name string table index
+
+      if (sh_off + (sh_num * sh_entsize) > size) {
+        return module.emitError("Invalid ELF section header table");
+      }
+
+      // Find the .shstrtab (section name string table)
+      const uint8_t *shstrtab_hdr = data + sh_off + (sh_strndx * sh_entsize);
+      uint32_t shstrtab_offset = *reinterpret_cast<const uint32_t*>(shstrtab_hdr + 16);  // sh_offset
+
+      // Search for .ctrltext section
+      bool found = false;
+      for (uint16_t i = 0; i < sh_num && !found; i++) {
+        const uint8_t *sh = data + sh_off + (i * sh_entsize);
+        uint32_t sh_name_idx = *reinterpret_cast<const uint32_t*>(sh);  // Index into shstrtab
+        uint32_t sh_offset_val = *reinterpret_cast<const uint32_t*>(sh + 16);  // sh_offset
+        uint32_t sh_size = *reinterpret_cast<const uint32_t*>(sh + 20);  // sh_size
+
+        // Check section name
+        if (shstrtab_offset + sh_name_idx < size) {
+          const char *section_name = reinterpret_cast<const char*>(data + shstrtab_offset + sh_name_idx);
+          if (std::strcmp(section_name, ".ctrltext") == 0) {
+            // Found .ctrltext section - extract it
+            if (sh_offset_val + sh_size <= size) {
+              txnData.assign(data + sh_offset_val, data + sh_offset_val + sh_size);
+              found = true;
+            } else {
+              return module.emitError("Invalid .ctrltext section size in ELF");
+            }
+          }
+        }
+      }
+
+      if (!found) {
+        return module.emitError("Could not find .ctrltext section in ELF file");
+      }
+    } else {
+      // Raw binary file - use as-is
+      txnData.assign(data, data + size);
+    }
 
     // Parse transaction binary to MLIR using existing converter
     txnModule = convertTransactionBinaryToMLIR(module.getContext(), txnData);
