@@ -1842,6 +1842,63 @@ void extractProgramMemoryFromCDO(const uint8_t *data, size_t len,
   }
 }
 
+/// Manually extract BD configuration from raw CDO SetBlock commands.
+/// Bootgen's decoder doesn't properly decode SetBlock commands (0x0104) to BD regions.
+/// This function scans the raw CDO for SET_BLOCK commands and feeds BD register writes
+/// into the BDAccumulator for semantic lifting.
+void extractBDFromCDO(const uint8_t *data, size_t len,
+                      BDAddressParser &bdParser, BDAccumulator &bdAccum) {
+  // CDO header: skip it to get to commands
+  if (len < 32) return;
+
+  const uint32_t *words = reinterpret_cast<const uint32_t *>(data);
+
+  // Header structure: [NumWords] [IdentWord="CDO\0"] [Version] [Length] [Checksum]...
+  // Commands start after header (NumWords+4 words total in header)
+  size_t headerWords = 4 + words[0];
+  if (headerWords * 4 >= len) return;
+
+  const uint8_t *cmdData = data + (headerWords * 4);
+  size_t cmdLen = len - (headerWords * 4);
+
+  // BD address ranges (from memory)
+  // Compute tile BDs: 0x1D000 - 0x1D200 (within tile local offset)
+  // MemTile BDs: 0xA0000 - 0xA0600 (within tile local offset)
+
+  // Find all blockwrite commands to BD regions
+  // Pattern: [prev_data] [address] [0xXXXX0104] [data...]
+  for (size_t i = 0; i + 12 < cmdLen; i += 4) {
+    uint32_t word = *reinterpret_cast<const uint32_t *>(cmdData + i);
+
+    // Check for SET_BLOCK command (ID 0x0104 in lower 16 bits)
+    if ((word & 0xFFFF) == 0x0104 && i >= 4) {
+      // Address is 4 bytes before the command word
+      uint32_t addr = *reinterpret_cast<const uint32_t *>(cmdData + i - 4);
+
+      // Check if this address is in a BD region
+      if (bdParser.isBDAddress(addr)) {
+        // Data length is in upper 16 bits of command word (in 32-bit words)
+        uint32_t dataWords = (word >> 16) & 0xFFFF;
+
+        // Data starts immediately after the command word
+        size_t dataStart = i + 4;
+
+        // Feed each word to bdAccum as a write operation
+        for (uint32_t offset = 0; offset < dataWords && (dataStart + offset * 4 < cmdLen); offset++) {
+          uint32_t value = *reinterpret_cast<const uint32_t *>(cmdData + dataStart + offset * 4);
+          uint32_t writeAddr = addr + (offset * 4);
+
+          // Feed to BD accumulator for semantic lifting
+          bdAccum.addWrite(writeAddr, value, bdParser);
+        }
+
+        // Skip past the data we just processed
+        i += dataWords * 4;
+      }
+    }
+  }
+}
+
 /// Decode CDO binary using bootgen's decoder.
 /// Returns a list of CdoCommand structures.
 LogicalResult decodeCDOToCmds(const uint8_t *data, size_t len,
@@ -2133,6 +2190,11 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
   // Extract program memory from raw CDO (bootgen decoder doesn't handle this)
   if (rawCDO && rawCDOSize > 0) {
     extractProgramMemoryFromCDO(rawCDO, rawCDOSize, coreProgExtractor);
+  }
+
+  // Extract BD configuration from raw CDO (bootgen decoder doesn't decode SetBlock commands)
+  if (rawCDO && rawCDOSize > 0) {
+    extractBDFromCDO(rawCDO, rawCDOSize, bdParser, bdAccum);
   }
 
   std::unique_ptr<LiftedBDEmitter> liftedEmitter;
