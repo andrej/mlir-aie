@@ -1,5 +1,26 @@
+Warning: Max column 3 exceeds npu1_3col, using generic npu1 device
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(0,5)
+Warning: Emitting 24 BDs with inferred channel S2MM_0 for memtile(2,1)
+Warning: Emitting 24 BDs with inferred channel S2MM_0 for memtile(3,1)
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(3,5)
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(2,5)
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(1,4)
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(1,5)
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(0,4)
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(3,4)
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(2,3)
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(0,3)
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(2,4)
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(0,2)
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(1,3)
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(2,2)
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(1,2)
+Warning: Emitting 24 BDs with inferred channel S2MM_0 for memtile(0,1)
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(3,2)
+Warning: Emitting 24 BDs with inferred channel S2MM_0 for memtile(1,1)
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(3,3)
 module {
-  aie.device(npu1) @xclbin_device {
+  aie.device(npu2) @xclbin_device {
     %shim_noc_tile_1_0 = aie.tile(1, 0)
     %shim_mux_1_0 = aie.shim_mux(%shim_noc_tile_1_0) {
       aie.connect<DMA : 0, North : 3>
@@ -1029,5 +1050,53 @@ module {
     aie.runtime_sequence @configure() {
       aie.end
     }
+    %core_0_2 = aie.core(%tile_0_2) {
+      aie.end
+    } {elf_file = "core_0_2.elf"}
+    %core_0_3 = aie.core(%tile_0_3) {
+      aie.end
+    } {elf_file = "core_0_3.elf"}
+    %core_0_4 = aie.core(%tile_0_4) {
+      aie.end
+    } {elf_file = "core_0_4.elf"}
+    %core_0_5 = aie.core(%tile_0_5) {
+      aie.end
+    } {elf_file = "core_0_5.elf"}
+    %core_1_2 = aie.core(%tile_1_2) {
+      aie.end
+    } {elf_file = "core_1_2.elf"}
+    %core_1_3 = aie.core(%tile_1_3) {
+      aie.end
+    } {elf_file = "core_1_3.elf"}
+    %core_1_4 = aie.core(%tile_1_4) {
+      aie.end
+    } {elf_file = "core_1_4.elf"}
+    %core_1_5 = aie.core(%tile_1_5) {
+      aie.end
+    } {elf_file = "core_1_5.elf"}
+    %core_2_2 = aie.core(%tile_2_2) {
+      aie.end
+    } {elf_file = "core_2_2.elf"}
+    %core_2_3 = aie.core(%tile_2_3) {
+      aie.end
+    } {elf_file = "core_2_3.elf"}
+    %core_2_4 = aie.core(%tile_2_4) {
+      aie.end
+    } {elf_file = "core_2_4.elf"}
+    %core_2_5 = aie.core(%tile_2_5) {
+      aie.end
+    } {elf_file = "core_2_5.elf"}
+    %core_3_2 = aie.core(%tile_3_2) {
+      aie.end
+    } {elf_file = "core_3_2.elf"}
+    %core_3_3 = aie.core(%tile_3_3) {
+      aie.end
+    } {elf_file = "core_3_3.elf"}
+    %core_3_4 = aie.core(%tile_3_4) {
+      aie.end
+    } {elf_file = "core_3_4.elf"}
+    %core_3_5 = aie.core(%tile_3_5) {
+      aie.end
+    } {elf_file = "core_3_5.elf"}
   }
 }
