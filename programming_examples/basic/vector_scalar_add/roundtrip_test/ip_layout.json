@@ -1,0 +1,15 @@
+{
+    "ip_layout": {
+        "m_count": "1",
+        "m_ip_data": [
+            {
+                "m_type": "IP_PS_KERNEL",
+                "m_subtype": "DPU",
+                "m_functional": "DPU",
+                "m_kernel_id": "0x901",
+                "m_base_address": "not_used",
+                "m_name": "MLIR_AIE:MLIRAIE"
+            }
+        ]
+    }
+}
