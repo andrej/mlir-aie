@@ -1728,8 +1728,11 @@ int scanForMaxColumn(llvm::ArrayRef<CdoCommand *> commands) {
 ///   Bit 1 (mask=2): Reset
 /// These operations are boilerplate inserted by the compiler and can be omitted.
 static bool isCoreControlOperation(uint32_t addr, uint32_t mask) {
-  uint32_t row = (addr >> 20) & 0x7;
-  uint32_t tileBase = row << 20;
+  // Extract tile coordinates using AIE2 address format
+  uint32_t tileOffset = (addr >> 20) & 0xFFF;
+  int col = tileOffset / 32;
+  int row = tileOffset % 32;
+  uint32_t tileBase = (col * 32 + row) << 20;
   uint32_t offset = addr - tileBase;
 
   // Core_Control register at offset 0x32000
@@ -1741,31 +1744,56 @@ static bool isCoreControlOperation(uint32_t addr, uint32_t mask) {
   return false;
 }
 
-/// Check if a maskwrite is a DMA control operation (channel enable).
+/// Check if a maskwrite is a DMA control operation (channel enable/reset).
+/// Compute Tile DMA control registers are at:
+///   0x1DE00: DMA_S2MM_0_Ctrl
+///   0x1DE08: DMA_S2MM_1_Ctrl
+///   0x1DE10: DMA_MM2S_0_Ctrl
+///   0x1DE18: DMA_MM2S_1_Ctrl
 /// MemTile DMA control registers are at:
-///   0xA0600: DMA_S2MM_0_Ctrl
-///   0xA0608: DMA_S2MM_1_Ctrl
-///   0xA0630: DMA_MM2S_0_Ctrl
-///   0xA0638: DMA_MM2S_1_Ctrl
-///   0xA0640: DMA_MM2S_2_Ctrl
-///   0xA0648: DMA_MM2S_3_Ctrl
-/// These operations enable DMA channels and are derivable from BD configuration.
+///   0xA0600: DMA_S2MM_0_Ctrl, 0xA0608: DMA_S2MM_1_Ctrl
+///   0xA0610: DMA_S2MM_2_Ctrl, 0xA0618: DMA_S2MM_3_Ctrl
+///   0xA0620: DMA_S2MM_4_Ctrl, 0xA0628: DMA_S2MM_5_Ctrl
+///   0xA0630: DMA_MM2S_0_Ctrl, 0xA0638: DMA_MM2S_1_Ctrl
+///   0xA0640: DMA_MM2S_2_Ctrl, 0xA0648: DMA_MM2S_3_Ctrl
+///   0xA0650: DMA_MM2S_4_Ctrl, 0xA0658: DMA_MM2S_5_Ctrl
+/// These operations enable/reset DMA channels and are derivable from BD configuration.
 static bool isDMAControlOperation(uint32_t addr, uint32_t mask, uint32_t value) {
-  uint32_t row = (addr >> 20) & 0x7;
-  uint32_t tileBase = row << 20;
+  // Extract tile coordinates using AIE2 address format
+  uint32_t tileOffset = (addr >> 20) & 0xFFF;
+  int col = tileOffset / 32;
+  int row = tileOffset % 32;
+  uint32_t tileBase = (col * 32 + row) << 20;
   uint32_t offset = addr - tileBase;
 
-  // Check if this is a memtile (row == 1)
-  if (row != 1) {
-    return false;
+  // Compute tile DMA control registers (row >= 2)
+  if (row >= 2) {
+    // DMA_S2MM_0_Ctrl, DMA_S2MM_1_Ctrl, DMA_MM2S_0_Ctrl, DMA_MM2S_1_Ctrl
+    if (offset == 0x1DE00 || offset == 0x1DE08 ||
+        offset == 0x1DE10 || offset == 0x1DE18) {
+      // mask=0, value=1: Enable operation
+      // mask=2, value=2: Reset operation
+      // mask=2, value=0: Clear reset
+      if ((mask == 0 && value == 1) || (mask == 2)) {
+        return true;
+      }
+    }
   }
 
-  // DMA control registers for memtile
-  if ((offset == 0xA0600 || offset == 0xA0608 ||  // S2MM channels
-       offset == 0xA0630 || offset == 0xA0638 ||  // MM2S channels
-       offset == 0xA0640 || offset == 0xA0648) &&  // More MM2S channels
-      mask == 0 && value == 1) {  // Enable operation
-    return true;
+  // MemTile DMA control registers (row == 1)
+  if (row == 1) {
+    if (offset == 0xA0600 || offset == 0xA0608 ||  // S2MM 0-1
+        offset == 0xA0610 || offset == 0xA0618 ||  // S2MM 2-3
+        offset == 0xA0620 || offset == 0xA0628 ||  // S2MM 4-5
+        offset == 0xA0630 || offset == 0xA0638 ||  // MM2S 0-1
+        offset == 0xA0640 || offset == 0xA0648 ||  // MM2S 2-3
+        offset == 0xA0650 || offset == 0xA0658) {  // MM2S 4-5
+      // mask=0, value=1: Enable operation
+      // mask=2: Reset operations
+      if ((mask == 0 && value == 1) || (mask == 2)) {
+        return true;
+      }
+    }
   }
 
   return false;
@@ -1780,9 +1808,11 @@ static bool isInitializationWrite(uint32_t addr, uint32_t value) {
     return false;
   }
 
-  // Extract tile offset from address
-  uint32_t row = (addr >> 20) & 0x7;
-  uint32_t tileBase = row << 20;
+  // Extract tile coordinates using AIE2 address format
+  uint32_t tileOffset = (addr >> 20) & 0xFFF;
+  int col = tileOffset / 32;
+  int row = tileOffset % 32;
+  uint32_t tileBase = (col * 32 + row) << 20;
   uint32_t offset = addr - tileBase;
 
   // DMA BD register ranges (these get cleared before configuration)
@@ -1826,10 +1856,16 @@ static bool isInitializationWrite(uint32_t addr, uint32_t value) {
     return true;  // Core base initialization
   }
 
-  // Other common initialization addresses
-  // Shim tile region (row=0, low addresses)
-  if (row == 0 && addr < 0x100000) {
-    return true;  // Shim initialization
+  // Shim tile initialization (row=0)
+  if (row == 0) {
+    // Shim DMA BD range: 0x14000-0x15000
+    if (offset >= 0x14000 && offset < 0x15000) {
+      return true;  // Shim BD initialization
+    }
+    // Shim configuration registers (various ranges)
+    if (offset < 0x100000) {
+      return true;  // Shim initialization
+    }
   }
 
   return false;
