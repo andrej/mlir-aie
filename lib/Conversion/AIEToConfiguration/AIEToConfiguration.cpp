@@ -517,6 +517,147 @@ static bool tryParseRtpWrite(uint32_t address, uint32_t value,
   return false;
 }
 
+// Try to parse a write32/maskwrite32 operation as a DMA channel enable/control operation.
+// Returns true if this is a DMA channel control write, false otherwise.
+// These are writes to the DMA channel control registers (offset 0x1DE00/0x1DE08/etc.)
+// that enable/disable DMA channels or configure their control bits.
+static bool tryParseDMAChannelControl(uint32_t address, uint32_t mask, uint32_t value,
+                                       int32_t &column, int32_t &row,
+                                       int32_t &direction, int32_t &channel) {
+  // Extract column and row from address
+  column = (address >> 25) & 0xFF;
+  row = (address >> 20) & 0x1F;
+
+  // Get the offset within the tile
+  uint32_t tile_base = (column << 25) | (row << 20);
+  uint32_t offset = address - tile_base;
+
+  // Determine the control base based on tile type
+  uint32_t control_base;
+  if (row == 0) {
+    // Shim tile
+    control_base = kDMA_Control_Base_Shim;
+  } else {
+    // Core or mem tile
+    control_base = kDMA_Control_Base_Core;
+  }
+
+  // DMA control registers:
+  // control_base + (channel * 8) + (MM2S ? 0x10 : 0)
+  // Try to match S2MM channels
+  if (offset == control_base + 0 * 8) {
+    direction = 0; // S2MM
+    channel = 0;
+  } else if (offset == control_base + 1 * 8) {
+    direction = 0; // S2MM
+    channel = 1;
+  } else if (offset == control_base + 0x10 + 0 * 8) {
+    direction = 1; // MM2S
+    channel = 0;
+  } else if (offset == control_base + 0x10 + 1 * 8) {
+    direction = 1; // MM2S
+    channel = 1;
+  } else {
+    return false;
+  }
+
+  return true;
+}
+
+// Try to parse a maskwrite32 operation as a DMA queue operation (start/repeat queue).
+// Returns true if this is a queue write, false otherwise.
+// Queue registers are at control_base + (channel * 8) + (MM2S ? 0x10 : 0) + 0x4
+static bool tryParseDMAQueueWrite(uint32_t address, uint32_t mask, uint32_t value,
+                                   int32_t &column, int32_t &row,
+                                   int32_t &direction, int32_t &channel,
+                                   bool &is_repeat_queue) {
+  // Extract column and row from address
+  column = (address >> 25) & 0xFF;
+  row = (address >> 20) & 0x1F;
+
+  // Get the offset within the tile
+  uint32_t tile_base = (column << 25) | (row << 20);
+  uint32_t offset = address - tile_base;
+
+  // Determine the control base based on tile type
+  uint32_t control_base;
+  if (row == 0) {
+    // Shim tile
+    control_base = kDMA_Control_Base_Shim;
+  } else {
+    // Core or mem tile
+    control_base = kDMA_Control_Base_Core;
+  }
+
+  // Queue registers (same pattern as tryParseQueuePush):
+  // Queue: control_base + (channel * 8) + (MM2S ? 0x10 : 0) + 0x4
+  // Note: We currently don't distinguish start vs repeat queue in maskwrite operations
+  // Both use the same register address with different value encodings
+
+  // Try to match S2MM queues
+  if (offset == control_base + 0 * 8 + 0x4) {
+    direction = 0; // S2MM
+    channel = 0;
+    is_repeat_queue = false; // Assume start queue
+  } else if (offset == control_base + 1 * 8 + 0x4) {
+    direction = 0; // S2MM
+    channel = 1;
+    is_repeat_queue = false;
+  } else if (offset == control_base + 0x10 + 0 * 8 + 0x4) {
+    direction = 1; // MM2S
+    channel = 0;
+    is_repeat_queue = false;
+  } else if (offset == control_base + 0x10 + 1 * 8 + 0x4) {
+    direction = 1; // MM2S
+    channel = 1;
+    is_repeat_queue = false;
+  } else {
+    return false;
+  }
+
+  return true;
+}
+
+// Try to parse a write32 operation as a DMA reset operation.
+// Returns true if this is a DMA reset write, false otherwise.
+static bool tryParseDMAReset(uint32_t address, uint32_t value,
+                              int32_t &column, int32_t &row) {
+  // Extract column and row from address
+  column = (address >> 25) & 0xFF;
+  row = (address >> 20) & 0x1F;
+
+  // Get the offset within the tile
+  uint32_t tile_base = (column << 25) | (row << 20);
+  uint32_t offset = address - tile_base;
+
+  // DMA reset register is at 0x20000
+  if (offset == 0x20000) {
+    return true;
+  }
+
+  return false;
+}
+
+// Try to parse a maskwrite32 operation as a core control operation (enable/disable).
+// Returns true if this is a core control write, false otherwise.
+static bool tryParseCoreControl(uint32_t address, uint32_t mask, uint32_t value,
+                                 int32_t &column, int32_t &row) {
+  // Extract column and row from address
+  column = (address >> 25) & 0xFF;
+  row = (address >> 20) & 0x1F;
+
+  // Get the offset within the tile
+  uint32_t tile_base = (column << 25) | (row << 20);
+  uint32_t offset = address - tile_base;
+
+  // Core control register is at 0x32000
+  if (offset == 0x32000) {
+    return true;
+  }
+
+  return false;
+}
+
 // Try to parse a maskwrite32 operation as a DMA Controller_ID configuration.
 // Returns true if this is a Controller_ID write, false otherwise.
 // The Controller_ID field (bits 15:8) of DMA_S2MM/MM2S control registers
@@ -788,6 +929,7 @@ emitTransactionOps(OpBuilder &builder,
 
   // create the txn ops
   for (auto [op, payload] : llvm::zip(operations, global_data)) {
+    llvm::errs() << "DEBUG: Processing opcode " << (int)op.cmd.Opcode << " at address 0x" << llvm::utohexstr(op.cmd.RegOff) << "\n";
 
     if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
       // Try to lift write32 to queue push
@@ -837,9 +979,17 @@ emitTransactionOps(OpBuilder &builder,
                          << " value " << rtp_value << "\n";
             // Skip emission - don't emit raw write32
           } else {
-            // Emit raw write32 for unrecognized operations
-            AIEX::NpuWrite32Op::create(builder, loc, op.cmd.RegOff, op.cmd.Value,
-                                       nullptr, nullptr, nullptr);
+            // Try to parse as a DMA reset operation
+            if (tryParseDMAReset(op.cmd.RegOff, op.cmd.Value, column, row)) {
+              // This is a DMA reset operation
+              // Suppress it as it's a runtime configuration that will be reconstructed
+              llvm::errs() << "Note: Suppressing DMA reset at tile(" << column << "," << row << ")\n";
+              // Skip emission - don't emit raw write32
+            } else {
+              // Emit raw write32 for unrecognized operations
+              AIEX::NpuWrite32Op::create(builder, loc, op.cmd.RegOff, op.cmd.Value,
+                                         nullptr, nullptr, nullptr);
+            }
           }
         }
       }
@@ -936,6 +1086,7 @@ emitTransactionOps(OpBuilder &builder,
         }
       }
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
+      llvm::errs() << "DEBUG: Processing maskwrite32 at address 0x" << llvm::utohexstr(op.cmd.RegOff) << "\n";
       // Try to parse as a lock operation first (locks use maskwrite for acquire/release)
       int32_t column, row, lock_id, lock_value;
       if (tryParseLockSet(op.cmd.RegOff, op.cmd.Value, column, row, lock_id, lock_value)) {
@@ -958,9 +1109,39 @@ emitTransactionOps(OpBuilder &builder,
                        << " controller_id " << controller_id << "\n";
           // Skip emission - don't emit raw maskwrite32
         } else {
-          // Emit raw maskwrite32 for unrecognized operations
-          AIEX::NpuMaskWrite32Op::create(builder, loc, op.cmd.RegOff, op.cmd.Value,
-                                         op.cmd.Mask, nullptr, nullptr, nullptr);
+          // Try to parse as a DMA queue write operation
+          bool is_repeat_queue;
+          if (tryParseDMAQueueWrite(op.cmd.RegOff, op.cmd.Mask, op.cmd.Value,
+                                     column, row, direction, channel, is_repeat_queue)) {
+            // This is a DMA queue write (start or repeat queue)
+            // Suppress it as it will be reconstructed during recompilation
+            llvm::errs() << "Note: Suppressing DMA " << (is_repeat_queue ? "repeat" : "start")
+                         << " queue write at tile(" << column << "," << row
+                         << ") " << (direction == 0 ? "S2MM" : "MM2S") << " channel " << channel << "\n";
+            // Skip emission - don't emit raw maskwrite32
+          } else {
+            // Try to parse as a DMA channel control operation
+            if (tryParseDMAChannelControl(op.cmd.RegOff, op.cmd.Mask, op.cmd.Value,
+                                           column, row, direction, channel)) {
+              // This is a DMA channel control operation (enable/disable)
+              // Suppress it as it will be reconstructed during recompilation
+              llvm::errs() << "Note: Suppressing DMA channel control write at tile(" << column << "," << row
+                           << ") " << (direction == 0 ? "S2MM" : "MM2S") << " channel " << channel << "\n";
+              // Skip emission - don't emit raw maskwrite32
+            } else {
+              // Try to parse as a core control operation
+              if (tryParseCoreControl(op.cmd.RegOff, op.cmd.Mask, op.cmd.Value, column, row)) {
+                // This is a core control operation (enable/disable)
+                // Suppress it as it will be reconstructed during recompilation
+                llvm::errs() << "Note: Suppressing core control write at tile(" << column << "," << row << ")\n";
+                // Skip emission - don't emit raw maskwrite32
+              } else {
+                // Emit raw maskwrite32 for unrecognized operations
+                AIEX::NpuMaskWrite32Op::create(builder, loc, op.cmd.RegOff, op.cmd.Value,
+                                               op.cmd.Mask, nullptr, nullptr, nullptr);
+              }
+            }
+          }
         }
       }
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_TCT) {
