@@ -1277,6 +1277,132 @@ private:
 };
 
 //===----------------------------------------------------------------------===//
+// Core Program Memory Extractor - Extracts ELF data from CDO memory writes
+//===----------------------------------------------------------------------===//
+
+/// Helper class to extract and save core program memory from CDO writes.
+/// Program memory writes are identified by their address range and collected
+/// per core, then saved as ELF files for recompilation.
+class CoreProgramExtractor {
+public:
+  /// Program memory offset within each core's address space
+  static constexpr uint32_t kProgramMemoryOffset = 0x20000;
+
+  /// Program memory size (16KB per the register spec)
+  static constexpr uint32_t kProgramMemorySize = 0x4000;  // 16KB
+
+  /// Structure to hold program memory data for a core
+  struct CoreProgram {
+    int col;
+    int row;
+    // Map from offset (relative to program memory base) to 32-bit value
+    std::map<uint32_t, uint32_t> memory;
+
+    CoreProgram(int c, int r) : col(c), row(r) {}
+  };
+
+  /// Check if an address is a program memory write
+  static bool isProgramMemoryAddress(uint32_t addr, int &col, int &row, uint32_t &offset) {
+    // Extract tile coordinates (same as LiftedBDEmitter::extractTileCoordinates)
+    constexpr uint32_t kTileAddrShift = 20;  // 0x100000 per tile
+    uint32_t tileOffset = (addr >> kTileAddrShift) & 0xFFF;
+
+    col = tileOffset / 32;
+    int rowPart = tileOffset % 32;
+    row = rowPart;
+
+    // Get the offset within the tile's address space
+    uint32_t tileLocalOffset = addr & 0xFFFFF;
+
+    // Check if this is within program memory range
+    if (tileLocalOffset >= kProgramMemoryOffset &&
+        tileLocalOffset < kProgramMemoryOffset + kProgramMemorySize) {
+      offset = tileLocalOffset - kProgramMemoryOffset;
+
+      // Only cores (rows 2+) have program memory we care about
+      // Row 0 is shim, row 1 is memory tile
+      return (row >= 2 && col < 64 && row < 32);
+    }
+
+    return false;
+  }
+
+  /// Record a program memory write
+  void recordWrite(uint32_t addr, uint32_t value) {
+    int col, row;
+    uint32_t offset;
+
+    if (isProgramMemoryAddress(addr, col, row, offset)) {
+      TileID id{col, row};
+
+      auto it = corePrograms.find(id);
+      if (it == corePrograms.end()) {
+        it = corePrograms.emplace(id, CoreProgram(col, row)).first;
+      }
+
+      it->second.memory[offset] = value;
+    }
+  }
+
+  /// Save all collected core programs as ELF files
+  /// Returns the output directory where files were saved
+  std::string saveELFFiles(llvm::StringRef outputDir = ".") const {
+    for (const auto &[tileId, program] : corePrograms) {
+      std::string filename = llvm::formatv("{0}/core_{1}_{2}.elf",
+                                           outputDir, program.col, program.row);
+
+      std::error_code EC;
+      llvm::raw_fd_ostream file(filename, EC);
+
+      if (EC) {
+        llvm::errs() << "Failed to create ELF file " << filename << ": "
+                     << EC.message() << "\n";
+        continue;
+      }
+
+      // Write program memory as raw binary
+      // The memory map is sorted by offset, so we write sequentially
+      // Fill gaps with zeros to maintain correct offsets
+      uint32_t currentOffset = 0;
+
+      for (const auto &[offset, value] : program.memory) {
+        // Fill gap with zeros if needed
+        while (currentOffset < offset) {
+          uint32_t zero = 0;
+          file.write(reinterpret_cast<const char*>(&zero), sizeof(zero));
+          currentOffset += sizeof(uint32_t);
+        }
+
+        // Write the value (in little-endian format, matching the target)
+        file.write(reinterpret_cast<const char*>(&value), sizeof(value));
+        currentOffset += sizeof(uint32_t);
+      }
+
+      file.close();
+    }
+
+    return outputDir.str();
+  }
+
+  /// Get all cores that have program memory
+  std::vector<TileID> getCoresWithPrograms() const {
+    std::vector<TileID> cores;
+    for (const auto &[tileId, _] : corePrograms) {
+      cores.push_back(tileId);
+    }
+    return cores;
+  }
+
+  /// Check if a core has program memory
+  bool hasProgram(int col, int row) const {
+    return corePrograms.count(TileID{col, row}) > 0;
+  }
+
+private:
+  std::map<TileID, CoreProgram> corePrograms;
+};
+
+//===----------------------------------------------------------------------===//
 // DMA Channel Tracker - Tracks BD assignments to DMA channels
 //===----------------------------------------------------------------------===//
 
@@ -1636,6 +1762,86 @@ void scanForAdditionalWrite32Commands(const uint8_t *data, size_t len,
 }
 
 #ifdef HAVE_BOOTGEN
+
+/// Manually extract program memory blockwrite commands from raw CDO.
+/// Bootgen's decoder doesn't properly decode blockwrite commands to core program memory.
+/// This function scans the raw CDO for SET_BLOCK commands (0xXXXX0104) and extracts
+/// the program memory data directly.
+void extractProgramMemoryFromCDO(const uint8_t *data, size_t len,
+                                  CoreProgramExtractor &extractor) {
+  // CDO header: skip it to get to commands
+  if (len < 32) return;
+
+  const uint32_t *words = reinterpret_cast<const uint32_t *>(data);
+
+  // Header structure: [NumWords] [IdentWord="CDO\0"] [Version] [Length] [Checksum]...
+  // Commands start after header (NumWords+4 words total in header)
+  size_t headerWords = 4 + words[0];
+  if (headerWords * 4 >= len) return;
+
+  const uint8_t *cmdData = data + (headerWords * 4);
+  size_t cmdLen = len - (headerWords * 4);
+
+  // Find all blockwrite commands to program memory
+  // Pattern: [prev_data] [address] [0xXXXX0104] [data...]
+  llvm::SmallVector<std::tuple<uint32_t, uint32_t, uint32_t, size_t>, 32> blockwrites;
+
+  for (size_t i = 0; i + 12 < cmdLen; i += 4) {
+    uint32_t word = *reinterpret_cast<const uint32_t *>(cmdData + i);
+
+    // Check for SET_BLOCK command (ID 0x0104 in lower 16 bits)
+    if ((word & 0xFFFF) == 0x0104 && i >= 4) {
+      // Address is 4 bytes before the command word
+      uint32_t addr = *reinterpret_cast<const uint32_t *>(cmdData + i - 4);
+
+      // Decode address to check if it's program memory
+      uint32_t tileOffset = (addr >> 20) & 0xFFF;
+      uint32_t localOffset = addr & 0xFFFFF;
+
+      // Program memory starts at offset 0x20000 within each tile
+      if (localOffset == 0x20000 && tileOffset < 128) {
+        uint32_t col = tileOffset / 32;
+        uint32_t row = tileOffset % 32;
+
+        // Only compute tiles have program memory we care about (row >= 2)
+        if (row >= 2 && row < 32) {
+          blockwrites.push_back(std::make_tuple(addr, col, row, i));
+        }
+      }
+    }
+  }
+
+  // Extract program memory data from each blockwrite
+  for (size_t idx = 0; idx < blockwrites.size(); idx++) {
+    auto [addr, col, row, cmdPos] = blockwrites[idx];
+
+    // Data starts immediately after the command word
+    size_t dataStart = cmdPos + 4;
+
+    // Data ends at the next blockwrite's address field (8 bytes before next command)
+    size_t dataEnd;
+    if (idx + 1 < blockwrites.size()) {
+      size_t nextCmdPos = std::get<3>(blockwrites[idx + 1]);
+      dataEnd = nextCmdPos - 8;
+    } else {
+      // Last blockwrite - limit to reasonable program memory size
+      dataEnd = std::min(dataStart + 16384, cmdLen);  // 16KB max
+    }
+
+    // Write program memory data word by word
+    size_t dataSize = dataEnd - dataStart;
+    const uint8_t *programData = cmdData + dataStart;
+
+    for (size_t offset = 0; offset < dataSize && offset < 16384; offset += 4) {
+      if (dataStart + offset + 4 <= cmdLen) {
+        uint32_t value = *reinterpret_cast<const uint32_t *>(programData + offset);
+        uint32_t writeAddr = addr + offset;
+        extractor.recordWrite(writeAddr, value);
+      }
+    }
+  }
+}
+
 /// Decode CDO binary using bootgen's decoder.
 /// Returns a list of CdoCommand structures.
 LogicalResult decodeCDOToCmds(const uint8_t *data, size_t len,
@@ -1876,7 +2082,9 @@ static bool isInitializationWrite(uint32_t addr, uint32_t value) {
 LogicalResult emitMLIRFromCDO(ModuleOp module,
                               llvm::ArrayRef<CdoCommand *> commands,
                               bool emitLifted = false,
-                              std::optional<ModuleOp> txnModule = std::nullopt) {
+                              std::optional<ModuleOp> txnModule = std::nullopt,
+                              const uint8_t *rawCDO = nullptr,
+                              size_t rawCDOSize = 0) {
   OpBuilder builder(module.getContext());
   builder.setInsertionPointToEnd(module.getBody());
 
@@ -1918,6 +2126,14 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
 
   // Initialize DMA channel tracker
   DMAChannelTracker dmaChannelTracker;
+
+  // Initialize core program extractor (for ELF extraction)
+  CoreProgramExtractor coreProgExtractor;
+
+  // Extract program memory from raw CDO (bootgen decoder doesn't handle this)
+  if (rawCDO && rawCDOSize > 0) {
+    extractProgramMemoryFromCDO(rawCDO, rawCDOSize, coreProgExtractor);
+  }
 
   std::unique_ptr<LiftedBDEmitter> liftedEmitter;
 
@@ -1975,6 +2191,9 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
           liftedEmitter->recordTileReference(col, row);
         }
       }
+
+      // Check if this is a program memory write and record it for ELF extraction
+      coreProgExtractor.recordWrite(addr, value);
 
       // Check if this is a BD register write and accumulate
       auto completedBD = bdAccum.addWrite(addr, value, bdParser);
@@ -2156,6 +2375,13 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
 
       uint32_t addr = static_cast<uint32_t>(cmd->dstaddr & 0xFFFFFFFF);
 
+      // Check if this blockwrite is to program memory and record it for ELF extraction
+      uint32_t *dataPtr = reinterpret_cast<uint32_t *>(cmd->buf);
+      for (uint32_t j = 0; j < cmd->count; j++) {
+        uint32_t writeAddr = addr + (j * 4);  // Each write is 4 bytes apart
+        coreProgExtractor.recordWrite(writeAddr, dataPtr[j]);
+      }
+
       AIEX::NpuBlockWriteOp::create(builder, loc, addr,
                                     getGlobal.getResult(),
                                     nullptr, nullptr, nullptr);
@@ -2260,6 +2486,48 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
     // liftedEmitter->emitAllFlows();
     liftedEmitter->emitAllSwitchboxes();
     liftedEmitter->emitAllShimMuxes();
+  }
+
+  // Extract and save ELF files from core program memory writes
+  // This must be done BEFORE adding the device terminator
+  auto coresWithPrograms = coreProgExtractor.getCoresWithPrograms();
+  if (!coresWithPrograms.empty()) {
+    // Save ELF files to the current directory
+    // In a production system, this should use the same directory as the input xclbin
+    std::string elfDir = ".";
+    coreProgExtractor.saveELFFiles(elfDir);
+
+    // Generate aie.core operations for each core with program memory
+    builder.setInsertionPointToEnd(deviceBlock);
+
+    for (const auto &tileId : coresWithPrograms) {
+      // Get or create tile operation (if using lifted emitter)
+      AIE::TileOp tile;
+      if (emitLifted && liftedEmitter) {
+        tile = liftedEmitter->getOrCreateTile(tileId.col, tileId.row);
+      } else {
+        // Create tile if not in lifted mode
+        tile = AIE::TileOp::getOrCreate(builder, deviceOp, tileId.col, tileId.row);
+      }
+
+      // Create aie.core with elf_file attribute
+      std::string elfFile = llvm::formatv("core_{0}_{1}.elf", tileId.col, tileId.row);
+
+      auto coreOp = builder.create<AIE::CoreOp>(
+          builder.getUnknownLoc(),
+          builder.getIndexType(),
+          tile.getResult(),
+          /*stack_size=*/builder.getI32IntegerAttr(0x400),  // Default stack size
+          /*link_with=*/nullptr,
+          /*elf_file=*/builder.getStringAttr(elfFile),
+          /*dynamic_objfifo_lowering=*/nullptr);
+
+      // Add empty region with terminator since elf_file is present
+      Block *coreBlock = &coreOp.getBody().emplaceBlock();
+      OpBuilder::InsertionGuard guard(builder);
+      builder.setInsertionPointToEnd(coreBlock);
+      AIE::EndOp::create(builder, builder.getUnknownLoc());
+    }
   }
 
   // Add terminator to device block
@@ -2931,7 +3199,9 @@ LogicalResult AIETranslateFromXclbin(ModuleOp module, StringRef filename,
 
   // Step 5: Emit MLIR operations (lifted or raw mode)
   // Pass the transaction module so BDs can be extracted from it
-  if (failed(emitMLIRFromCDO(module, commands, emitLifted, txnModule))) {
+  // Also pass raw CDO data for program memory extraction
+  if (failed(emitMLIRFromCDO(module, commands, emitLifted, txnModule,
+                             cdoData.data(), cdoData.size()))) {
     return module.emitError("Failed to emit MLIR from CDO commands");
   }
 

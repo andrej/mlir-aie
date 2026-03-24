@@ -6,7 +6,7 @@
         "pre_post_fingerprint": "12345",
         "kernel_commit_id": "",
         "partition": {
-            "column_width": "4",
+            "column_width": "8",
             "start_columns": [
                 "0"
             ]
