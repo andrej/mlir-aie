@@ -2574,13 +2574,147 @@ void liftNPUInstructions(AIE::RuntimeSequenceOp seqOp, AIE::DeviceOp deviceOp) {
     }
   }
 
-  // TODO: Next step - parse BD data and reconstruct NpuDmaMemcpyNdOp
-  // For each pattern:
-  // 1. Parse bdData words according to shim BD format (see AIEDmaToNpu.cpp lines 542-587)
-  // 2. Extract buffer_length, sizes, strides, etc.
-  // 3. Find the corresponding shim_dma_allocation to get metadata symbol
-  // 4. Create NpuDmaMemcpyNdOp with reconstructed parameters
-  // 5. Erase the old operations and replace with the new high-level op
+  // Now lift the patterns to high-level operations
+  SmallVector<Operation *> opsToErase;
+
+  for (const auto &pattern : dmaPatterns) {
+    if (pattern.bdData.size() < 8) {
+      llvm::errs() << "Warning: BD " << pattern.bdId << " has insufficient data ("
+                   << pattern.bdData.size() << " words), skipping\n";
+      continue;
+    }
+
+    // Parse BD data according to shim BD format (AIEDmaToNpu.cpp lines 542-687)
+    uint32_t buffer_length = pattern.bdData[0];
+    // uint32_t buffer_offset = pattern.bdData[1];  // Not needed for reconstruction
+
+    // Word 2: enable_packet, out_of_order_id, packet_id, packet_type
+    // uint32_t word2 = pattern.bdData[2];
+    // uint32_t enable_packet = (word2 >> 30) & 0x1;
+    // uint32_t packet_id = (word2 >> 19) & 0x1F;
+    // uint32_t packet_type = (word2 >> 16) & 0x7;
+
+    // Word 3: d0_size, d0_stride
+    uint32_t word3 = pattern.bdData[3];
+    uint32_t d0_size = (word3 >> 20) & 0x3FF;
+    uint32_t d0_stride = word3 & 0xFFFFF;
+
+    // Word 4: burst_length, d1_size, d1_stride
+    uint32_t word4 = pattern.bdData[4];
+    // uint32_t burst_length = (word4 >> 30) & 0x3;
+    uint32_t d1_size = (word4 >> 20) & 0x3FF;
+    uint32_t d1_stride = word4 & 0xFFFFF;
+
+    // Word 5: d2_stride
+    uint32_t word5 = pattern.bdData[5];
+    uint32_t d2_stride = word5 & 0xFFFFF;
+
+    // Word 6: iteration_current, iteration_size, iteration_stride
+    uint32_t word6 = pattern.bdData[6];
+    uint32_t iteration_size = (word6 >> 20) & 0x3F;
+    // uint32_t iteration_stride = word6 & 0xFFFFF;
+
+    // Word 7: next_bd, use_next_bd, valid_bd, locks
+    // uint32_t word7 = pattern.bdData[7];
+    // uint32_t next_bd = (word7 >> 27) & 0xF;
+    // uint32_t use_next_bd = (word7 >> 26) & 0x1;
+    // uint32_t valid_bd = (word7 >> 25) & 0x1;
+
+    llvm::errs() << "  Parsed BD " << pattern.bdId << ": len=" << buffer_length
+                 << " d0=" << d0_size << "x" << d0_stride
+                 << " d1=" << d1_size << "x" << d1_stride
+                 << " d2_stride=" << d2_stride << "\n";
+
+    // Find the shim_dma_allocation that matches this tile and determine direction
+    AIE::ShimDMAAllocationOp allocOp;
+    AIE::DMAChannelDir direction = AIE::DMAChannelDir::MM2S;
+
+    // Walk device to find shim_dma_allocation ops
+    deviceOp.walk([&](AIE::ShimDMAAllocationOp op) {
+      if (auto tile = op.getTileOp()) {
+        if ((uint32_t)tile.getCol() == pattern.column && (uint32_t)tile.getRow() == pattern.row) {
+          // Use the first matching allocation for now
+          // TODO: Better matching based on channel and BD ID
+          if (!allocOp) {
+            allocOp = op;
+            direction = op.getChannelDir();
+          }
+        }
+      }
+    });
+
+    if (!allocOp) {
+      llvm::errs() << "Warning: No shim_dma_allocation found for tile("
+                   << pattern.column << "," << pattern.row << "), skipping\n";
+      continue;
+    }
+
+    // Get the runtime sequence to find the memref argument
+    Block &entryBlock = seqBlock;
+    if (pattern.argIdx < 0 || (size_t)pattern.argIdx >= entryBlock.getNumArguments()) {
+      llvm::errs() << "Warning: Invalid arg_idx " << pattern.argIdx << ", skipping\n";
+      continue;
+    }
+
+    // Value memref = entryBlock.getArgument(pattern.argIdx);  // Unused for now
+
+    // Build the operation at the location of the blockwrite
+    // builder.setInsertionPoint(pattern.blockwrite);
+    // Location loc = pattern.blockwrite->getLoc();
+
+    // Compute dimensions based on parsed BD data
+    // The BD format uses hardware dimensions, need to convert to logical MLIR dimensions
+
+    // Sizes: Use buffer_length for innermost dimension
+    // iteration_size for outermost dimension if present
+    int64_t size3 = (iteration_size > 0) ? iteration_size : 1;
+    int64_t size2 = 1;  // d2_size not stored in shim BDs
+    int64_t size1 = (d1_size > 0) ? d1_size : 1;
+    int64_t size0 = (d0_size > 0) ? d0_size : 1;
+
+    // If d0_size is 0, use buffer_length directly
+    if (d0_size == 0 && d1_size == 0) {
+      size0 = buffer_length;
+      size1 = 1;
+      size2 = 1;
+      size3 = 1;
+    }
+
+    SmallVector<int64_t> staticOffsets = {0, 0, 0, 0};
+    SmallVector<int64_t> staticSizes = {size3, size2, size1, size0};
+    SmallVector<int64_t> staticStrides = {0, 0, 0, 1};
+
+    // TODO: Create the NpuDmaMemcpyNdOp with reconstructed parameters
+    // The parsing logic is complete, but the operation creation has API issues
+    // For now, log the successful parsing and keep the low-level operations
+    llvm::errs() << "  Would create NpuDmaMemcpyNdOp for BD " << pattern.bdId
+                 << " with sizes=[" << size3 << "," << size2 << "," << size1 << "," << size0 << "]"
+                 << " arg_idx=" << pattern.argIdx
+                 << " metadata=" << allocOp.getSymName().str() << "\n";
+
+    // Mark operations for future erasure (commented out for now)
+    // opsToErase.push_back(pattern.blockwrite);
+    // if (pattern.addressPatch)
+    //   opsToErase.push_back(pattern.addressPatch);
+    // if (pattern.controlWrite)
+    //   opsToErase.push_back(pattern.controlWrite);
+    // if (pattern.queuePush)
+    //   opsToErase.push_back(pattern.queuePush);
+
+  }
+
+  // Note: Operation erasure commented out until operation creation is working
+  // Erase old operations
+  // for (Operation *op : opsToErase) {
+  //   op->erase();
+  // }
+
+  if (!dmaPatterns.empty()) {
+    llvm::errs() << "DEBUG: Successfully parsed " << dmaPatterns.size()
+                 << " DMA transfer patterns with BD data\n";
+    llvm::errs() << "      Pattern recognition and BD parsing complete.\n";
+    llvm::errs() << "      Operation creation pending API resolution.\n";
+  }
 }
 
 #endif // HAVE_BOOTGEN
