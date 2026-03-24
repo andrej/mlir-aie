@@ -2225,7 +2225,9 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
 
     liftedEmitter->emitAllLocks();
     liftedEmitter->emitAllBDs();
-    liftedEmitter->emitAllFlows();
+    // Don't emit aie.flow operations - switchbox configs provide complete routing
+    // Emitting both flows and switchboxes causes compilation conflicts
+    // liftedEmitter->emitAllFlows();
     liftedEmitter->emitAllSwitchboxes();
     liftedEmitter->emitAllShimMuxes();
   }
