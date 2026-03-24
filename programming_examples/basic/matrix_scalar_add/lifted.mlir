@@ -1,4 +1,3 @@
-Warning: Emitting 4 BDs with inferred channel S2MM_0 for tile(0,2)
 module {
   aie.device(npu1_1col) @xclbin_device {
     %mem_tile_0_1 = aie.tile(0, 1)
@@ -44,7 +43,16 @@ module {
     ^bb5:  // pred: ^bb0
       aie.end
     }
+    memref.global "private" constant @config_blockwrite_data_1 : memref<8xi32> = dense<[128, 0, 0, 16777216, -2139094913, 33554432, 0, 33554432]>
+    memref.global "private" constant @config_blockwrite_data_0 : memref<8xi32> = dense<[128, 0, 0, 16777216, -2139094913, 33554432, 0, 33554432]>
     aie.runtime_sequence @configure() {
+      aiex.npu.writebd {bd_id = 0 : i32, buffer_length = 128 : i32, buffer_offset = 0 : i32, burst_length = 256 : i32, column = 0 : i32, d0_size = 16 : i32, d0_stride = 0 : i32, d0_zero_after = 0 : i32, d0_zero_before = 0 : i32, d1_size = 8 : i32, d1_stride = 127 : i32, d1_zero_after = 0 : i32, d1_zero_before = 0 : i32, d2_size = 0 : i32, d2_stride = 0 : i32, d2_zero_after = 0 : i32, d2_zero_before = 0 : i32, enable_packet = 0 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 0 : i32, packet_type = 0 : i32, row = 0 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
+      aiex.npu.address_patch {addr = 118788 : ui32, arg_idx = 0 : i32, arg_plus = 0 : i32}
+      aiex.npu.push_queue(0, 0, MM2S : 0) {bd_id = 0 : i32, issue_token = false, repeat_count = 0 : i32}
+      aiex.npu.writebd {bd_id = 1 : i32, buffer_length = 128 : i32, buffer_offset = 0 : i32, burst_length = 256 : i32, column = 0 : i32, d0_size = 16 : i32, d0_stride = 0 : i32, d0_zero_after = 0 : i32, d0_zero_before = 0 : i32, d1_size = 8 : i32, d1_stride = 127 : i32, d1_zero_after = 0 : i32, d1_zero_before = 0 : i32, d2_size = 0 : i32, d2_stride = 0 : i32, d2_zero_after = 0 : i32, d2_zero_before = 0 : i32, enable_packet = 0 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 0 : i32, packet_type = 0 : i32, row = 0 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
+      aiex.npu.address_patch {addr = 118820 : ui32, arg_idx = 2 : i32, arg_plus = 0 : i32}
+      aiex.npu.push_queue(0, 0, S2MM : 0) {bd_id = 1 : i32, issue_token = true, repeat_count = 0 : i32}
+      aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
       aie.end
     }
   }
