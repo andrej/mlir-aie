@@ -2240,6 +2240,92 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
     extractBDFromCDO(rawCDO, rawCDOSize, bdParser, bdAccum);
   }
 
+  // NEW FIX: Extract BD configuration from decoded CDO commands
+  // The bootgen decoder successfully decodes CdoCmdWrite commands, which contain
+  // BD register writes. Feed these to the BD accumulator for semantic lifting.
+  llvm::errs() << "[DEBUG] Processing " << commands.size() << " decoded CDO commands for BD extraction...\n";
+  int bdWriteCount = 0;
+  int completedBDsFromCommands = 0;
+  int setBlockCount = 0;
+
+  // First check for SetBlock commands which might contain BD data
+  for (CdoCommand *cmd : commands) {
+    if (cmd->type == CdoCmdSetBlock) {
+      setBlockCount++;
+      uint32_t addr = static_cast<uint32_t>(cmd->dstaddr & 0xFFFFFFFF);
+
+      if (setBlockCount <= 5 && bdParser.isBDAddress(addr)) {
+        llvm::errs() << "[DEBUG] SetBlock #" << setBlockCount
+                     << ": addr=0x" << llvm::format("%08X", addr)
+                     << " count=" << cmd->count << " words\n";
+      }
+
+      // Process SetBlock as a sequence of writes
+      if (bdParser.isBDAddress(addr)) {
+        uint32_t *dataPtr = reinterpret_cast<uint32_t *>(cmd->buf);
+        for (uint32_t i = 0; i < cmd->count; i++) {
+          uint32_t writeAddr = addr + (i * 4);
+          uint32_t value = dataPtr[i];
+
+          auto completedBD = bdAccum.addWrite(writeAddr, value, bdParser);
+          if (completedBD.has_value()) {
+            completedBDsFromCommands++;
+            auto &bd = *completedBD;
+            llvm::errs() << "[DEBUG] *** COMPLETED BD from SetBlock: tile("
+                         << bd.column << "," << bd.row << ") BD" << bd.bdIndex
+                         << " bufferLength=" << bd.bufferLength
+                         << " baseAddress=0x" << llvm::format("%08X", bd.baseAddress) << "\n";
+          }
+        }
+      }
+    }
+  }
+
+  llvm::errs() << "[DEBUG] Found " << setBlockCount << " SetBlock commands, "
+               << completedBDsFromCommands << " completed BDs from SetBlock\n";
+
+  // Now process regular writes
+  for (CdoCommand *cmd : commands) {
+    if (cmd->type == CdoCmdWrite || cmd->type == CdoCmdMaskWrite) {
+      uint32_t addr = static_cast<uint32_t>(cmd->dstaddr & 0xFFFFFFFF);
+      uint32_t value = cmd->value;
+
+      // Check if this write targets a BD register
+      if (bdParser.isBDAddress(addr)) {
+        bdWriteCount++;
+
+        if (bdWriteCount <= 10) {  // Log first 10 BD writes for debugging
+          auto addrInfo = bdParser.parse(addr);
+          llvm::errs() << "[DEBUG] BD write #" << bdWriteCount
+                       << ": addr=0x" << llvm::format("%08X", addr)
+                       << " value=0x" << llvm::format("%08X", value)
+                       << " -> tile(" << addrInfo.column << "," << addrInfo.row
+                       << ") BD" << addrInfo.bdIndex << " reg" << addrInfo.regIndex << "\n";
+        }
+
+        // For mask writes, we need to apply the mask to get the actual value
+        // The CDO mask write format: value = (oldValue & ~mask) | (newValue & mask)
+        // For our purposes, we use the value as-is since we're reconstructing from scratch
+
+        auto completedBD = bdAccum.addWrite(addr, value, bdParser);
+
+        if (completedBD.has_value()) {
+          completedBDsFromCommands++;
+          auto &bd = *completedBD;
+          llvm::errs() << "[DEBUG] *** COMPLETED BD from decoded CDO command: tile("
+                       << bd.column << "," << bd.row << ") BD" << bd.bdIndex
+                       << " bufferLength=" << bd.bufferLength
+                       << " baseAddress=0x" << llvm::format("%08X", bd.baseAddress)
+                       << " lockAcqId=" << (int)bd.lockAcquire.lockId
+                       << " lockRelId=" << (int)bd.lockRelId << "\n";
+        }
+      }
+    }
+  }
+
+  llvm::errs() << "[DEBUG] BD extraction from decoded commands: " << bdWriteCount
+               << " BD register writes, " << completedBDsFromCommands << " completed BDs\n";
+
   std::unique_ptr<LiftedBDEmitter> liftedEmitter;
 
   if (emitLifted) {
