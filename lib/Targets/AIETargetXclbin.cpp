@@ -2656,8 +2656,6 @@ void liftNPUInstructions(AIE::RuntimeSequenceOp seqOp, AIE::DeviceOp deviceOp) {
       continue;
     }
 
-    // Value memref = entryBlock.getArgument(pattern.argIdx);  // Unused for now
-
     // Build the operation at the location of the blockwrite
     // builder.setInsertionPoint(pattern.blockwrite);
     // Location loc = pattern.blockwrite->getLoc();
@@ -2680,40 +2678,52 @@ void liftNPUInstructions(AIE::RuntimeSequenceOp seqOp, AIE::DeviceOp deviceOp) {
       size3 = 1;
     }
 
-    SmallVector<int64_t> staticOffsets = {0, 0, 0, 0};
-    SmallVector<int64_t> staticSizes = {size3, size2, size1, size0};
-    SmallVector<int64_t> staticStrides = {0, 0, 0, 1};
+    const std::vector<int64_t> staticOffsets = {0, 0, 0, 0};
+    const std::vector<int64_t> staticSizes = {size3, size2, size1, size0};
+    const std::vector<int64_t> staticStrides = {0, 0, 0, 1};
 
-    // TODO: Create the NpuDmaMemcpyNdOp with reconstructed parameters
-    // The parsing logic is complete, but the operation creation has API issues
-    // For now, log the successful parsing and keep the low-level operations
-    llvm::errs() << "  Would create NpuDmaMemcpyNdOp for BD " << pattern.bdId
+    // Get the memref argument
+    Value memref = entryBlock.getArgument(pattern.argIdx);
+
+    // Set insertion point before the blockwrite
+    builder.setInsertionPoint(pattern.blockwrite);
+
+    // Create the NpuDmaMemcpyNdOp using the EXACT pattern from AIECtrlPacketToDma.cpp line 195
+    bool issueToken = (direction == AIE::DMAChannelDir::S2MM);
+    SymbolRefAttr metadata = SymbolRefAttr::get(builder.getContext(), allocOp.getSymName());
+    AIEX::NpuDmaMemcpyNdOp::create(builder, builder.getUnknownLoc(), memref,
+                                   SmallVector<Value>{}, SmallVector<Value>{},
+                                   SmallVector<Value>{}, ArrayRef(staticOffsets),
+                                   ArrayRef(staticSizes), ArrayRef(staticStrides),
+                                   nullptr, metadata, pattern.bdId,
+                                   issueToken, 0, 0, 0, 0, 0, 0);
+
+    llvm::errs() << "  Created NpuDmaMemcpyNdOp for BD " << pattern.bdId
                  << " with sizes=[" << size3 << "," << size2 << "," << size1 << "," << size0 << "]"
                  << " arg_idx=" << pattern.argIdx
                  << " metadata=" << allocOp.getSymName().str() << "\n";
 
-    // Mark operations for future erasure (commented out for now)
-    // opsToErase.push_back(pattern.blockwrite);
-    // if (pattern.addressPatch)
-    //   opsToErase.push_back(pattern.addressPatch);
-    // if (pattern.controlWrite)
-    //   opsToErase.push_back(pattern.controlWrite);
-    // if (pattern.queuePush)
-    //   opsToErase.push_back(pattern.queuePush);
+    // Mark operations for erasure
+    opsToErase.push_back(pattern.blockwrite);
+    if (pattern.addressPatch)
+      opsToErase.push_back(pattern.addressPatch);
+    if (pattern.controlWrite)
+      opsToErase.push_back(pattern.controlWrite);
+    if (pattern.queuePush)
+      opsToErase.push_back(pattern.queuePush);
 
   }
 
-  // Note: Operation erasure commented out until operation creation is working
-  // Erase old operations
-  // for (Operation *op : opsToErase) {
-  //   op->erase();
-  // }
+  // Erase old low-level operations that were replaced with high-level ops
+  for (Operation *op : opsToErase) {
+    op->erase();
+  }
 
   if (!dmaPatterns.empty()) {
-    llvm::errs() << "DEBUG: Successfully parsed " << dmaPatterns.size()
-                 << " DMA transfer patterns with BD data\n";
-    llvm::errs() << "      Pattern recognition and BD parsing complete.\n";
-    llvm::errs() << "      Operation creation pending API resolution.\n";
+    llvm::errs() << "DEBUG: Successfully lifted " << dmaPatterns.size()
+                 << " DMA transfer patterns to NpuDmaMemcpyNdOp\n";
+    llvm::errs() << "      Erased " << opsToErase.size()
+                 << " low-level operations (blockwrite, address_patch, write32)\n";
   }
 }
 
