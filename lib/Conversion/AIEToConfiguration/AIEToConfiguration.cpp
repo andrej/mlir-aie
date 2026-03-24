@@ -929,8 +929,6 @@ emitTransactionOps(OpBuilder &builder,
 
   // create the txn ops
   for (auto [op, payload] : llvm::zip(operations, global_data)) {
-    llvm::errs() << "DEBUG: Processing opcode " << (int)op.cmd.Opcode << " at address 0x" << llvm::utohexstr(op.cmd.RegOff) << "\n";
-
     if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
       // Try to lift write32 to queue push
       int32_t column, row, direction, channel, repeat_count, bd_id;
@@ -1086,7 +1084,6 @@ emitTransactionOps(OpBuilder &builder,
         }
       }
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
-      llvm::errs() << "DEBUG: Processing maskwrite32 at address 0x" << llvm::utohexstr(op.cmd.RegOff) << "\n";
       // Try to parse as a lock operation first (locks use maskwrite for acquire/release)
       int32_t column, row, lock_id, lock_value;
       if (tryParseLockSet(op.cmd.RegOff, op.cmd.Value, column, row, lock_id, lock_value)) {

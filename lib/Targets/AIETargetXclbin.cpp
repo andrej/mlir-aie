@@ -365,9 +365,6 @@ public:
   /// binary format (architectural limitation). This code is preserved for potential
   /// future use with other target architectures or enhanced binary formats.
   void emitAllFlows() {
-    llvm::errs() << "DEBUG: emitAllFlows called, switchboxes=" << switchboxes.size()
-                 << " shimMuxes=" << shimMuxes.size() << "\n";
-
     // Build flow reconstruction graph from all switchbox configs
     FlowReconstructionGraph flowGraph;
     for (const auto &[key, config] : switchboxes) {
@@ -383,10 +380,7 @@ public:
     // Reconstruct end-to-end flows
     auto flows = flowGraph.reconstructFlows();
 
-    llvm::errs() << "DEBUG: reconstructFlows returned " << flows.size() << " flows\n";
-
     if (flows.empty()) {
-      llvm::errs() << "DEBUG: No flows reconstructed, returning early\n";
       return;  // No flows to emit (expected for NPU xclbins)
     }
 
