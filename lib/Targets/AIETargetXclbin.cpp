@@ -2499,6 +2499,98 @@ void liftNPUInstructions(AIE::RuntimeSequenceOp seqOp, AIE::DeviceOp deviceOp) {
   SmallVector<DMATransferPattern> dmaPatterns;
   DMATransferPattern currentPattern;
 
+  // Strategy: If no blockwrite operations exist (transaction binary case),
+  // we need to recognize sequences of write32 operations to BD registers
+  if (numBlockwrite == 0 && numAddressPatch > 0) {
+    llvm::errs() << "Using write32 sequence pattern matching (transaction binary mode)\n";
+
+    // Accumulate write32 operations by BD address
+    llvm::DenseMap<uint32_t, SmallVector<std::pair<uint32_t, uint32_t>>> bdWrites; // bdBaseAddr -> [(offset, value)]
+
+    // First pass: log first few write32 addresses to understand the pattern
+    int logged = 0;
+    for (size_t i = 0; i < opsToProcess.size() && logged < 10; ++i) {
+      if (auto writeOp = dyn_cast<AIEX::NpuWrite32Op>(opsToProcess[i])) {
+        uint32_t address = writeOp.getAddress();
+        llvm::errs() << "  Write32 #" << i << " -> 0x" << llvm::format_hex(address, 8)
+                     << " isShimBD=" << isShimBDAddress(address) << "\n";
+        logged++;
+      }
+    }
+
+    for (size_t i = 0; i < opsToProcess.size(); ++i) {
+      if (auto writeOp = dyn_cast<AIEX::NpuWrite32Op>(opsToProcess[i])) {
+        uint32_t address = writeOp.getAddress();
+
+        // Check if this is a BD register write
+        if (isShimBDAddress(address)) {
+          // Calculate BD base address (aligned to 32 bytes = 0x20)
+          uint32_t tileOffset = address & 0xFFFFF;
+          uint32_t bdOffset = tileOffset - 0x1D000;
+          uint32_t bdId = bdOffset / 0x20;
+          uint32_t bdBaseAddr = (address & 0xFFF00000) | 0x1D000 | (bdId * 0x20);
+          uint32_t wordOffset = address - bdBaseAddr;
+
+          bdWrites[bdBaseAddr].push_back({wordOffset, writeOp.getValue()});
+        }
+      }
+    }
+
+    llvm::errs() << "Found " << bdWrites.size() << " BDs with write32 sequences\n";
+
+    // Process each BD that has enough writes
+    for (const auto &[bdBaseAddr, writes] : bdWrites) {
+      if (writes.size() < 6) {
+        llvm::errs() << "  Skipping BD at 0x" << llvm::format_hex(bdBaseAddr, 8)
+                     << " - only " << writes.size() << " writes\n";
+        continue;
+      }
+
+      // Reconstruct BD data array from individual writes
+      DMATransferPattern pattern;
+      pattern.bdAddress = bdBaseAddr;
+      auto [col, row] = extractTileFromAddress(bdBaseAddr);
+      pattern.column = col;
+      pattern.row = row;
+      pattern.bdId = extractBDIndex(bdBaseAddr);
+
+      // Initialize BD data array with zeros
+      pattern.bdData.resize(8, 0);
+
+      // Fill in the written values
+      for (const auto &[offset, value] : writes) {
+        uint32_t wordIndex = offset / 4;
+        if (wordIndex < 8) {
+          pattern.bdData[wordIndex] = value;
+        }
+      }
+
+      llvm::errs() << "  Reconstructed BD " << pattern.bdId << " at tile("
+                   << col << "," << row << ") with " << writes.size() << " writes\n";
+
+      // Find associated address_patch for this BD
+      for (size_t i = 0; i < opsToProcess.size(); ++i) {
+        if (auto patchOp = dyn_cast<AIEX::NpuAddressPatchOp>(opsToProcess[i])) {
+          // Check if patch is for this BD (typically BD_base + 4 for buffer address field)
+          uint32_t patchAddr = patchOp.getAddr();
+          if (patchAddr >= bdBaseAddr && patchAddr < bdBaseAddr + 0x20) {
+            pattern.addressPatch = patchOp;
+            pattern.argIdx = patchOp.getArgIdx();
+            llvm::errs() << "    Found address_patch at offset " << (patchAddr - bdBaseAddr)
+                         << " for arg_idx=" << pattern.argIdx << "\n";
+            break;
+          }
+        }
+      }
+
+      // Add pattern if it has the necessary components
+      if (pattern.addressPatch) {
+        dmaPatterns.push_back(pattern);
+      }
+    }
+  }
+
+  // Fallback: Use blockwrite-based pattern matching (mid-level MLIR case)
   for (size_t i = 0; i < opsToProcess.size(); ++i) {
     Operation *op = opsToProcess[i];
 
