@@ -1669,11 +1669,13 @@ LogicalResult decodeCDOToCmds(const uint8_t *data, size_t len,
   return success();
 }
 
-// Forward declaration
+// Forward declarations
 void extractBDsFromTransaction(ModuleOp txnModule, AIE::DeviceOp deviceOp,
                                 BDAddressParser &bdParser, BDAccumulator &bdAccum,
                                 DMAChannelTracker &dmaChannelTracker,
                                 LiftedBDEmitter &emitter);
+
+void liftNPUInstructions(AIE::RuntimeSequenceOp seqOp, AIE::DeviceOp deviceOp);
 
 /// Determine device type from maximum column index
 AIE::AIEDevice getDeviceFromMaxColumn(int maxCol) {
@@ -2174,6 +2176,8 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
       }
 
       // Then, walk through all operations in the transaction's device body
+      // In lifted mode, we'll try to lift operations to high-level constructs
+      // For now, we clone them as-is, but mark where lifting should happen
       for (Operation &op : txnDeviceOp.getBody()->getOperations()) {
         // Skip the terminator and globals (already copied above)
         if (isa<AIE::EndOp>(&op) || isa<memref::GlobalOp>(&op)) {
@@ -2182,6 +2186,7 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
 
         // Clone the operation into the output runtime_sequence, using the mapper
         // to ensure SSA values are properly remapped
+        // TODO: Add lifting logic here to convert raw operations to high-level ops
         builder.setInsertionPointToEnd(seqBlock);
         builder.clone(op, mapper);
       }
@@ -2192,6 +2197,11 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
   // Add terminator to runtime_sequence block
   builder.setInsertionPointToEnd(seqBlock);
   AIE::EndOp::create(builder, builder.getUnknownLoc());
+
+  // If in lifted mode and we have a transaction module, try to lift NPU instructions
+  if (emitLifted && txnModule.has_value()) {
+    liftNPUInstructions(seqOp, deviceOp);
+  }
 
   // Emit all lifted BDs, switchboxes, and locks
   if (emitLifted && liftedEmitter) {
@@ -2396,6 +2406,181 @@ void extractBDsFromTransaction(ModuleOp txnModule, AIE::DeviceOp deviceOp,
     bd.dmaChannel = static_cast<int>(channel);
     emitter.recordBD(bd);
   }
+}
+
+/// Helper structure to track a sequence of operations that form a DMA transfer
+struct DMATransferPattern {
+  AIEX::NpuBlockWriteOp blockwrite = nullptr;
+  AIEX::NpuAddressPatchOp addressPatch = nullptr;
+  AIEX::NpuWrite32Op queuePush = nullptr;
+  AIEX::NpuMaskWrite32Op controlWrite = nullptr;
+
+  // Extracted parameters
+  uint32_t bdAddress = 0;
+  uint32_t column = 0;
+  uint32_t row = 0;
+  uint32_t bdId = 0;
+  int32_t argIdx = -1;
+  SmallVector<uint32_t, 8> bdData;
+
+  bool isComplete() const {
+    return blockwrite && addressPatch;
+  }
+};
+
+/// Extract column and row from a shim tile address
+static std::pair<uint32_t, uint32_t> extractTileFromAddress(uint32_t address) {
+  // NPU address format: bits [27:20] = column, bits [31:28] = row
+  // For shim tiles (row 0): 0x001D_XXXX format where column is encoded
+  uint32_t column = (address >> 20) & 0xFF;
+  uint32_t row = (address >> 28) & 0xF;
+  return {column, row};
+}
+
+/// Check if an address is a BD address for shim DMA
+static bool isShimBDAddress(uint32_t address) {
+  // Shim DMA BD addresses are in the range 0x1D000 - 0x1D1FF (approximately)
+  // BD_0 starts at offset 0x000 from the tile base
+  // Each BD is 8 words (32 bytes)
+  uint32_t offset = address & 0xFFFFF;  // Mask to get offset within tile
+
+  // Check if this is in the BD range (0x0 to ~0x100 for BDs 0-15)
+  // Shim tiles have BDs at base offset
+  return offset < 0x200;  // Conservative range for first 16 BDs
+}
+
+/// Extract BD index from a BD address
+static uint32_t extractBDIndex(uint32_t address) {
+  uint32_t offset = address & 0xFFFFF;
+  // Each BD is 8 words (32 bytes = 0x20)
+  return offset / 0x20;
+}
+
+/// Lift NPU instructions from raw register writes to high-level AIEX operations.
+/// This function analyzes the runtime_sequence and identifies patterns that can be
+/// converted from low-level operations (write32, blockwrite, etc.) to semantic
+/// operations (dma_memcpy_nd, sync, etc.).
+void liftNPUInstructions(AIE::RuntimeSequenceOp seqOp, AIE::DeviceOp deviceOp) {
+  if (!seqOp)
+    return;
+
+  Block &seqBlock = seqOp.getBody().front();
+  OpBuilder builder(seqOp.getContext());
+
+  // Collect operations to process
+  SmallVector<Operation *> opsToProcess;
+  for (Operation &op : seqBlock.getOperations()) {
+    if (!isa<AIE::EndOp>(&op)) {
+      opsToProcess.push_back(&op);
+    }
+  }
+
+  // Pattern recognition: Group operations that belong to a DMA transfer
+  SmallVector<DMATransferPattern> dmaPatterns;
+  DMATransferPattern currentPattern;
+
+  for (size_t i = 0; i < opsToProcess.size(); ++i) {
+    Operation *op = opsToProcess[i];
+
+    // Look for blockwrite to a BD address
+    if (auto blockwriteOp = dyn_cast<AIEX::NpuBlockWriteOp>(op)) {
+      uint32_t address = blockwriteOp.getAddress();
+
+      if (isShimBDAddress(address)) {
+        // Start a new pattern
+        if (currentPattern.isComplete()) {
+          dmaPatterns.push_back(currentPattern);
+        }
+        currentPattern = DMATransferPattern();
+        currentPattern.blockwrite = blockwriteOp;
+        currentPattern.bdAddress = address;
+
+        auto [col, row] = extractTileFromAddress(address);
+        currentPattern.column = col;
+        currentPattern.row = row;
+        currentPattern.bdId = extractBDIndex(address);
+
+        // Extract BD data from the memref
+        if (auto getGlobalOp = blockwriteOp.getData().getDefiningOp<memref::GetGlobalOp>()) {
+          if (auto globalOp = deviceOp.lookupSymbol<memref::GlobalOp>(
+                  getGlobalOp.getName())) {
+            auto dataAttr = globalOp.getInitialValue();
+            if (dataAttr.has_value()) {
+              if (auto denseAttr = dyn_cast<DenseIntElementsAttr>(*dataAttr)) {
+                for (APInt val : denseAttr.getValues<APInt>()) {
+                  currentPattern.bdData.push_back(val.getZExtValue());
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Look for address_patch that follows a blockwrite
+    else if (auto patchOp = dyn_cast<AIEX::NpuAddressPatchOp>(op)) {
+      if (currentPattern.blockwrite && !currentPattern.addressPatch) {
+        // Check if this patch corresponds to the BD we just wrote
+        // Address patch should be to BD_address + 4 (the buffer address field)
+        uint32_t patchAddr = patchOp.getAddr();
+        if (patchAddr == currentPattern.bdAddress + 4) {
+          currentPattern.addressPatch = patchOp;
+          currentPattern.argIdx = patchOp.getArgIdx();
+        }
+      }
+    }
+
+    // Look for maskwrite32 (control register write)
+    else if (auto maskwriteOp = dyn_cast<AIEX::NpuMaskWrite32Op>(op)) {
+      if (currentPattern.blockwrite && !currentPattern.controlWrite) {
+        currentPattern.controlWrite = maskwriteOp;
+      }
+    }
+
+    // Look for write32 (queue push)
+    else if (auto writeOp = dyn_cast<AIEX::NpuWrite32Op>(op)) {
+      if (currentPattern.blockwrite && !currentPattern.queuePush) {
+        currentPattern.queuePush = writeOp;
+
+        // This completes the pattern - save it
+        if (currentPattern.isComplete()) {
+          dmaPatterns.push_back(currentPattern);
+          currentPattern = DMATransferPattern();
+        }
+      }
+    }
+  }
+
+  // Save any remaining pattern
+  if (currentPattern.isComplete()) {
+    dmaPatterns.push_back(currentPattern);
+  }
+
+  // Log what we found
+  if (!dmaPatterns.empty()) {
+    llvm::errs() << "DEBUG: Found " << dmaPatterns.size() << " DMA transfer patterns\n";
+    for (const auto &pattern : dmaPatterns) {
+      llvm::errs() << "  - BD " << pattern.bdId << " at tile("
+                   << pattern.column << "," << pattern.row
+                   << ") with " << pattern.bdData.size() << " data words"
+                   << " arg_idx=" << pattern.argIdx << "\n";
+      if (!pattern.bdData.empty()) {
+        llvm::errs() << "    BD data: ";
+        for (size_t i = 0; i < std::min(pattern.bdData.size(), size_t(4)); ++i) {
+          llvm::errs() << "0x" << llvm::format_hex(pattern.bdData[i], 8) << " ";
+        }
+        llvm::errs() << "...\n";
+      }
+    }
+  }
+
+  // TODO: Next step - parse BD data and reconstruct NpuDmaMemcpyNdOp
+  // For each pattern:
+  // 1. Parse bdData words according to shim BD format (see AIEDmaToNpu.cpp lines 542-587)
+  // 2. Extract buffer_length, sizes, strides, etc.
+  // 3. Find the corresponding shim_dma_allocation to get metadata symbol
+  // 4. Create NpuDmaMemcpyNdOp with reconstructed parameters
+  // 5. Erase the old operations and replace with the new high-level op
 }
 
 #endif // HAVE_BOOTGEN
