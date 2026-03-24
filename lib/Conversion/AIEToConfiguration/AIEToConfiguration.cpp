@@ -936,21 +936,32 @@ emitTransactionOps(OpBuilder &builder,
         }
       }
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
-      // Try to parse as a DMA Controller_ID configuration
-      int32_t column, row, direction, channel, controller_id;
-      if (tryParseDMAControllerID(op.cmd.RegOff, op.cmd.Mask, op.cmd.Value,
-                                   column, row, direction, channel, controller_id)) {
-        // This is a DMA Controller_ID configuration (task-complete-token)
-        // Since this is a runtime configuration that will be reconstructed during recompilation,
-        // we suppress it here and document it
-        llvm::errs() << "Note: Suppressing DMA Controller_ID write at tile(" << column << "," << row
-                     << ") " << (direction == 0 ? "S2MM" : "MM2S") << " channel " << channel
-                     << " controller_id " << controller_id << "\n";
+      // Try to parse as a lock operation first (locks use maskwrite for acquire/release)
+      int32_t column, row, lock_id, lock_value;
+      if (tryParseLockSet(op.cmd.RegOff, op.cmd.Value, column, row, lock_id, lock_value)) {
+        // This is a runtime lock operation
+        // Suppress it as it will be reconstructed during recompilation
+        llvm::errs() << "Note: Suppressing runtime lock operation (maskwrite) at tile("
+                     << column << "," << row << ") lock " << lock_id
+                     << " value " << lock_value << "\n";
         // Skip emission - don't emit raw maskwrite32
       } else {
-        // Emit raw maskwrite32 for unrecognized operations
-        AIEX::NpuMaskWrite32Op::create(builder, loc, op.cmd.RegOff, op.cmd.Value,
-                                       op.cmd.Mask, nullptr, nullptr, nullptr);
+        // Try to parse as a DMA Controller_ID configuration
+        int32_t direction, channel, controller_id;
+        if (tryParseDMAControllerID(op.cmd.RegOff, op.cmd.Mask, op.cmd.Value,
+                                     column, row, direction, channel, controller_id)) {
+          // This is a DMA Controller_ID configuration (task-complete-token)
+          // Since this is a runtime configuration that will be reconstructed during recompilation,
+          // we suppress it here and document it
+          llvm::errs() << "Note: Suppressing DMA Controller_ID write at tile(" << column << "," << row
+                       << ") " << (direction == 0 ? "S2MM" : "MM2S") << " channel " << channel
+                       << " controller_id " << controller_id << "\n";
+          // Skip emission - don't emit raw maskwrite32
+        } else {
+          // Emit raw maskwrite32 for unrecognized operations
+          AIEX::NpuMaskWrite32Op::create(builder, loc, op.cmd.RegOff, op.cmd.Value,
+                                         op.cmd.Mask, nullptr, nullptr, nullptr);
+        }
       }
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_TCT) {
       if (!op.sync) {
