@@ -1,0 +1,370 @@
+Warning: Transaction binary indicates 8 columns, using npu1 (4-column) device model
+Note: Suppressing DMA Controller_ID write at tile(0,0) S2MM channel 0 controller_id 15
+Note: Suppressing DMA Controller_ID write at tile(1,0) S2MM channel 0 controller_id 15
+Note: Suppressing DMA Controller_ID write at tile(2,0) S2MM channel 0 controller_id 15
+Note: Suppressing DMA Controller_ID write at tile(3,0) S2MM channel 0 controller_id 15
+Note: Suppressing DMA Controller_ID write at tile(0,0) S2MM channel 0 controller_id 15
+Note: Suppressing DMA Controller_ID write at tile(1,0) S2MM channel 0 controller_id 15
+Note: Suppressing DMA Controller_ID write at tile(2,0) S2MM channel 0 controller_id 15
+Note: Suppressing DMA Controller_ID write at tile(3,0) S2MM channel 0 controller_id 15
+Warning: Max column 3 exceeds npu1_3col, using generic npu1 device
+[DEBUG extractBDFromCDO] Scanning CDO binary (size=75608 bytes, cmd region=75576 bytes) for SetBlock commands to BD regions...
+[DEBUG extractBDFromCDO] First 32 bytes of cmd region:
+  0000: 01 00 00 00
+  0004: 00 00 00 00
+  0008: 02 01 03 00
+  000c: 10 DE 21 00
+  0010: 02 00 00 00
+  0014: 02 00 00 00
+  0018: 02 01 03 00
+  001c: 18 DE 21 00
+[DEBUG extractBDFromCDO] Offset 0000: cmdId=0x0001 word=0x00000001
+[DEBUG extractBDFromCDO] Offset 0008: cmdId=0x0102 word=0x00030102
+[DEBUG extractBDFromCDO] Offset 000c: cmdId=0xDE10 word=0x0021DE10
+[DEBUG extractBDFromCDO] Offset 0010: cmdId=0x0002 word=0x00000002
+[DEBUG extractBDFromCDO] Offset 0014: cmdId=0x0002 word=0x00000002
+[DEBUG extractBDFromCDO] Offset 0018: cmdId=0x0102 word=0x00030102
+[DEBUG extractBDFromCDO] Offset 001c: cmdId=0xDE18 word=0x0021DE18
+[DEBUG extractBDFromCDO] Offset 0020: cmdId=0x0002 word=0x00000002
+[DEBUG extractBDFromCDO] Offset 0024: cmdId=0x0002 word=0x00000002
+[DEBUG extractBDFromCDO] Offset 0028: cmdId=0x0102 word=0x00030102
+[DEBUG extractBDFromCDO] Offset 002c: cmdId=0xDE00 word=0x0021DE00
+[DEBUG extractBDFromCDO] Offset 0030: cmdId=0x0002 word=0x00000002
+[DEBUG extractBDFromCDO] Offset 0034: cmdId=0x0002 word=0x00000002
+[DEBUG extractBDFromCDO] Offset 0038: cmdId=0x0102 word=0x00030102
+[DEBUG extractBDFromCDO] Offset 003c: cmdId=0xDE08 word=0x0021DE08
+[DEBUG extractBDFromCDO] Offset 0040: cmdId=0x0002 word=0x00000002
+[DEBUG extractBDFromCDO] Offset 0044: cmdId=0x0002 word=0x00000002
+[DEBUG extractBDFromCDO] Offset 0048: cmdId=0x0111 word=0x00000111
+[DEBUG extractBDFromCDO] Offset 004c: cmdId=0x0111 word=0x00000111
+[DEBUG extractBDFromCDO] Offset 0050: cmdId=0x0105 word=0x00FF0105
+[DEBUG extractBDFromCDO] Summary: found 20 total SetBlock commands, 0 targeting BD regions
+[DEBUG] Processing 1563 decoded CDO commands for BD extraction...
+[DEBUG] Found 0 SetBlock commands, 0 completed BDs from SetBlock
+[DEBUG] BD write #1: addr=0x0021D000 value=0x00000000 -> tile(0,2) BD0 reg0
+[DEBUG] BD write #2: addr=0x0021D040 value=0x00000000 -> tile(0,2) BD2 reg0
+[DEBUG] BD write #3: addr=0x0021D080 value=0x00000000 -> tile(0,2) BD4 reg0
+[DEBUG] BD write #4: addr=0x0021D0A0 value=0x00000000 -> tile(0,2) BD5 reg0
+[DEBUG] BD write #5: addr=0x0021D060 value=0x00000000 -> tile(0,2) BD3 reg0
+[DEBUG] BD write #6: addr=0x0021D020 value=0x00000000 -> tile(0,2) BD1 reg0
+[DEBUG] BD write #7: addr=0x0221D000 value=0x00000000 -> tile(1,2) BD0 reg0
+[DEBUG] BD write #8: addr=0x0221D040 value=0x00000000 -> tile(1,2) BD2 reg0
+[DEBUG] BD write #9: addr=0x0221D080 value=0x00000000 -> tile(1,2) BD4 reg0
+[DEBUG] BD write #10: addr=0x0221D0A0 value=0x00000000 -> tile(1,2) BD5 reg0
+[DEBUG] BD extraction from decoded commands: 192 BD register writes, 0 completed BDs
+
+=== NPU INSTRUCTION LIFTING STARTING ===
+Found 128 operations in runtime_sequence
+Operation types: blockwrite=0 address_patch=40 write32=0 maskwrite32=0 sync=8
+Using write32 sequence pattern matching (transaction binary mode)
+Found 0 BDs with write32 sequences
+[DEBUG extractBDsFromTransaction] Starting to walk transaction module for NPU write32 ops...
+[DEBUG extractBDsFromTransaction] Summary: processed 0 write32 ops, 0 BD writes, 0 completed BDs
+WARNING: No buffer length found for 0,5 bd[0], using placeholder size 1
+WARNING: No buffer length found for 0,5 bd[1], using placeholder size 1
+WARNING: No buffer length found for 0,5 bd[2], using placeholder size 1
+WARNING: No buffer length found for 0,5 bd[3], using placeholder size 1
+WARNING: No buffer length found for 0,5 bd[4], using placeholder size 1
+WARNING: No buffer length found for 0,5 bd[5], using placeholder size 1
+WARNING: No buffer length found for 2,1 bd[0], using placeholder size 1
+WARNING: No buffer length found for 2,1 bd[1], using placeholder size 1
+WARNING: No buffer length found for 2,1 bd[2], using placeholder size 1
+WARNING: No buffer length found for 2,1 bd[3], using placeholder size 1
+WARNING: No buffer length found for 2,1 bd[4], using placeholder size 1
+WARNING: No buffer length found for 2,1 bd[5], using placeholder size 1
+WARNING: No buffer length found for 2,1 bd[6], using placeholder size 1
+WARNING: No buffer length found for 2,1 bd[7], using placeholder size 1
+WARNING: No buffer length found for 2,1 bd[8], using placeholder size 1
+WARNING: No buffer length found for 2,1 bd[9], using placeholder size 1
+WARNING: No buffer length found for 2,1 bd[10], using placeholder size 1
+WARNING: No buffer length found for 2,1 bd[11], using placeholder size 1
+WARNING: No buffer length found for 2,1 bd[12], using placeholder size 1
+WARNING: No buffer length found for 2,1 bd[13], using placeholder size 1
+WARNING: No buffer length found for 2,1 bd[14], using placeholder size 1
+WARNING: No buffer length found for 2,1 bd[15], using placeholder size 1
+WARNING: No buffer length found for 2,1 bd[24], using placeholder size 1
+WARNING: No buffer length found for 2,1 bd[25], using placeholder size 1
+WARNING: No buffer length found for 2,1 bd[26], using placeholder size 1
+WARNING: No buffer length found for 2,1 bd[27], using placeholder size 1
+WARNING: No buffer length found for 2,1 bd[28], using placeholder size 1
+WARNING: No buffer length found for 2,1 bd[29], using placeholder size 1
+WARNING: No buffer length found for 2,1 bd[30], using placeholder size 1
+WARNING: No buffer length found for 2,1 bd[31], using placeholder size 1
+WARNING: No buffer length found for 3,1 bd[0], using placeholder size 1
+WARNING: No buffer length found for 3,1 bd[1], using placeholder size 1
+WARNING: No buffer length found for 3,1 bd[2], using placeholder size 1
+WARNING: No buffer length found for 3,1 bd[3], using placeholder size 1
+WARNING: No buffer length found for 3,1 bd[4], using placeholder size 1
+WARNING: No buffer length found for 3,1 bd[5], using placeholder size 1
+WARNING: No buffer length found for 3,1 bd[6], using placeholder size 1
+WARNING: No buffer length found for 3,1 bd[7], using placeholder size 1
+WARNING: No buffer length found for 3,1 bd[8], using placeholder size 1
+WARNING: No buffer length found for 3,1 bd[9], using placeholder size 1
+WARNING: No buffer length found for 3,1 bd[10], using placeholder size 1
+WARNING: No buffer length found for 3,1 bd[11], using placeholder size 1
+WARNING: No buffer length found for 3,1 bd[12], using placeholder size 1
+WARNING: No buffer length found for 3,1 bd[13], using placeholder size 1
+WARNING: No buffer length found for 3,1 bd[14], using placeholder size 1
+WARNING: No buffer length found for 3,1 bd[15], using placeholder size 1
+WARNING: No buffer length found for 3,1 bd[24], using placeholder size 1
+WARNING: No buffer length found for 3,1 bd[25], using placeholder size 1
+WARNING: No buffer length found for 3,1 bd[26], using placeholder size 1
+WARNING: No buffer length found for 3,1 bd[27], using placeholder size 1
+WARNING: No buffer length found for 3,1 bd[28], using placeholder size 1
+WARNING: No buffer length found for 3,1 bd[29], using placeholder size 1
+WARNING: No buffer length found for 3,1 bd[30], using placeholder size 1
+WARNING: No buffer length found for 3,1 bd[31], using placeholder size 1
+WARNING: No buffer length found for 3,5 bd[0], using placeholder size 1
+WARNING: No buffer length found for 3,5 bd[1], using placeholder size 1
+WARNING: No buffer length found for 3,5 bd[2], using placeholder size 1
+WARNING: No buffer length found for 3,5 bd[3], using placeholder size 1
+WARNING: No buffer length found for 3,5 bd[4], using placeholder size 1
+WARNING: No buffer length found for 3,5 bd[5], using placeholder size 1
+WARNING: No buffer length found for 2,5 bd[0], using placeholder size 1
+WARNING: No buffer length found for 2,5 bd[1], using placeholder size 1
+WARNING: No buffer length found for 2,5 bd[2], using placeholder size 1
+WARNING: No buffer length found for 2,5 bd[3], using placeholder size 1
+WARNING: No buffer length found for 2,5 bd[4], using placeholder size 1
+WARNING: No buffer length found for 2,5 bd[5], using placeholder size 1
+WARNING: No buffer length found for 1,4 bd[0], using placeholder size 1
+WARNING: No buffer length found for 1,4 bd[1], using placeholder size 1
+WARNING: No buffer length found for 1,4 bd[2], using placeholder size 1
+WARNING: No buffer length found for 1,4 bd[3], using placeholder size 1
+WARNING: No buffer length found for 1,4 bd[4], using placeholder size 1
+WARNING: No buffer length found for 1,4 bd[5], using placeholder size 1
+WARNING: No buffer length found for 1,5 bd[0], using placeholder size 1
+WARNING: No buffer length found for 1,5 bd[1], using placeholder size 1
+WARNING: No buffer length found for 1,5 bd[2], using placeholder size 1
+WARNING: No buffer length found for 1,5 bd[3], using placeholder size 1
+WARNING: No buffer length found for 1,5 bd[4], using placeholder size 1
+WARNING: No buffer length found for 1,5 bd[5], using placeholder size 1
+WARNING: No buffer length found for 0,4 bd[0], using placeholder size 1
+WARNING: No buffer length found for 0,4 bd[1], using placeholder size 1
+WARNING: No buffer length found for 0,4 bd[2], using placeholder size 1
+WARNING: No buffer length found for 0,4 bd[3], using placeholder size 1
+WARNING: No buffer length found for 0,4 bd[4], using placeholder size 1
+WARNING: No buffer length found for 0,4 bd[5], using placeholder size 1
+WARNING: No buffer length found for 3,4 bd[0], using placeholder size 1
+WARNING: No buffer length found for 3,4 bd[1], using placeholder size 1
+WARNING: No buffer length found for 3,4 bd[2], using placeholder size 1
+WARNING: No buffer length found for 3,4 bd[3], using placeholder size 1
+WARNING: No buffer length found for 3,4 bd[4], using placeholder size 1
+WARNING: No buffer length found for 3,4 bd[5], using placeholder size 1
+WARNING: No buffer length found for 2,3 bd[0], using placeholder size 1
+WARNING: No buffer length found for 2,3 bd[1], using placeholder size 1
+WARNING: No buffer length found for 2,3 bd[2], using placeholder size 1
+WARNING: No buffer length found for 2,3 bd[3], using placeholder size 1
+WARNING: No buffer length found for 2,3 bd[4], using placeholder size 1
+WARNING: No buffer length found for 2,3 bd[5], using placeholder size 1
+WARNING: No buffer length found for 0,3 bd[0], using placeholder size 1
+WARNING: No buffer length found for 0,3 bd[1], using placeholder size 1
+WARNING: No buffer length found for 0,3 bd[2], using placeholder size 1
+WARNING: No buffer length found for 0,3 bd[3], using placeholder size 1
+WARNING: No buffer length found for 0,3 bd[4], using placeholder size 1
+WARNING: No buffer length found for 0,3 bd[5], using placeholder size 1
+WARNING: No buffer length found for 2,4 bd[0], using placeholder size 1
+WARNING: No buffer length found for 2,4 bd[1], using placeholder size 1
+WARNING: No buffer length found for 2,4 bd[2], using placeholder size 1
+WARNING: No buffer length found for 2,4 bd[3], using placeholder size 1
+WARNING: No buffer length found for 2,4 bd[4], using placeholder size 1
+WARNING: No buffer length found for 2,4 bd[5], using placeholder size 1
+WARNING: No buffer length found for 0,2 bd[0], using placeholder size 1
+WARNING: No buffer length found for 0,2 bd[1], using placeholder size 1
+WARNING: No buffer length found for 0,2 bd[2], using placeholder size 1
+WARNING: No buffer length found for 0,2 bd[3], using placeholder size 1
+WARNING: No buffer length found for 0,2 bd[4], using placeholder size 1
+WARNING: No buffer length found for 0,2 bd[5], using placeholder size 1
+WARNING: No buffer length found for 1,3 bd[0], using placeholder size 1
+WARNING: No buffer length found for 1,3 bd[1], using placeholder size 1
+WARNING: No buffer length found for 1,3 bd[2], using placeholder size 1
+WARNING: No buffer length found for 1,3 bd[3], using placeholder size 1
+WARNING: No buffer length found for 1,3 bd[4], using placeholder size 1
+WARNING: No buffer length found for 1,3 bd[5], using placeholder size 1
+WARNING: No buffer length found for 2,2 bd[0], using placeholder size 1
+WARNING: No buffer length found for 2,2 bd[1], using placeholder size 1
+WARNING: No buffer length found for 2,2 bd[2], using placeholder size 1
+WARNING: No buffer length found for 2,2 bd[3], using placeholder size 1
+WARNING: No buffer length found for 2,2 bd[4], using placeholder size 1
+WARNING: No buffer length found for 2,2 bd[5], using placeholder size 1
+WARNING: No buffer length found for 1,2 bd[0], using placeholder size 1
+WARNING: No buffer length found for 1,2 bd[1], using placeholder size 1
+WARNING: No buffer length found for 1,2 bd[2], using placeholder size 1
+WARNING: No buffer length found for 1,2 bd[3], using placeholder size 1
+WARNING: No buffer length found for 1,2 bd[4], using placeholder size 1
+WARNING: No buffer length found for 1,2 bd[5], using placeholder size 1
+WARNING: No buffer length found for 0,1 bd[0], using placeholder size 1
+WARNING: No buffer length found for 0,1 bd[1], using placeholder size 1
+WARNING: No buffer length found for 0,1 bd[2], using placeholder size 1
+WARNING: No buffer length found for 0,1 bd[3], using placeholder size 1
+WARNING: No buffer length found for 0,1 bd[4], using placeholder size 1
+WARNING: No buffer length found for 0,1 bd[5], using placeholder size 1
+WARNING: No buffer length found for 0,1 bd[6], using placeholder size 1
+WARNING: No buffer length found for 0,1 bd[7], using placeholder size 1
+WARNING: No buffer length found for 0,1 bd[8], using placeholder size 1
+WARNING: No buffer length found for 0,1 bd[9], using placeholder size 1
+WARNING: No buffer length found for 0,1 bd[10], using placeholder size 1
+WARNING: No buffer length found for 0,1 bd[11], using placeholder size 1
+WARNING: No buffer length found for 0,1 bd[12], using placeholder size 1
+WARNING: No buffer length found for 0,1 bd[13], using placeholder size 1
+WARNING: No buffer length found for 0,1 bd[14], using placeholder size 1
+WARNING: No buffer length found for 0,1 bd[15], using placeholder size 1
+WARNING: No buffer length found for 0,1 bd[24], using placeholder size 1
+WARNING: No buffer length found for 0,1 bd[25], using placeholder size 1
+WARNING: No buffer length found for 0,1 bd[26], using placeholder size 1
+WARNING: No buffer length found for 0,1 bd[27], using placeholder size 1
+WARNING: No buffer length found for 0,1 bd[28], using placeholder size 1
+WARNING: No buffer length found for 0,1 bd[29], using placeholder size 1
+WARNING: No buffer length found for 0,1 bd[30], using placeholder size 1
+WARNING: No buffer length found for 0,1 bd[31], using placeholder size 1
+WARNING: No buffer length found for 3,2 bd[0], using placeholder size 1
+WARNING: No buffer length found for 3,2 bd[1], using placeholder size 1
+WARNING: No buffer length found for 3,2 bd[2], using placeholder size 1
+WARNING: No buffer length found for 3,2 bd[3], using placeholder size 1
+WARNING: No buffer length found for 3,2 bd[4], using placeholder size 1
+WARNING: No buffer length found for 3,2 bd[5], using placeholder size 1
+WARNING: No buffer length found for 1,1 bd[0], using placeholder size 1
+WARNING: No buffer length found for 1,1 bd[1], using placeholder size 1
+WARNING: No buffer length found for 1,1 bd[2], using placeholder size 1
+WARNING: No buffer length found for 1,1 bd[3], using placeholder size 1
+WARNING: No buffer length found for 1,1 bd[4], using placeholder size 1
+WARNING: No buffer length found for 1,1 bd[5], using placeholder size 1
+WARNING: No buffer length found for 1,1 bd[6], using placeholder size 1
+WARNING: No buffer length found for 1,1 bd[7], using placeholder size 1
+WARNING: No buffer length found for 1,1 bd[8], using placeholder size 1
+WARNING: No buffer length found for 1,1 bd[9], using placeholder size 1
+WARNING: No buffer length found for 1,1 bd[10], using placeholder size 1
+WARNING: No buffer length found for 1,1 bd[11], using placeholder size 1
+WARNING: No buffer length found for 1,1 bd[12], using placeholder size 1
+WARNING: No buffer length found for 1,1 bd[13], using placeholder size 1
+WARNING: No buffer length found for 1,1 bd[14], using placeholder size 1
+WARNING: No buffer length found for 1,1 bd[15], using placeholder size 1
+WARNING: No buffer length found for 1,1 bd[24], using placeholder size 1
+WARNING: No buffer length found for 1,1 bd[25], using placeholder size 1
+WARNING: No buffer length found for 1,1 bd[26], using placeholder size 1
+WARNING: No buffer length found for 1,1 bd[27], using placeholder size 1
+WARNING: No buffer length found for 1,1 bd[28], using placeholder size 1
+WARNING: No buffer length found for 1,1 bd[29], using placeholder size 1
+WARNING: No buffer length found for 1,1 bd[30], using placeholder size 1
+WARNING: No buffer length found for 1,1 bd[31], using placeholder size 1
+WARNING: No buffer length found for 3,3 bd[0], using placeholder size 1
+WARNING: No buffer length found for 3,3 bd[1], using placeholder size 1
+WARNING: No buffer length found for 3,3 bd[2], using placeholder size 1
+WARNING: No buffer length found for 3,3 bd[3], using placeholder size 1
+WARNING: No buffer length found for 3,3 bd[4], using placeholder size 1
+WARNING: No buffer length found for 3,3 bd[5], using placeholder size 1
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(0,5)
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(0,5) BD0 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(0,5) BD1 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(0,5) BD2 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(0,5) BD3 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(0,5) BD4 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(0,5) BD5 with bufferLength=0
+Warning: Emitting 24 BDs with inferred channel S2MM_0 for memtile(2,1)
+Warning: Emitting 24 BDs with inferred channel S2MM_0 for memtile(3,1)
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(3,5)
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(3,5) BD0 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(3,5) BD1 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(3,5) BD2 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(3,5) BD3 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(3,5) BD4 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(3,5) BD5 with bufferLength=0
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(2,5)
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(2,5) BD0 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(2,5) BD1 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(2,5) BD2 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(2,5) BD3 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(2,5) BD4 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(2,5) BD5 with bufferLength=0
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(1,4)
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(1,4) BD0 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(1,4) BD1 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(1,4) BD2 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(1,4) BD3 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(1,4) BD4 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(1,4) BD5 with bufferLength=0
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(1,5)
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(1,5) BD0 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(1,5) BD1 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(1,5) BD2 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(1,5) BD3 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(1,5) BD4 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(1,5) BD5 with bufferLength=0
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(0,4)
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(0,4) BD0 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(0,4) BD1 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(0,4) BD2 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(0,4) BD3 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(0,4) BD4 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(0,4) BD5 with bufferLength=0
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(3,4)
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(3,4) BD0 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(3,4) BD1 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(3,4) BD2 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(3,4) BD3 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(3,4) BD4 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(3,4) BD5 with bufferLength=0
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(2,3)
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(2,3) BD0 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(2,3) BD1 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(2,3) BD2 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(2,3) BD3 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(2,3) BD4 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(2,3) BD5 with bufferLength=0
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(0,3)
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(0,3) BD0 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(0,3) BD1 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(0,3) BD2 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(0,3) BD3 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(0,3) BD4 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(0,3) BD5 with bufferLength=0
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(2,4)
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(2,4) BD0 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(2,4) BD1 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(2,4) BD2 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(2,4) BD3 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(2,4) BD4 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(2,4) BD5 with bufferLength=0
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(0,2)
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(0,2) BD0 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(0,2) BD1 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(0,2) BD2 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(0,2) BD3 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(0,2) BD4 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(0,2) BD5 with bufferLength=0
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(1,3)
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(1,3) BD0 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(1,3) BD1 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(1,3) BD2 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(1,3) BD3 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(1,3) BD4 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(1,3) BD5 with bufferLength=0
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(2,2)
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(2,2) BD0 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(2,2) BD1 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(2,2) BD2 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(2,2) BD3 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(2,2) BD4 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(2,2) BD5 with bufferLength=0
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(1,2)
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(1,2) BD0 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(1,2) BD1 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(1,2) BD2 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(1,2) BD3 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(1,2) BD4 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(1,2) BD5 with bufferLength=0
+Warning: Emitting 24 BDs with inferred channel S2MM_0 for memtile(0,1)
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(3,2)
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(3,2) BD0 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(3,2) BD1 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(3,2) BD2 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(3,2) BD3 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(3,2) BD4 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(3,2) BD5 with bufferLength=0
+Warning: Emitting 24 BDs with inferred channel S2MM_0 for memtile(1,1)
+Warning: Emitting 6 BDs with inferred channel S2MM_0 for tile(3,3)
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(3,3) BD0 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(3,3) BD1 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(3,3) BD2 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(3,3) BD3 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(3,3) BD4 with bufferLength=0
+[DEBUG emitMemOpForTile] Emitting aie.dma_bd for tile(3,3) BD5 with bufferLength=0

@@ -81,13 +81,30 @@ public:
     if (it != buffers.end())
       return it->second;
 
-    // Create buffer with memref type
-    // Note: bufferLength may be 0 if BD was not fully configured in CDO
-    // (e.g., configured dynamically at runtime via NPU instruction stream).
-    // In such cases, use a placeholder size of 1 since aie.buffer requires
-    // static dimensions. The user will need to update this with the correct size.
+    // Determine buffer size:
+    // 1. First check if we have a tracked buffer length (from NPU instructions or CDO)
+    // 2. Fall back to bd.bufferLength if available
+    // 3. Default to 1 as a placeholder
+    int64_t bufSize = 1;  // Default placeholder
+
+    BDBufferKey key{bd.column, bd.row, bd.bdIndex};
+    auto lengthIt = bdBufferLengths.find(key);
+    if (lengthIt != bdBufferLengths.end()) {
+      // Use tracked buffer length from NPU instructions
+      bufSize = static_cast<int64_t>(lengthIt->second);
+      llvm::errs() << "DEBUG: Using tracked buffer length for " << bd.column << ","
+                   << bd.row << " bd[" << bd.bdIndex << "]: " << bufSize << "\n";
+    } else if (bd.bufferLength != 0) {
+      // Use buffer length from BD config
+      bufSize = static_cast<int64_t>(bd.bufferLength);
+      llvm::errs() << "DEBUG: Using BD config buffer length for " << bd.column << ","
+                   << bd.row << " bd[" << bd.bdIndex << "]: " << bufSize << "\n";
+    } else {
+      llvm::errs() << "WARNING: No buffer length found for " << bd.column << ","
+                   << bd.row << " bd[" << bd.bdIndex << "], using placeholder size 1\n";
+    }
+
     auto tile = getOrCreateTile(bd.column, bd.row);
-    int64_t bufSize = (bd.bufferLength == 0) ? 1 : static_cast<int64_t>(bd.bufferLength);
     auto memrefType = MemRefType::get({bufSize}, builder.getI32Type());
 
     OpBuilder::InsertionGuard guard(builder);
@@ -230,6 +247,15 @@ public:
   void recordTileReference(int col, int row) {
     TileID id{col, row};
     referencedTiles.insert(id);
+  }
+
+  /// Record a buffer length for a specific BD (from NPU instruction parsing or CDO)
+  /// This allows us to infer correct buffer sizes even when BD config is incomplete
+  void recordBufferLength(int col, int row, int bdIndex, uint32_t length) {
+    BDBufferKey key{col, row, bdIndex};
+    bdBufferLengths[key] = length;
+    llvm::errs() << "DEBUG: Recorded buffer length for BD " << col << "," << row
+                 << " bd[" << bdIndex << "]: " << length << "\n";
   }
 
   /// Get the maximum column index used in the xclbin
@@ -1258,6 +1284,22 @@ private:
   }
 
 
+  /// Key for tracking buffer lengths per BD
+  struct BDBufferKey {
+    int col, row, bdIndex;
+
+    bool operator==(const BDBufferKey &other) const {
+      return col == other.col && row == other.row && bdIndex == other.bdIndex;
+    }
+  };
+
+  struct BDBufferKeyHash {
+    std::size_t operator()(const BDBufferKey &key) const {
+      return std::hash<int>()(key.col) ^ (std::hash<int>()(key.row) << 1) ^
+             (std::hash<int>()(key.bdIndex) << 2);
+    }
+  };
+
   OpBuilder &builder;
   AIE::DeviceOp device;
   llvm::DenseMap<TileID, AIE::TileOp> tiles;
@@ -1278,6 +1320,9 @@ private:
 
   // Track all tiles referenced by any register write (including shim tiles)
   llvm::DenseSet<TileID> referencedTiles;
+
+  // Track buffer lengths extracted from NPU instructions or CDO (col, row, bdIndex) -> length
+  std::unordered_map<BDBufferKey, uint32_t, BDBufferKeyHash> bdBufferLengths;
 };
 
 //===----------------------------------------------------------------------===//
@@ -1975,7 +2020,8 @@ void extractBDsFromTransaction(ModuleOp txnModule, AIE::DeviceOp deviceOp,
                                 DMAChannelTracker &dmaChannelTracker,
                                 LiftedBDEmitter &emitter);
 
-void liftNPUInstructions(AIE::RuntimeSequenceOp seqOp, AIE::DeviceOp deviceOp);
+void liftNPUInstructions(AIE::RuntimeSequenceOp seqOp, AIE::DeviceOp deviceOp,
+                         LiftedBDEmitter &emitter);
 
 /// Determine device type from maximum column index
 AIE::AIEDevice getDeviceFromMaxColumn(int maxCol) {
@@ -2438,6 +2484,11 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
           auto channel = dmaChannelTracker.getChannel(bd.column, bd.row, bd.bdIndex);
           bd.dmaChannel = static_cast<int>(channel);
           liftedEmitter->recordBD(bd);
+
+          // Record buffer length if available
+          if (bd.bufferLength > 0) {
+            liftedEmitter->recordBufferLength(bd.column, bd.row, bd.bdIndex, bd.bufferLength);
+          }
         }
       }
 
@@ -2646,8 +2697,8 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
   AIE::EndOp::create(builder, builder.getUnknownLoc());
 
   // If in lifted mode and we have a transaction module, try to lift NPU instructions
-  if (emitLifted && txnModule.has_value()) {
-    liftNPUInstructions(seqOp, deviceOp);
+  if (emitLifted && txnModule.has_value() && liftedEmitter) {
+    liftNPUInstructions(seqOp, deviceOp, *liftedEmitter);
   }
 
   // Emit all lifted BDs, switchboxes, and locks
@@ -2791,6 +2842,11 @@ void extractBDsFromTransaction(ModuleOp txnModule, AIE::DeviceOp deviceOp,
                    << " nextBd=" << (int)bd.nextBd << " useNextBd=" << bd.useNextBd << "\n";
 
       emitter.recordBD(bd);
+
+      // Record buffer length if available
+      if (bd.bufferLength > 0) {
+        emitter.recordBufferLength(bd.column, bd.row, bd.bdIndex, bd.bufferLength);
+      }
     }
 
     return WalkResult::advance();
@@ -2885,6 +2941,11 @@ void extractBDsFromTransaction(ModuleOp txnModule, AIE::DeviceOp deviceOp,
           auto channel = dmaChannelTracker.getChannel(bd.column, bd.row, bd.bdIndex);
           bd.dmaChannel = static_cast<int>(channel);
           emitter.recordBD(bd);
+
+          // Record buffer length if available
+          if (bd.bufferLength > 0) {
+            emitter.recordBufferLength(bd.column, bd.row, bd.bdIndex, bd.bufferLength);
+          }
         }
       }
     }
@@ -2976,7 +3037,8 @@ static uint32_t extractBDIndex(uint32_t address) {
 /// This function analyzes the runtime_sequence and identifies patterns that can be
 /// converted from low-level operations (write32, blockwrite, etc.) to semantic
 /// operations (dma_memcpy_nd, sync, etc.).
-void liftNPUInstructions(AIE::RuntimeSequenceOp seqOp, AIE::DeviceOp deviceOp) {
+void liftNPUInstructions(AIE::RuntimeSequenceOp seqOp, AIE::DeviceOp deviceOp,
+                         LiftedBDEmitter &emitter) {
   llvm::errs() << "\n=== NPU INSTRUCTION LIFTING STARTING ===\n";
 
   if (!seqOp) {
@@ -3218,6 +3280,9 @@ void liftNPUInstructions(AIE::RuntimeSequenceOp seqOp, AIE::DeviceOp deviceOp) {
     // Parse BD data according to shim BD format (AIEDmaToNpu.cpp lines 542-687)
     uint32_t buffer_length = pattern.bdData[0];
     // uint32_t buffer_offset = pattern.bdData[1];  // Not needed for reconstruction
+
+    // Record buffer length for this BD so it can be used for buffer size inference
+    emitter.recordBufferLength(pattern.column, pattern.row, pattern.bdId, buffer_length);
 
     // Word 2: enable_packet, out_of_order_id, packet_id, packet_type
     // uint32_t word2 = pattern.bdData[2];
