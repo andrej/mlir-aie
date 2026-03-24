@@ -1,0 +1,18 @@
+XRT Build Version: 2.21.0 (HEAD)
+       Build Date: 2026-02-24 14:58:59
+          Hash ID: 4eb1f4392a012b4e6eca759762389c612537f7c7
+Creating a default 'in-memory' xclbin image.
+
+Section: 'MEM_TOPOLOGY'(6) was successfully added.
+Size   : 88 bytes
+Format : JSON
+File   : 'decompiled_clean.mlir.prj/xclbin_device_mem_topology.json'
+
+Section: 'AIE_PARTITION'(32) was successfully added.
+Size   : 13672 bytes
+Format : JSON
+File   : 'decompiled_clean.mlir.prj/xclbin_device_aie_partition.json'
+Info: Embedded Metadata section is missing project.platform.device.core element, adding it.
+Successfully wrote (19706 bytes) to the output file: recompiled.xclbin
+Leaving xclbinutil.
+Compilation completed successfully

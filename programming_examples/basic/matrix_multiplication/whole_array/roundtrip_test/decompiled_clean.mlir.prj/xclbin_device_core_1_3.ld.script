@@ -1,0 +1,120 @@
+
+MEMORY
+{
+   program (RX) : ORIGIN = 0, LENGTH = 0x0020000
+   data (!RX) : ORIGIN = 0x70418, LENGTH = 0xFBE8
+}
+ENTRY(__start)
+SECTIONS
+{
+  . = 0x0;
+  .text : {
+     /* the __start symbol has to come at address zero. */
+     *crt0.o(.text*)
+     _ctors_start = .;
+     _init_array_start = .;
+     KEEP(SORT(*.init_array))
+     _ctors_end = .;
+     _init_array_end = .;
+     _dtors_start = .;
+     _dtors_end = .;
+     *(.text*)
+  } > program
+  .data : {
+     *(.data*)
+     *(.rodata*)
+  } > data
+  .comment : {
+     *(.comment*)
+  }
+  .symtab : {
+     *(.symtab)
+  }
+  .shstrtab : {
+     *(.shstrtab)
+  }
+  .strtab : {
+     *(.strtab)
+  }
+  .stack_sizes : {
+     *(.stack_sizes)
+  }
+
+. = 0x70000;
+_sp_start_value_DM_stack = .;
+. += 0x400; /* stack */
+. = 0x40400;
+bd_buf_1_2_5 = .;
+. += 0x4;
+. = 0x40404;
+bd_buf_1_2_4 = .;
+. += 0x4;
+. = 0x40408;
+bd_buf_1_2_3 = .;
+. += 0x4;
+. = 0x4040C;
+bd_buf_1_2_2 = .;
+. += 0x4;
+. = 0x40410;
+bd_buf_1_2_1 = .;
+. += 0x4;
+. = 0x40414;
+bd_buf_1_2_0 = .;
+. += 0x4;
+. = 0x50400;
+bd_buf_0_3_5 = .;
+. += 0x4;
+. = 0x50404;
+bd_buf_0_3_4 = .;
+. += 0x4;
+. = 0x50408;
+bd_buf_0_3_3 = .;
+. += 0x4;
+. = 0x5040C;
+bd_buf_0_3_2 = .;
+. += 0x4;
+. = 0x50410;
+bd_buf_0_3_1 = .;
+. += 0x4;
+. = 0x50414;
+bd_buf_0_3_0 = .;
+. += 0x4;
+. = 0x60400;
+bd_buf_1_4_5 = .;
+. += 0x4;
+. = 0x60404;
+bd_buf_1_4_4 = .;
+. += 0x4;
+. = 0x60408;
+bd_buf_1_4_3 = .;
+. += 0x4;
+. = 0x6040C;
+bd_buf_1_4_2 = .;
+. += 0x4;
+. = 0x60410;
+bd_buf_1_4_1 = .;
+. += 0x4;
+. = 0x60414;
+bd_buf_1_4_0 = .;
+. += 0x4;
+. = 0x70400;
+bd_buf_1_3_5 = .;
+. += 0x4;
+. = 0x70404;
+bd_buf_1_3_4 = .;
+. += 0x4;
+. = 0x70408;
+bd_buf_1_3_3 = .;
+. += 0x4;
+. = 0x7040C;
+bd_buf_1_3_2 = .;
+. += 0x4;
+. = 0x70410;
+bd_buf_1_3_1 = .;
+. += 0x4;
+. = 0x70414;
+bd_buf_1_3_0 = .;
+. += 0x4;
+  .bss : { *(.bss*) } > data
+}
+PROVIDE(main = core_1_3);
