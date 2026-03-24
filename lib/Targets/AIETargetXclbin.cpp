@@ -2439,21 +2439,20 @@ static std::pair<uint32_t, uint32_t> extractTileFromAddress(uint32_t address) {
 
 /// Check if an address is a BD address for shim DMA
 static bool isShimBDAddress(uint32_t address) {
-  // Shim DMA BD addresses are in the range 0x1D000 - 0x1D1FF (approximately)
-  // BD_0 starts at offset 0x000 from the tile base
-  // Each BD is 8 words (32 bytes)
-  uint32_t offset = address & 0xFFFFF;  // Mask to get offset within tile
+  // Shim DMA BD addresses start at 0x1D000 for column 0
+  // Each tile is at base (col << 20) | (row << 28) | 0x1D000
+  // BDs are at offsets 0x000, 0x020, 0x040, etc. (8 words = 32 bytes each)
+  uint32_t tileOffset = address & 0xFFFFF;  // Mask to get offset within tile
 
-  // Check if this is in the BD range (0x0 to ~0x100 for BDs 0-15)
-  // Shim tiles have BDs at base offset
-  return offset < 0x200;  // Conservative range for first 16 BDs
+  // BD addresses are in the range 0x1D000 - 0x1D1FF (16 BDs * 32 bytes = 512 = 0x200)
+  return (tileOffset >= 0x1D000 && tileOffset < 0x1D200);
 }
 
 /// Extract BD index from a BD address
 static uint32_t extractBDIndex(uint32_t address) {
-  uint32_t offset = address & 0xFFFFF;
-  // Each BD is 8 words (32 bytes = 0x20)
-  return offset / 0x20;
+  uint32_t tileOffset = address & 0xFFFFF;
+  // BD addresses start at 0x1D000, each BD is 32 bytes
+  return (tileOffset - 0x1D000) / 0x20;
 }
 
 /// Lift NPU instructions from raw register writes to high-level AIEX operations.
@@ -2461,8 +2460,12 @@ static uint32_t extractBDIndex(uint32_t address) {
 /// converted from low-level operations (write32, blockwrite, etc.) to semantic
 /// operations (dma_memcpy_nd, sync, etc.).
 void liftNPUInstructions(AIE::RuntimeSequenceOp seqOp, AIE::DeviceOp deviceOp) {
-  if (!seqOp)
+  llvm::errs() << "\n=== NPU INSTRUCTION LIFTING STARTING ===\n";
+
+  if (!seqOp) {
+    llvm::errs() << "ERROR: No RuntimeSequenceOp provided\n";
     return;
+  }
 
   Block &seqBlock = seqOp.getBody().front();
   OpBuilder builder(seqOp.getContext());
@@ -2475,6 +2478,23 @@ void liftNPUInstructions(AIE::RuntimeSequenceOp seqOp, AIE::DeviceOp deviceOp) {
     }
   }
 
+  llvm::errs() << "Found " << opsToProcess.size() << " operations in runtime_sequence\n";
+
+  // Count operation types for debugging
+  int numBlockwrite = 0, numAddressPatch = 0, numWrite32 = 0, numMaskWrite32 = 0, numSync = 0;
+  for (Operation *op : opsToProcess) {
+    if (isa<AIEX::NpuBlockWriteOp>(op)) numBlockwrite++;
+    else if (isa<AIEX::NpuAddressPatchOp>(op)) numAddressPatch++;
+    else if (isa<AIEX::NpuWrite32Op>(op)) numWrite32++;
+    else if (isa<AIEX::NpuMaskWrite32Op>(op)) numMaskWrite32++;
+    else if (isa<AIEX::NpuSyncOp>(op)) numSync++;
+  }
+  llvm::errs() << "Operation types: blockwrite=" << numBlockwrite
+               << " address_patch=" << numAddressPatch
+               << " write32=" << numWrite32
+               << " maskwrite32=" << numMaskWrite32
+               << " sync=" << numSync << "\n";
+
   // Pattern recognition: Group operations that belong to a DMA transfer
   SmallVector<DMATransferPattern> dmaPatterns;
   DMATransferPattern currentPattern;
@@ -2485,6 +2505,8 @@ void liftNPUInstructions(AIE::RuntimeSequenceOp seqOp, AIE::DeviceOp deviceOp) {
     // Look for blockwrite to a BD address
     if (auto blockwriteOp = dyn_cast<AIEX::NpuBlockWriteOp>(op)) {
       uint32_t address = blockwriteOp.getAddress();
+      llvm::errs() << "  Blockwrite #" << i << " to address 0x" << llvm::format_hex(address, 8)
+                   << " - isShimBD=" << isShimBDAddress(address) << "\n";
 
       if (isShimBDAddress(address)) {
         // Start a new pattern
