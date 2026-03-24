@@ -84,7 +84,8 @@ public:
     // Determine buffer size:
     // 1. First check if we have a tracked buffer length (from NPU instructions or CDO)
     // 2. Fall back to bd.bufferLength if available
-    // 3. Default to 1 as a placeholder
+    // 3. Try address-based inference from gaps
+    // 4. Default to 1 as a placeholder
     int64_t bufSize = 1;  // Default placeholder
 
     BDBufferKey key{bd.column, bd.row, bd.bdIndex};
@@ -100,8 +101,17 @@ public:
       llvm::errs() << "DEBUG: Using BD config buffer length for " << bd.column << ","
                    << bd.row << " bd[" << bd.bdIndex << "]: " << bufSize << "\n";
     } else {
-      llvm::errs() << "WARNING: No buffer length found for " << bd.column << ","
-                   << bd.row << " bd[" << bd.bdIndex << "], using placeholder size 1\n";
+      // Try to infer from address gaps
+      auto inferredSizes = inferBufferSizesForTile(bd.column, bd.row);
+      auto sizeIt = inferredSizes.find(bd.bdIndex);
+      if (sizeIt != inferredSizes.end()) {
+        bufSize = static_cast<int64_t>(sizeIt->second);
+        llvm::errs() << "DEBUG: Using inferred buffer size for " << bd.column << ","
+                     << bd.row << " bd[" << bd.bdIndex << "]: " << bufSize << " words\n";
+      } else {
+        llvm::errs() << "WARNING: No buffer length found for " << bd.column << ","
+                     << bd.row << " bd[" << bd.bdIndex << "], using placeholder size 1\n";
+      }
     }
 
     auto tile = getOrCreateTile(bd.column, bd.row);
@@ -110,9 +120,26 @@ public:
     OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointAfter(tile);
 
+    // Create address and mem_bank attributes
+    IntegerAttr addressAttr = nullptr;
+    IntegerAttr memBankAttr = nullptr;
+
+    // Add address attribute if we have the base address
+    if (bd.baseAddress != 0 || bdBufferAddresses.count(key)) {
+      uint32_t address = bd.baseAddress;
+      if (bdBufferAddresses.count(key)) {
+        address = bdBufferAddresses.at(key);
+      }
+      // Convert from word address to byte address (multiply by 4)
+      addressAttr = builder.getI32IntegerAttr(address * 4);
+      llvm::errs() << "DEBUG: Setting buffer address for " << bd.column << ","
+                   << bd.row << " bd[" << bd.bdIndex << "]: 0x"
+                   << llvm::format_hex(address * 4, 8) << "\n";
+    }
+
     auto bufOp = builder.create<AIE::BufferOp>(
         builder.getUnknownLoc(), memrefType, tile,
-        builder.getStringAttr(bufName), nullptr, nullptr, nullptr);
+        builder.getStringAttr(bufName), addressAttr, nullptr, memBankAttr);
 
     buffers[bufName] = bufOp.getResult();
     return bufOp.getResult();
@@ -185,6 +212,11 @@ public:
   void recordBD(const ParsedBDConfig &bd) {
     TileID id{bd.column, bd.row};
     tileBDs[id].push_back(bd);
+
+    // Record buffer address if available
+    if (bd.baseAddress != 0) {
+      recordBufferAddress(bd.column, bd.row, bd.bdIndex, bd.baseAddress);
+    }
   }
 
   /// Record a switchbox connection for later emission
@@ -256,6 +288,79 @@ public:
     bdBufferLengths[key] = length;
     llvm::errs() << "DEBUG: Recorded buffer length for BD " << col << "," << row
                  << " bd[" << bdIndex << "]: " << length << "\n";
+  }
+
+  /// Record a buffer address for a specific BD (from BD configuration)
+  void recordBufferAddress(int col, int row, int bdIndex, uint32_t address) {
+    BDBufferKey key{col, row, bdIndex};
+    bdBufferAddresses[key] = address;
+    llvm::errs() << "DEBUG: Recorded buffer address for BD " << col << "," << row
+                 << " bd[" << bdIndex << "]: 0x" << llvm::format_hex(address, 8) << "\n";
+  }
+
+  /// Infer buffer size from address gaps for a specific tile
+  /// Returns a map from BD index to inferred size (in 32-bit words)
+  std::unordered_map<int, uint32_t> inferBufferSizesForTile(int col, int row) {
+    std::unordered_map<int, uint32_t> inferredSizes;
+
+    // Collect all buffer addresses for this tile
+    struct BufferInfo {
+      int bdIndex;
+      uint32_t address;
+    };
+    std::vector<BufferInfo> buffers;
+
+    for (const auto &[key, addr] : bdBufferAddresses) {
+      if (key.col == col && key.row == row) {
+        buffers.push_back({key.bdIndex, addr});
+      }
+    }
+
+    if (buffers.empty()) {
+      return inferredSizes;
+    }
+
+    // Sort by address
+    std::sort(buffers.begin(), buffers.end(),
+              [](const BufferInfo &a, const BufferInfo &b) {
+                return a.address < b.address;
+              });
+
+    // Infer sizes from address gaps
+    for (size_t i = 0; i < buffers.size(); i++) {
+      uint32_t currentAddr = buffers[i].address;
+      int bdIndex = buffers[i].bdIndex;
+
+      // Check if we already have a size from BD config or NPU instructions
+      BDBufferKey key{col, row, bdIndex};
+      auto lengthIt = bdBufferLengths.find(key);
+      if (lengthIt != bdBufferLengths.end() && lengthIt->second > 0) {
+        // Use the known length
+        inferredSizes[bdIndex] = lengthIt->second;
+        llvm::errs() << "DEBUG: Using known size for tile(" << col << "," << row
+                     << ") bd[" << bdIndex << "]: " << lengthIt->second << " words\n";
+        continue;
+      }
+
+      // Try to infer from the next buffer's address
+      if (i + 1 < buffers.size()) {
+        uint32_t nextAddr = buffers[i + 1].address;
+        uint32_t gap = nextAddr - currentAddr;  // Gap in 32-bit words
+        inferredSizes[bdIndex] = gap;
+        llvm::errs() << "DEBUG: Inferred size from address gap for tile(" << col << ","
+                     << row << ") bd[" << bdIndex << "]: " << gap << " words (addr 0x"
+                     << llvm::format_hex(currentAddr, 8) << " to 0x"
+                     << llvm::format_hex(nextAddr, 8) << ")\n";
+      } else {
+        // Last buffer - we can't infer the size from gap
+        // Keep it as unknown (will use placeholder size 1)
+        llvm::errs() << "DEBUG: Cannot infer size for last buffer at tile(" << col << ","
+                     << row << ") bd[" << bdIndex << "] addr 0x"
+                     << llvm::format_hex(currentAddr, 8) << "\n";
+      }
+    }
+
+    return inferredSizes;
   }
 
   /// Get the maximum column index used in the xclbin
@@ -1323,6 +1428,9 @@ private:
 
   // Track buffer lengths extracted from NPU instructions or CDO (col, row, bdIndex) -> length
   std::unordered_map<BDBufferKey, uint32_t, BDBufferKeyHash> bdBufferLengths;
+
+  // Track buffer addresses extracted from BD configurations (col, row, bdIndex) -> address
+  std::unordered_map<BDBufferKey, uint32_t, BDBufferKeyHash> bdBufferAddresses;
 };
 
 //===----------------------------------------------------------------------===//
