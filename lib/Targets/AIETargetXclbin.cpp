@@ -298,6 +298,22 @@ public:
                  << " bd[" << bdIndex << "]: 0x" << llvm::format_hex(address, 8) << "\n";
   }
 
+  /// Mark a tile as having an ELF file.
+  /// For these tiles, BD configuration is done by the core ELF at runtime,
+  /// NOT by CDO. We should skip emitting aie.mem operations for these tiles
+  /// to avoid generating incorrect BD configurations during recompilation.
+  void markTileWithELF(int col, int row) {
+    TileID id{col, row};
+    tilesWithELF.insert(id);
+    llvm::errs() << "DEBUG: Marked tile(" << col << "," << row
+                 << ") as having ELF (BD config skipped in decompiled MLIR)\n";
+  }
+
+  /// Check if a tile has an ELF file
+  bool tileHasELF(int col, int row) const {
+    return tilesWithELF.count(TileID{col, row}) > 0;
+  }
+
   /// Infer buffer size from address gaps for a specific tile
   /// Returns a map from BD index to inferred size (in 32-bit words)
   std::unordered_map<int, uint32_t> inferBufferSizesForTile(int col, int row) {
@@ -453,6 +469,8 @@ public:
 
     // First pass: Create all buffers for all tiles
     // This ensures buffers are created before any mem/shim_dma ops
+    // Note: Even tiles with ELF files need buffers allocated - the ELF code
+    // references these buffer addresses at runtime.
     for (const auto &[tileId, bds] : tileBDs) {
       if (!targetModel.isShimNOCorPLTile(tileId.col, tileId.row)) {
         // Only create buffers for non-shim tiles (shim tiles use external buffers)
@@ -463,6 +481,10 @@ public:
     }
 
     // Second pass: Create mem/shim_dma/memtile_dma ops
+    // Note: We emit these even for tiles with ELF files because:
+    // 1. The compiler needs them to allocate buffer addresses
+    // 2. The CDO init will set up default BD values
+    // 3. The ELF will reconfigure BDs at runtime with correct values
     for (const auto &[tileId, bds] : tileBDs) {
       if (targetModel.isShimNOCorPLTile(tileId.col, tileId.row)) {
         // Shim tiles use aie.shim_dma
@@ -1431,6 +1453,9 @@ private:
 
   // Track buffer addresses extracted from BD configurations (col, row, bdIndex) -> address
   std::unordered_map<BDBufferKey, uint32_t, BDBufferKeyHash> bdBufferAddresses;
+
+  // Track tiles that have ELF files (BD config is done by ELF at runtime, not CDO)
+  llvm::DenseSet<TileID> tilesWithELF;
 };
 
 //===----------------------------------------------------------------------===//
@@ -2823,6 +2848,14 @@ LogicalResult emitMLIRFromCDO(ModuleOp module,
     if (txnModule.has_value()) {
       extractBDsFromTransaction(*txnModule, deviceOp, bdParser, bdAccum,
                                 dmaChannelTracker, *liftedEmitter);
+    }
+
+    // Mark tiles with ELF files BEFORE emitting BDs
+    // This ensures we skip BD emission for compute tiles whose BDs are configured
+    // by the core ELF at runtime (not by CDO)
+    auto coresWithELF = coreProgExtractor.getCoresWithPrograms();
+    for (const auto &tileId : coresWithELF) {
+      liftedEmitter->markTileWithELF(tileId.col, tileId.row);
     }
 
     // Emit standalone tiles first (tiles referenced but without BDs/switchboxes/locks)
