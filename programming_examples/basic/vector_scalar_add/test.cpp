@@ -10,9 +10,8 @@
 
 #include "cxxopts.hpp"
 #include <cstdint>
-#include <fstream>
+#include <cstring>
 #include <iostream>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -24,79 +23,46 @@
 #include "xrt/experimental/xrt_ext.h"
 #include "xrt/experimental/xrt_module.h"
 
-#include "test_utils.h"
-
 int main(int argc, const char *argv[]) {
   // ------------------------------------------------------
   // Parse program arguments
   // ------------------------------------------------------
   cxxopts::Options options("Vector Scalar Add Test");
-  cxxopts::ParseResult vm;
-  test_utils::add_default_options(options);
-
-  test_utils::parse_options(argc, argv, options, vm);
+  options.add_options()("e,elf", "ELF file", cxxopts::value<std::string>())(
+      "v,verbosity", "Verbosity level", cxxopts::value<int>()->default_value("0"))(
+      "h,help", "Print help");
+  auto vm = options.parse(argc, argv);
+  if (vm.count("help")) {
+    std::cout << options.help() << std::endl;
+    return 0;
+  }
   int verbosity = vm["verbosity"].as<int>();
-  int do_verify = vm["verify"].as<bool>();
-  int n_iterations = vm["iters"].as<int>();
-  int n_warmup_iterations = vm["warmup"].as<int>();
-  int trace_size = vm["trace_sz"].as<int>();
 
   constexpr int IN_SIZE = 1024;
   constexpr int OUT_SIZE = 1024;
 
   // ------------------------------------------------------
-  // Get device, load the xclbin & kernel and register them
+  // Set up XRT with full-ELF flow
   // ------------------------------------------------------
-  // Get a device handle
   unsigned int device_index = 0;
   auto device = xrt::device(device_index);
 
-  // Load the xclbin
+  // Load the ELF and create hardware context directly from it
+  std::string elfPath = vm["elf"].as<std::string>();
   if (verbosity >= 1)
-    std::cout << "Loading xclbin: " << vm["xclbin"].as<std::string>() << "\n";
-  auto xclbin = xrt::xclbin(vm["xclbin"].as<std::string>());
+    std::cout << "Loading ELF: " << elfPath << "\n";
+  xrt::elf ctx_elf{elfPath};
+  xrt::hw_context context = xrt::hw_context(device, ctx_elf);
 
-  // Load the kernel
+  // Kernel name is <device_sym_name>:<runtime_sequence_name>
+  std::string kernelName = "vector_scalar_add:sequence";
   if (verbosity >= 1)
-    std::cout << "Kernel opcode: " << vm["kernel"].as<std::string>() << "\n";
-  std::string Node = vm["kernel"].as<std::string>();
-
-  // Get the kernel from the xclbin
-  auto xkernels = xclbin.get_kernels();
-  auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
-                               [Node, verbosity](xrt::xclbin::kernel &k) {
-                                 auto name = k.get_name();
-                                 if (verbosity >= 1) {
-                                   std::cout << "Name: " << name << std::endl;
-                                 }
-                                 return name.rfind(Node, 0) == 0;
-                               });
-  auto kernelName = xkernel.get_name();
-
-  // Register xclbin
-  if (verbosity >= 1)
-    std::cout << "Registering xclbin: " << vm["xclbin"].as<std::string>()
-              << "\n";
-  device.register_xclbin(xclbin);
-
-  // Get a hardware context
-  if (verbosity >= 1)
-    std::cout << "Getting hardware context.\n";
-  xrt::hw_context context(device, xclbin.get_uuid());
-
-  // Load instr ELF
-  xrt::elf elf(vm["instr"].as<std::string>());
-  xrt::module mod{elf};
-
-  // Get a kernel handle
-  if (verbosity >= 1)
-    std::cout << "Getting handle to kernel:" << kernelName << "\n";
-  auto kernel = xrt::ext::kernel(context, mod, kernelName);
+    std::cout << "Getting handle to kernel: " << kernelName << "\n";
+  auto kernel = xrt::ext::kernel(context, kernelName);
 
   // ------------------------------------------------------
   // Initialize input/ output buffer sizes and sync them
   // ------------------------------------------------------
-
   xrt::bo bo_inA = xrt::ext::bo{device, IN_SIZE * sizeof(int32_t)};
   xrt::bo bo_out = xrt::ext::bo{device, OUT_SIZE * sizeof(int32_t)};
 
@@ -113,9 +79,11 @@ int main(int argc, const char *argv[]) {
 
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
-  unsigned int opcode = 3;
-  auto run = kernel(opcode, 0, 0, bo_inA, bo_out);
-  run.wait();
+  auto run = xrt::run(kernel);
+  run.set_arg(0, bo_inA);
+  run.set_arg(1, bo_out);
+  run.start();
+  run.wait2();
 
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 

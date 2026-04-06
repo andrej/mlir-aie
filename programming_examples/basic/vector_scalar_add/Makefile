@@ -12,7 +12,7 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-all: build/final.xclbin
+all: build/aie.elf
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = vector_scalar_add
@@ -28,25 +28,19 @@ build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${devicename} > $@
 
-build/final.xclbin: build/aie.mlir
+build/aie.elf: build/aie.mlir
 	mkdir -p ${@D}
-	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-elf --no-compile-host \
-		--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --elf-name=insts.elf ${<F}
+	cd ${@D} && aiecc --generate-full-elf --no-compile-host \
+		--no-xchesscc --no-xbridge --dynamic-objFifos ${<F}
 		
 ${targetname}.exe: ${srcdir}/test.cpp
-	rm -rf _build
-	mkdir -p _build
-	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname}
-	cd _build && ${powershell} cmake --build . --config Release
-ifeq "${powershell}" "powershell.exe"
-	cp _build/${targetname}.exe $@
-else
-	cp _build/${targetname} $@ 
-endif
+	clang++ -o $@ $< -std=c++17 \
+		-I/opt/xilinx/xrt/include \
+		-I${srcdir}/../../../runtime_lib/test_lib \
+		-L/opt/xilinx/xrt/lib -lxrt_core -lxrt_coreutil
 
-run: ${targetname}.exe build/final.xclbin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.elf -k MLIR_AIE
+run: ${targetname}.exe build/aie.elf
+	${powershell} ./$< -e build/aie.elf
 
 clean:
 	rm -rf build _build ${targetname}.exe

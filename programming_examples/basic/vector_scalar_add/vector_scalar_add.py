@@ -12,10 +12,13 @@ from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
+from aie.dialects.aiex import npu_load_pdi
 
 PROBLEM_SIZE = 1024
 MEM_TILE_WIDTH = 64
 AIE_TILE_WIDTH = 32
+
+device_name = "vector_scalar_add"
 
 if len(sys.argv) > 1:
     if sys.argv[1] == "npu":
@@ -54,12 +57,13 @@ def my_vector_bias_add():
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(all_data_ty, all_data_ty) as (inTensor, outTensor):
+        rt.inline_ops(lambda: npu_load_pdi(device_ref=device_name), [])
         rt.start(worker)
         rt.fill(of_in0.prod(), inTensor)
         rt.drain(of_out1.cons(), outTensor, wait=True)
 
     # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program(SequentialPlacer(), device_name=device_name)
 
 
 module = my_vector_bias_add()

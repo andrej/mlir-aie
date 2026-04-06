@@ -17,6 +17,8 @@ PROBLEM_SIZE = 1024
 MEM_TILE_WIDTH = 64
 AIE_TILE_WIDTH = 32
 
+device_name = "vector_scalar_add"
+
 if len(sys.argv) > 1:
     if sys.argv[1] == "npu":
         dev = AIEDevice.npu1_1col
@@ -27,7 +29,7 @@ if len(sys.argv) > 1:
 
 
 def my_vector_bias_add():
-    @device(dev)
+    @device(dev, sym_name=device_name)
     def device_body():
         mem_tile_ty = np.ndarray[(MEM_TILE_WIDTH,), np.dtype[np.int32]]
         aie_tile_ty = np.ndarray[(AIE_TILE_WIDTH,), np.dtype[np.int32]]
@@ -66,6 +68,7 @@ def my_vector_bias_add():
         # To/from AIE-array data movement
         @runtime_sequence(all_data_ty, all_data_ty)
         def sequence(inTensor, outTensor):
+            npu_load_pdi(device_ref=device_name)
             in_task = shim_dma_single_bd_task(
                 of_in0, inTensor, sizes=[1, 1, 1, PROBLEM_SIZE], issue_token=True
             )
