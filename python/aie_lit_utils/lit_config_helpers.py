@@ -714,5 +714,7 @@ class LitConfigHelper:
             config_obj: Config object with available_features
             vitis_components: List of Vitis component names
         """
+        config_obj.available_features.add(f"aietools_aie2p") # temporary fix to ensure ryzen_ai_npu2 tests can run even though detection did not work; we are on this hardware
+        config_obj.vitis_components.append("AIE2P")
         for component in vitis_components:
             config_obj.available_features.add(f"aietools_{component.lower()}")
