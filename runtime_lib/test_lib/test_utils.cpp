@@ -351,6 +351,66 @@ void test_utils::patch_load_pdi(
   }
 }
 
+void test_utils::append_and_patch_pdi(std::vector<uint32_t> &instr_v,
+                                      const LoadPdiPatchInfo &info,
+                                      const std::string &pdi_path,
+                                      int verbosity) {
+  // Read PDI binary file
+  std::ifstream pdi_file(pdi_path, std::ios::binary);
+  if (!pdi_file.is_open())
+    throw std::runtime_error("Cannot open PDI file: " + pdi_path);
+
+  pdi_file.seekg(0, std::ios::end);
+  size_t pdi_size = static_cast<size_t>(pdi_file.tellg());
+  pdi_file.seekg(0, std::ios::beg);
+
+  std::vector<uint8_t> pdi_data(pdi_size);
+  if (!pdi_file.read(reinterpret_cast<char *>(pdi_data.data()), pdi_size))
+    throw std::runtime_error("Failed to read PDI file: " + pdi_path);
+
+  // Record where we will append the PDI data (byte offset)
+  uint32_t pdi_append_offset =
+      static_cast<uint32_t>(instr_v.size() * sizeof(uint32_t));
+
+  // Pad PDI data to 4-byte alignment
+  size_t padded_size = (pdi_size + 3) & ~static_cast<size_t>(3);
+  pdi_data.resize(padded_size, 0);
+
+  // Append PDI data as uint32_t words
+  const uint32_t *pdi_words =
+      reinterpret_cast<const uint32_t *>(pdi_data.data());
+  instr_v.insert(instr_v.end(), pdi_words, pdi_words + padded_size / 4);
+
+  // Patch this LOAD_PDI instruction's address and size fields
+  uint32_t pdi_size_bytes = static_cast<uint32_t>(pdi_size);
+  instr_v[info.address_field_offset_bytes / 4] = pdi_append_offset;
+  instr_v[info.address_field_offset_bytes / 4 + 1] = 0;
+  instr_v[info.size_field_offset_bytes / 4] = pdi_size_bytes;
+
+  if (verbosity >= 1)
+    std::cout << "Patched LOAD_PDI id=" << info.pdi_id
+              << " with PDI: " << pdi_path << " (offset=0x" << std::hex
+              << pdi_append_offset << ", size=" << std::dec << pdi_size_bytes
+              << ")\n";
+}
+
+void test_utils::fixup_load_pdi_addresses(
+    std::vector<uint32_t> &instr_v,
+    const std::vector<LoadPdiPatchInfo> &patch_infos, uint64_t instr_bo_addr,
+    int verbosity) {
+  for (const auto &info : patch_infos) {
+    uint32_t rel_offset = instr_v[info.address_field_offset_bytes / 4];
+    uint64_t abs_addr = instr_bo_addr + rel_offset;
+    instr_v[info.address_field_offset_bytes / 4] =
+        static_cast<uint32_t>(abs_addr & 0xFFFFFFFF);
+    instr_v[info.address_field_offset_bytes / 4 + 1] =
+        static_cast<uint32_t>(abs_addr >> 32);
+    if (verbosity >= 1)
+      std::cout << "Patched LOAD_PDI id=" << info.pdi_id << " address: 0x"
+                << std::hex << abs_addr << std::dec << "\n";
+  }
+}
+
 // --------------------------------------------------------------------------
 // Write32 / RTP Patching
 // --------------------------------------------------------------------------

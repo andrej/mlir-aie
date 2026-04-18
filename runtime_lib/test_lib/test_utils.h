@@ -141,6 +141,20 @@ void patch_load_pdi(std::vector<uint32_t> &instr_v,
                     const std::vector<LoadPdiPatchInfo> &patch_infos,
                     const std::string &pdi_path);
 
+// Append a single PDI binary to the instruction buffer and patch the
+// corresponding LOAD_PDI entry.  Use this when different LOAD_PDI instructions
+// need different PDI payloads (multi-PDI reconfiguration).
+void append_and_patch_pdi(std::vector<uint32_t> &instr_v,
+                          const LoadPdiPatchInfo &info,
+                          const std::string &pdi_path, int verbosity = 0);
+
+// After the instruction BO has been allocated, convert the relative PDI offsets
+// written by patch_load_pdi / append_and_patch_pdi into absolute device
+// addresses.
+void fixup_load_pdi_addresses(std::vector<uint32_t> &instr_v,
+                              const std::vector<LoadPdiPatchInfo> &patch_infos,
+                              uint64_t instr_bo_addr, int verbosity = 0);
+
 struct Write32PatchInfo {
   std::string name;
   size_t offset_bytes;

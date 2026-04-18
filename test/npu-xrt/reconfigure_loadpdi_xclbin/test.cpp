@@ -8,10 +8,8 @@
 // correct output on its buffer region.
 
 #include <cstdint>
-#include <fstream>
 #include <iostream>
 #include <map>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -22,38 +20,6 @@
 #include "xrt/xrt_kernel.h"
 
 constexpr int DATA_SIZE = 512;
-
-// Read a PDI file and append it to the instruction buffer.
-// Returns the byte offset (relative to buffer start) where the PDI data begins.
-static uint32_t append_pdi(std::vector<uint32_t> &instr_v,
-                           const std::string &pdi_path,
-                           uint32_t &out_pdi_size) {
-  std::ifstream pdi_file(pdi_path, std::ios::binary);
-  if (!pdi_file.is_open())
-    throw std::runtime_error("Cannot open PDI file: " + pdi_path);
-
-  pdi_file.seekg(0, std::ios::end);
-  size_t pdi_size = static_cast<size_t>(pdi_file.tellg());
-  pdi_file.seekg(0, std::ios::beg);
-
-  std::vector<uint8_t> pdi_data(pdi_size);
-  if (!pdi_file.read(reinterpret_cast<char *>(pdi_data.data()), pdi_size))
-    throw std::runtime_error("Failed to read PDI file: " + pdi_path);
-
-  uint32_t pdi_append_offset =
-      static_cast<uint32_t>(instr_v.size() * sizeof(uint32_t));
-
-  // Pad to 4-byte alignment
-  size_t padded_size = (pdi_size + 3) & ~static_cast<size_t>(3);
-  pdi_data.resize(padded_size, 0);
-
-  const uint32_t *pdi_words =
-      reinterpret_cast<const uint32_t *>(pdi_data.data());
-  instr_v.insert(instr_v.end(), pdi_words, pdi_words + padded_size / 4);
-
-  out_pdi_size = static_cast<uint32_t>(pdi_size);
-  return pdi_append_offset;
-}
 
 int main(int argc, const char *argv[]) {
   // Program arguments parsing
@@ -100,22 +66,7 @@ int main(int argc, const char *argv[]) {
       std::cerr << "Unknown pdi_id=" << info.pdi_id << "\n";
       return 1;
     }
-    const std::string &pdi_path = it->second;
-
-    uint32_t pdi_size = 0;
-    uint32_t pdi_offset = append_pdi(instr_v, pdi_path, pdi_size);
-
-    // Patch address field (relative byte offset to PDI data)
-    instr_v[info.address_field_offset_bytes / 4] = pdi_offset;
-    instr_v[info.address_field_offset_bytes / 4 + 1] = 0;
-    // Patch size field
-    instr_v[info.size_field_offset_bytes / 4] = pdi_size;
-
-    if (verbosity >= 1)
-      std::cout << "Patched LOAD_PDI id=" << info.pdi_id
-                << " with PDI: " << pdi_path
-                << " (offset=0x" << std::hex << pdi_offset
-                << ", size=" << std::dec << pdi_size << ")\n";
+    test_utils::append_and_patch_pdi(instr_v, info, it->second, verbosity);
   }
 
   if (verbosity >= 1)
@@ -161,17 +112,8 @@ int main(int argc, const char *argv[]) {
     std::cout << "Instruction BO device address: 0x" << std::hex
               << instr_bo_addr << std::dec << "\n";
 
-  for (const auto &info : patch_infos) {
-    uint32_t rel_offset = instr_v[info.address_field_offset_bytes / 4];
-    uint64_t abs_addr = instr_bo_addr + rel_offset;
-    instr_v[info.address_field_offset_bytes / 4] =
-        static_cast<uint32_t>(abs_addr & 0xFFFFFFFF);
-    instr_v[info.address_field_offset_bytes / 4 + 1] =
-        static_cast<uint32_t>(abs_addr >> 32);
-    if (verbosity >= 1)
-      std::cout << "Patched LOAD_PDI id=" << info.pdi_id << " address: 0x"
-                << std::hex << abs_addr << std::dec << "\n";
-  }
+  test_utils::fixup_load_pdi_addresses(instr_v, patch_infos, instr_bo_addr,
+                                       verbosity);
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
