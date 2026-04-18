@@ -3745,7 +3745,7 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
   // expand-load-pdis so the IDs are assigned to the original device refs
   // before expand-load-pdis copies them to empty device load_pdi ops.
   if (failed(runNpuLoweringPipeline(*clonedModule, tmpDirName,
-                                    /*patchPdiIds=*/generateFullElf))) {
+                                    /*patchPdiIds=*/true))) {
     return failure();
   }
 
