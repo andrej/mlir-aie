@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Host code for the LOAD_PDI reconfiguration xclbin flow test.
-// This test loads two different PDIs (add_two and add_three) and verifies
-// that each configuration produces the correct output on its buffer region.
+// The MLIR uses `aiex.configure` and `aiex.run` ops (lowered to LOAD_PDI by
+// the materialize-runtime-sequences pass).  This test loads two different PDIs
+// (add_two and add_three) and verifies that each configuration produces the
+// correct output on its buffer region.
 
 #include <cstdint>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -83,14 +86,21 @@ int main(int argc, const char *argv[]) {
     std::cout << "Found " << patch_infos.size()
               << " LOAD_PDI instruction(s) to patch\n";
 
-  // Map pdi_id -> PDI file path
-  // pdi_id 1 = add_two.pdi, pdi_id 2 = add_three.pdi
+  // Map pdi_id -> PDI file path.
+  // PDI IDs are auto-assigned in device iteration order (1-based):
+  //   @add_two = 1, @add_three = 2, @main = 3
   std::string pdi1_path = vm["pdi1"].as<std::string>();
   std::string pdi2_path = vm["pdi2"].as<std::string>();
+  std::map<int, std::string> pdi_map = {{1, pdi1_path}, {2, pdi2_path}};
 
   // Append each PDI and patch its LOAD_PDI instruction separately
   for (const auto &info : patch_infos) {
-    const std::string &pdi_path = (info.pdi_id == 1) ? pdi1_path : pdi2_path;
+    auto it = pdi_map.find(info.pdi_id);
+    if (it == pdi_map.end()) {
+      std::cerr << "Unknown pdi_id=" << info.pdi_id << "\n";
+      return 1;
+    }
+    const std::string &pdi_path = it->second;
 
     uint32_t pdi_size = 0;
     uint32_t pdi_offset = append_pdi(instr_v, pdi_path, pdi_size);

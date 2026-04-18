@@ -1,11 +1,11 @@
 // (c) Copyright 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// This test verifies device reconfiguration via LOAD_PDI using the xclbin
-// flow.  Two device configurations (@add_two and @add_three) are loaded
-// sequentially within a single runtime sequence.  After each LOAD_PDI the
-// test runs a DMA transfer to verify the newly loaded compute kernel is
-// active.
+// This test verifies device reconfiguration using `aiex.configure` and
+// `aiex.run` ops with the xclbin flow.  A separate @main device holds the
+// control sequence that configures and runs two sub-devices (@add_two and
+// @add_three) sequentially.  The `materialize-runtime-sequences` pass
+// lowers these into LOAD_PDI + inlined DMA instructions.
 //
 // Expected results:
 //   elements [0..3]  : input + 2  (processed by @add_two)
@@ -14,8 +14,7 @@
 
 module {
 
-    // Primary device – owns the runtime sequence and objectfifos.
-    // LOAD_PDI instructions reconfigure the AIE array mid-stream.
+    // First device configuration – adds 2 to each element.
     aie.device(npu2) @add_two {
 
         %t00 = aie.tile(0, 0)
@@ -48,10 +47,6 @@ module {
         }
 
         aie.runtime_sequence @sequence(%a : memref<512xi32>) {
-
-            // ---- Phase 1: Load add_two configuration ----
-            aiex.npu.load_pdi { id = 1 : i32, device_ref = @add_two }
-
             %t_in = aiex.dma_configure_task_for @objfifo_in {
                 aie.dma_bd(%a : memref<512xi32>, 0, 4)
                 aie.end
@@ -63,27 +58,11 @@ module {
             aiex.dma_start_task(%t_in)
             aiex.dma_start_task(%t_out)
             aiex.dma_await_task(%t_out)
-
-            // ---- Phase 2: Reconfigure to add_three ----
-            aiex.npu.load_pdi { id = 2 : i32, device_ref = @add_three }
-
-            %t_in2 = aiex.dma_configure_task_for @objfifo_in {
-                aie.dma_bd(%a : memref<512xi32>, 4, 4)
-                aie.end
-            }
-            %t_out2 = aiex.dma_configure_task_for @objfifo_out {
-                aie.dma_bd(%a : memref<512xi32>, 4, 4)
-                aie.end
-            } {issue_token = true}
-            aiex.dma_start_task(%t_in2)
-            aiex.dma_start_task(%t_out2)
-            aiex.dma_await_task(%t_out2)
         }
 
     }
 
     // Second device configuration – adds 3 to each element.
-    // Compiled to its own PDI; loaded at runtime via LOAD_PDI.
     aie.device(npu2) @add_three {
 
         %t00 = aie.tile(0, 0)
@@ -113,6 +92,40 @@ module {
             aie.objectfifo.release @objfifo_out(Produce, 1)
             }
             aie.end
+        }
+
+        aie.runtime_sequence @sequence(%a : memref<512xi32>) {
+            %t_in = aiex.dma_configure_task_for @objfifo_in {
+                aie.dma_bd(%a : memref<512xi32>, 4, 4)
+                aie.end
+            }
+            %t_out = aiex.dma_configure_task_for @objfifo_out {
+                aie.dma_bd(%a : memref<512xi32>, 4, 4)
+                aie.end
+            } {issue_token = true}
+            aiex.dma_start_task(%t_in)
+            aiex.dma_start_task(%t_out)
+            aiex.dma_await_task(%t_out)
+        }
+
+    }
+
+    // Control device – orchestrates loading and running the sub-devices.
+    // Placed last so its xclbin and instruction binary are the final output
+    // (all devices write to the same output filenames in this test).
+    aie.device(npu2) @main {
+
+        aie.runtime_sequence @sequence(%a : memref<512xi32>) {
+
+            // ---- Phase 1: Configure and run add_two ----
+            aiex.configure @add_two {
+                aiex.run @sequence(%a) : (memref<512xi32>)
+            }
+
+            // ---- Phase 2: Configure and run add_three ----
+            aiex.configure @add_three {
+                aiex.run @sequence(%a) : (memref<512xi32>)
+            }
         }
 
     }
