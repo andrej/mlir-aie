@@ -127,6 +127,33 @@ void print_matrix(const std::vector<T> matrix, int n_cols,
 
 void write_out_trace(char *traceOutPtr, size_t trace_size, std::string path);
 
+struct LoadPdiPatchInfo {
+  size_t load_pdi_offset_bytes;
+  size_t address_field_offset_bytes;
+  size_t size_field_offset_bytes;
+  int pdi_id;
+};
+
+std::vector<LoadPdiPatchInfo>
+parse_instr_offsets_json(const std::string &json_path);
+
+void patch_load_pdi(std::vector<uint32_t> &instr_v,
+                    const std::vector<LoadPdiPatchInfo> &patch_infos,
+                    const std::string &pdi_path);
+
+struct Write32PatchInfo {
+  std::string name;
+  size_t offset_bytes;
+  size_t value_field_offset_bytes;
+};
+
+std::vector<Write32PatchInfo>
+parse_write32_offsets_json(const std::string &json_path);
+
+void patch_rtp(std::vector<uint32_t> &instr_v,
+               const std::vector<Write32PatchInfo> &infos,
+               const std::string &name, uint32_t value);
+
 } // namespace test_utils
 
 #endif // _TEST_UTILS_H_

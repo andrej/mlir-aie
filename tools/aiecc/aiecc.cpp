@@ -226,6 +226,12 @@ static cl::opt<std::string>
               cl::desc("Output instructions filename for NPU target"),
               cl::init("{0}_{1}.bin"), cl::cat(aieCompilerOptions));
 
+static cl::opt<std::string> instsOffsetsName(
+    "npu-insts-offsets-name",
+    cl::desc("Output JSON filename for NPU instruction offsets (empty to "
+             "disable)"),
+    cl::init(""), cl::cat(aieCompilerOptions));
+
 static cl::opt<bool> generateElf(
     "aie-generate-elf",
     cl::desc("Generate ELF for AIE control/configuration (via aiebu)"),
@@ -3791,8 +3797,11 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
       // Generate NPU instructions using direct C++ API call.
       // This replaces the subprocess call to aie-translate --aie-npu-to-binary.
       std::vector<uint32_t> instructions;
+      std::vector<xilinx::AIE::NpuInstrOffset> instrOffsets;
+      bool collectOffsets = !instsOffsetsName.empty();
       if (failed(xilinx::AIE::AIETranslateNpuToBinary(
-              *clonedModule, instructions, devName, seqName))) {
+              *clonedModule, instructions, devName, seqName,
+              collectOffsets ? &instrOffsets : nullptr))) {
         llvm::errs() << "Error generating NPU instructions for sequence: "
                      << seqName << "\n";
         result = failure();
@@ -3815,6 +3824,58 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
       if (verbose) {
         llvm::outs() << "Wrote " << instructions.size()
                      << " instructions to: " << outputPath << "\n";
+      }
+
+      // Write instruction offsets JSON if requested
+      if (collectOffsets && !instrOffsets.empty()) {
+        llvm::json::Array instrArray;
+        for (const auto &entry : instrOffsets) {
+          if (entry.kind == xilinx::AIE::NpuInstrOffset::LoadPdi) {
+            instrArray.push_back(llvm::json::Object{
+                {"type", "load_pdi"},
+                {"offset_bytes", static_cast<int64_t>(entry.offset_bytes)},
+                {"pdi_id", static_cast<int64_t>(entry.pdi_id)},
+                {"address_field_offset_bytes",
+                 static_cast<int64_t>(entry.address_field_offset_bytes)},
+                {"size_field_offset_bytes",
+                 static_cast<int64_t>(entry.size_field_offset_bytes)},
+            });
+          } else if (entry.kind == xilinx::AIE::NpuInstrOffset::Write32) {
+            llvm::json::Object obj{
+                {"type", "write32"},
+                {"offset_bytes", static_cast<int64_t>(entry.offset_bytes)},
+                {"value_field_offset_bytes",
+                 static_cast<int64_t>(entry.value_field_offset_bytes)},
+            };
+            if (!entry.name.empty())
+              obj["name"] = entry.name;
+            instrArray.push_back(std::move(obj));
+          }
+        }
+        llvm::json::Object root{
+            {"instructions", std::move(instrArray)},
+        };
+
+        std::string offsetsFileName =
+            formatString(instsOffsetsName, devName.str(), seqName);
+        SmallString<128> offsetsPath;
+        if (generateNpuInsts) {
+          offsetsPath = offsetsFileName;
+        } else {
+          offsetsPath = tmpDirName;
+          sys::path::append(offsetsPath, offsetsFileName);
+        }
+
+        if (failed(writeJsonToFile(offsetsPath,
+                                   llvm::json::Value(std::move(root))))) {
+          result = failure();
+          return;
+        }
+
+        if (verbose) {
+          llvm::outs() << "Wrote instruction offsets to: " << offsetsPath
+                       << "\n";
+        }
       }
     });
   }

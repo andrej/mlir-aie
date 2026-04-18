@@ -57,7 +57,8 @@ public:
 
     rewriter.replaceOpWithNewOp<NpuWrite32Op>(
         op, localLockAddress, op.getValue(), nullptr,
-        rewriter.getI32IntegerAttr(col), rewriter.getI32IntegerAttr(row));
+        rewriter.getI32IntegerAttr(col), rewriter.getI32IntegerAttr(row),
+        nullptr);
 
     return success();
   };

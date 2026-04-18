@@ -112,7 +112,8 @@ struct AIEInlineTraceConfigPass
             builder.getUI32IntegerAttr(value),
             nullptr,                        // buffer
             builder.getI32IntegerAttr(col), // column
-            builder.getI32IntegerAttr(row)  // row
+            builder.getI32IntegerAttr(row), // row
+            nullptr                         // name
         );
       }
 

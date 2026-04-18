@@ -15,10 +15,26 @@
 
 #include "llvm/Support/raw_ostream.h"
 
+#include <string>
 #include <vector>
 
 namespace xilinx {
 namespace AIE {
+
+/// Metadata describing the byte offset of a notable instruction within the NPU
+/// instruction binary (LOAD_PDI or Write32/RTP).
+struct NpuInstrOffset {
+  enum Kind { LoadPdi, Write32 };
+  Kind kind;
+  uint32_t offset_bytes;          // byte offset of the instruction start
+  // LOAD_PDI fields:
+  uint32_t pdi_id = 0;
+  uint32_t address_field_offset_bytes = 0;
+  uint32_t size_field_offset_bytes = 0;
+  // Write32 fields:
+  uint32_t value_field_offset_bytes = 0;
+  std::string name; // RTP buffer name (empty if not from an RTP write)
+};
 
 mlir::LogicalResult AIETranslateToXAIEV2(mlir::ModuleOp module,
                                          llvm::raw_ostream &output,
@@ -39,10 +55,10 @@ mlir::LogicalResult AIETranslateShimSolution(mlir::ModuleOp module,
                                              llvm::StringRef deviceName = "");
 mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
                                          llvm::raw_ostream &, llvm::StringRef);
-mlir::LogicalResult AIETranslateNpuToBinary(mlir::ModuleOp,
-                                            std::vector<uint32_t> &,
-                                            llvm::StringRef deviceName = "",
-                                            llvm::StringRef sequenceName = "");
+mlir::LogicalResult AIETranslateNpuToBinary(
+    mlir::ModuleOp, std::vector<uint32_t> &, llvm::StringRef deviceName = "",
+    llvm::StringRef sequenceName = "",
+    std::vector<NpuInstrOffset> *offsets = nullptr);
 mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp module,
                                         llvm::raw_ostream &output);
 mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp, std::string &assembly);

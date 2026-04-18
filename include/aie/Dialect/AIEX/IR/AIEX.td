@@ -802,7 +802,8 @@ def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
         UI32Attr:$value,
         OptionalAttr<FlatSymbolRefAttr>:$buffer,
         OptionalAttr<I32Attr>:$column,
-        OptionalAttr<I32Attr>:$row
+        OptionalAttr<I32Attr>:$row,
+        OptionalAttr<StrAttr>:$name
   );
   let results = (outs );
   let assemblyFormat = [{

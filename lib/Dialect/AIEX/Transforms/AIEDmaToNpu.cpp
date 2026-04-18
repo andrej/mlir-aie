@@ -50,7 +50,8 @@ struct Write32SymToAddr : OpConversionPattern<NpuWrite32Op> {
     }
 
     rewriter.replaceOpWithNewOp<NpuWrite32Op>(op, *address, op.getValue(),
-                                              nullptr, nullptr, nullptr);
+                                              nullptr, nullptr, nullptr,
+                                              op.getNameAttr());
     return success();
   }
 };
@@ -132,7 +133,8 @@ struct RtpToWrite32Pattern : OpConversionPattern<NpuWriteRTPOp> {
 
     NpuWrite32Op::create(rewriter, op->getLoc(), address, op.getValue(),
                          nullptr, rewriter.getI32IntegerAttr(tile.getCol()),
-                         rewriter.getI32IntegerAttr(tile.getRow()));
+                         rewriter.getI32IntegerAttr(tile.getRow()),
+                         rewriter.getStringAttr(op.getBuffer()));
 
     rewriter.eraseOp(op);
     return success();
@@ -185,7 +187,7 @@ public:
       cmd |= 0x80000000;
 
     NpuWrite32Op::create(rewriter, op->getLoc(), queue_offset, cmd, nullptr,
-                         nullptr, nullptr);
+                         nullptr, nullptr, nullptr);
     rewriter.eraseOp(op);
     return success();
   }

@@ -202,6 +202,190 @@ bool test_utils::nearly_equal(float a, float b, float epsilon, float abs_th)
 }
 
 // --------------------------------------------------------------------------
+// LOAD_PDI Patching
+// --------------------------------------------------------------------------
+
+// Minimal JSON parser for the instruction offsets file.
+// Extracts load_pdi entries from the "instructions" array.
+static int64_t extract_json_int(const std::string &obj,
+                                const std::string &key) {
+  std::string needle = "\"" + key + "\"";
+  auto pos = obj.find(needle);
+  if (pos == std::string::npos)
+    throw std::runtime_error("JSON key not found: " + key);
+  pos = obj.find(':', pos + needle.size());
+  if (pos == std::string::npos)
+    throw std::runtime_error("JSON malformed after key: " + key);
+  ++pos;
+  // skip whitespace
+  while (pos < obj.size() && (obj[pos] == ' ' || obj[pos] == '\t'))
+    ++pos;
+  char *end = nullptr;
+  int64_t val = std::strtoll(obj.c_str() + pos, &end, 10);
+  if (end == obj.c_str() + pos)
+    throw std::runtime_error("JSON could not parse int for key: " + key);
+  return val;
+}
+
+// Extract a JSON string value for the given key.  Returns empty string if the
+// key is not present (optional field).
+static std::string extract_json_string(const std::string &obj,
+                                       const std::string &key) {
+  std::string needle = "\"" + key + "\"";
+  auto pos = obj.find(needle);
+  if (pos == std::string::npos)
+    return {};
+  pos = obj.find(':', pos + needle.size());
+  if (pos == std::string::npos)
+    return {};
+  ++pos;
+  // skip whitespace
+  while (pos < obj.size() && (obj[pos] == ' ' || obj[pos] == '\t'))
+    ++pos;
+  if (pos >= obj.size() || obj[pos] != '"')
+    return {};
+  ++pos; // skip opening quote
+  auto end = obj.find('"', pos);
+  if (end == std::string::npos)
+    return {};
+  return obj.substr(pos, end - pos);
+}
+
+/// Read a JSON file and find all objects whose "type" field matches \p
+/// type_value.  Returns the substring for each matching `{ ... }` block.
+static std::vector<std::string>
+find_json_objects_by_type(const std::string &json_path,
+                          const std::string &type_value) {
+  std::ifstream ifs(json_path);
+  if (!ifs.is_open())
+    throw std::runtime_error("Cannot open JSON offsets file: " + json_path);
+
+  std::string content((std::istreambuf_iterator<char>(ifs)),
+                      std::istreambuf_iterator<char>());
+
+  std::vector<std::string> objects;
+  std::string marker = "\"" + type_value + "\"";
+  size_t search_pos = 0;
+  while (true) {
+    auto pos = content.find(marker, search_pos);
+    if (pos == std::string::npos)
+      break;
+
+    auto obj_start = content.rfind('{', pos);
+    if (obj_start == std::string::npos) {
+      search_pos = pos + marker.size();
+      continue;
+    }
+    auto obj_end = content.find('}', pos);
+    if (obj_end == std::string::npos) {
+      search_pos = pos + marker.size();
+      continue;
+    }
+
+    objects.push_back(content.substr(obj_start, obj_end - obj_start + 1));
+    search_pos = obj_end + 1;
+  }
+
+  return objects;
+}
+
+std::vector<test_utils::LoadPdiPatchInfo>
+test_utils::parse_instr_offsets_json(const std::string &json_path) {
+  auto objs = find_json_objects_by_type(json_path, "load_pdi");
+
+  std::vector<LoadPdiPatchInfo> results;
+  for (const auto &obj : objs) {
+    LoadPdiPatchInfo info;
+    info.load_pdi_offset_bytes =
+        static_cast<size_t>(extract_json_int(obj, "offset_bytes"));
+    info.pdi_id = static_cast<int>(extract_json_int(obj, "pdi_id"));
+    info.address_field_offset_bytes =
+        static_cast<size_t>(extract_json_int(obj, "address_field_offset_bytes"));
+    info.size_field_offset_bytes =
+        static_cast<size_t>(extract_json_int(obj, "size_field_offset_bytes"));
+    results.push_back(info);
+  }
+
+  return results;
+}
+
+void test_utils::patch_load_pdi(
+    std::vector<uint32_t> &instr_v,
+    const std::vector<LoadPdiPatchInfo> &patch_infos,
+    const std::string &pdi_path) {
+  // Read PDI binary file
+  std::ifstream pdi_file(pdi_path, std::ios::binary);
+  if (!pdi_file.is_open())
+    throw std::runtime_error("Cannot open PDI file: " + pdi_path);
+
+  pdi_file.seekg(0, std::ios::end);
+  size_t pdi_size = static_cast<size_t>(pdi_file.tellg());
+  pdi_file.seekg(0, std::ios::beg);
+
+  std::vector<uint8_t> pdi_data(pdi_size);
+  if (!pdi_file.read(reinterpret_cast<char *>(pdi_data.data()), pdi_size))
+    throw std::runtime_error("Failed to read PDI file: " + pdi_path);
+
+  // Record where we will append the PDI data (byte offset)
+  uint32_t pdi_append_offset =
+      static_cast<uint32_t>(instr_v.size() * sizeof(uint32_t));
+
+  // Pad PDI data to 4-byte alignment
+  size_t padded_size = (pdi_size + 3) & ~static_cast<size_t>(3);
+  pdi_data.resize(padded_size, 0);
+
+  // Append PDI data as uint32_t words
+  const uint32_t *pdi_words =
+      reinterpret_cast<const uint32_t *>(pdi_data.data());
+  instr_v.insert(instr_v.end(), pdi_words, pdi_words + padded_size / 4);
+
+  // Patch each LOAD_PDI instruction
+  uint32_t pdi_size_bytes = static_cast<uint32_t>(pdi_size);
+  for (const auto &info : patch_infos) {
+    // Patch address field (lower 32 bits)
+    instr_v[info.address_field_offset_bytes / 4] = pdi_append_offset;
+    // Upper 32 bits = 0
+    instr_v[info.address_field_offset_bytes / 4 + 1] = 0;
+    // Patch size field
+    instr_v[info.size_field_offset_bytes / 4] = pdi_size_bytes;
+  }
+}
+
+// --------------------------------------------------------------------------
+// Write32 / RTP Patching
+// --------------------------------------------------------------------------
+
+std::vector<test_utils::Write32PatchInfo>
+test_utils::parse_write32_offsets_json(const std::string &json_path) {
+  auto objs = find_json_objects_by_type(json_path, "write32");
+
+  std::vector<Write32PatchInfo> results;
+  for (const auto &obj : objs) {
+    Write32PatchInfo info;
+    info.name = extract_json_string(obj, "name");
+    info.offset_bytes =
+        static_cast<size_t>(extract_json_int(obj, "offset_bytes"));
+    info.value_field_offset_bytes =
+        static_cast<size_t>(extract_json_int(obj, "value_field_offset_bytes"));
+    results.push_back(std::move(info));
+  }
+
+  return results;
+}
+
+void test_utils::patch_rtp(std::vector<uint32_t> &instr_v,
+                           const std::vector<Write32PatchInfo> &infos,
+                           const std::string &name, uint32_t value) {
+  for (const auto &info : infos) {
+    if (info.name == name) {
+      instr_v[info.value_field_offset_bytes / 4] = value;
+      return;
+    }
+  }
+  throw std::runtime_error("RTP entry not found: " + name);
+}
+
+// --------------------------------------------------------------------------
 // Tracing
 // --------------------------------------------------------------------------
 void test_utils::write_out_trace(char *traceOutPtr, size_t trace_size,

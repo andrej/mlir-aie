@@ -461,7 +461,7 @@ emitTransactionOps(OpBuilder &builder,
 
     if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
       AIEX::NpuWrite32Op::create(builder, loc, op.cmd.RegOff, op.cmd.Value,
-                                 nullptr, nullptr, nullptr);
+                                 nullptr, nullptr, nullptr, nullptr);
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_BLOCKWRITE) {
       auto memref = memref::GetGlobalOp::create(builder, loc, payload.getType(),
                                                 payload.getName());

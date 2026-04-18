@@ -275,7 +275,7 @@ struct AIEDMATasksToNPUPass
                                  nullptr);
       } else {
         NpuWrite32Op::create(builder, bd_op.getLoc(), register_addr, buf_addr,
-                             nullptr, nullptr, nullptr);
+                             nullptr, nullptr, nullptr, nullptr);
       }
     } else {
       return bd_op->emitOpError(

@@ -563,7 +563,8 @@ struct AIEInsertTraceFlowsPass
 
       xilinx::AIEX::NpuWrite32Op::create(
           builder, runtimeSeq.getLoc(), timerCtrlAddr, timerCtrlValue, nullptr,
-          builder.getI32IntegerAttr(col), builder.getI32IntegerAttr(row));
+          builder.getI32IntegerAttr(col), builder.getI32IntegerAttr(row),
+          nullptr);
     }
 
     // 4c-4f. Insert per-shim configurations
@@ -627,7 +628,8 @@ struct AIEInsertTraceFlowsPass
         uint32_t bdIdWithToken = (1U << 31) | chanDesc.bdId; // enable_token = 1
         xilinx::AIEX::NpuWrite32Op::create(
             builder, runtimeSeq.getLoc(), taskQueueAddr, bdIdWithToken, nullptr,
-            builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
+            builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0),
+            nullptr);
       }
 
       // 4f. Shim timer and broadcast control (only if start broadcast is used)
@@ -643,7 +645,7 @@ struct AIEInsertTraceFlowsPass
         xilinx::AIEX::NpuWrite32Op::create(
             builder, runtimeSeq.getLoc(), shimTimerCtrlAddr, *userEvent1 << 8,
             nullptr, builder.getI32IntegerAttr(shimCol),
-            builder.getI32IntegerAttr(0));
+            builder.getI32IntegerAttr(0), nullptr);
 
         // Configure broadcast register with USER_EVENT_1
         std::string broadcastRegName =
@@ -656,7 +658,7 @@ struct AIEInsertTraceFlowsPass
         xilinx::AIEX::NpuWrite32Op::create(
             builder, runtimeSeq.getLoc(), broadcastReg->offset, *userEvent1,
             nullptr, builder.getI32IntegerAttr(shimCol),
-            builder.getI32IntegerAttr(0));
+            builder.getI32IntegerAttr(0), nullptr);
 
         // Generate USER_EVENT_1 to trigger the broadcast
         const RegisterInfo *eventGenReg = targetModel.lookupRegister(
@@ -666,7 +668,7 @@ struct AIEInsertTraceFlowsPass
         xilinx::AIEX::NpuWrite32Op::create(
             builder, runtimeSeq.getLoc(), eventGenReg->offset, *userEvent1,
             nullptr, builder.getI32IntegerAttr(shimCol),
-            builder.getI32IntegerAttr(0));
+            builder.getI32IntegerAttr(0), nullptr);
       }
     }
 
@@ -697,7 +699,7 @@ struct AIEInsertTraceFlowsPass
       xilinx::AIEX::NpuWrite32Op::create(
           builder, runtimeSeq.getLoc(), broadcastReg->offset, *userEvent0,
           nullptr, builder.getI32IntegerAttr(shimCol),
-          builder.getI32IntegerAttr(0));
+          builder.getI32IntegerAttr(0), nullptr);
 
       const RegisterInfo *stopEventGenReg = targetModel.lookupRegister(
           "Event_Generate", shimInfo.shimTile.getTileID());
@@ -706,7 +708,7 @@ struct AIEInsertTraceFlowsPass
       xilinx::AIEX::NpuWrite32Op::create(
           builder, runtimeSeq.getLoc(), stopEventGenReg->offset, *userEvent0,
           nullptr, builder.getI32IntegerAttr(shimCol),
-          builder.getI32IntegerAttr(0));
+          builder.getI32IntegerAttr(0), nullptr);
     }
   }
 

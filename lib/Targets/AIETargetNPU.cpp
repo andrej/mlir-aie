@@ -98,8 +98,10 @@ void appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
   words[3] |= (op.getChannel() & 0xff) << 24;
 }
 
-void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
+void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op,
+                    std::vector<xilinx::AIE::NpuInstrOffset> *offsets) {
 
+  uint32_t offsetBytes = instructions.size() * sizeof(uint32_t);
   auto words = reserveAndGetTail(instructions, 6);
 
   if (op.getBuffer()) {
@@ -113,6 +115,16 @@ void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
   words[3] = 0;                               // Extra bits for Reg Offset
   words[4] = op.getValue();                   // Value
   words[5] = words.size() * sizeof(uint32_t); // Operation Size
+
+  if (offsets) {
+    xilinx::AIE::NpuInstrOffset entry;
+    entry.kind = xilinx::AIE::NpuInstrOffset::Write32;
+    entry.offset_bytes = offsetBytes;
+    entry.value_field_offset_bytes = offsetBytes + 16; // word[4]
+    if (auto nameAttr = op.getNameAttr())
+      entry.name = nameAttr.getValue().str();
+    offsets->push_back(entry);
+  }
 }
 
 void appendMaskWrite32(std::vector<uint32_t> &instructions,
@@ -134,8 +146,10 @@ void appendMaskWrite32(std::vector<uint32_t> &instructions,
   words[6] = words.size() * sizeof(uint32_t); // Operation Size
 }
 
-void appendLoadPdi(std::vector<uint32_t> &instructions, NpuLoadPdiOp op) {
+void appendLoadPdi(std::vector<uint32_t> &instructions, NpuLoadPdiOp op,
+                    std::vector<xilinx::AIE::NpuInstrOffset> *offsets) {
 
+  uint32_t offsetBytes = instructions.size() * sizeof(uint32_t);
   auto words = reserveAndGetTail(instructions, 4);
 
   // XAIE_IO_LOADPDI
@@ -148,6 +162,16 @@ void appendLoadPdi(std::vector<uint32_t> &instructions, NpuLoadPdiOp op) {
   if (address) {
     words[2] = *address;
     words[3] = *address >> 32;
+  }
+
+  if (offsets) {
+    xilinx::AIE::NpuInstrOffset entry;
+    entry.kind = xilinx::AIE::NpuInstrOffset::LoadPdi;
+    entry.offset_bytes = offsetBytes;
+    entry.pdi_id = op.getId();
+    entry.size_field_offset_bytes = offsetBytes + 4;    // word[1]
+    entry.address_field_offset_bytes = offsetBytes + 8; // word[2]
+    offsets->push_back(entry);
   }
 }
 
@@ -203,7 +227,8 @@ void appendPreempt(std::vector<uint32_t> &instructions, NpuPreemptOp op) {
 
 LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
     mlir::ModuleOp moduleOp, std::vector<uint32_t> &instructions,
-    StringRef deviceName, StringRef sequenceName) {
+    StringRef deviceName, StringRef sequenceName,
+    std::vector<NpuInstrOffset> *offsets) {
 
   DeviceOp deviceOp =
       DeviceOp::getForSymbolInModuleOrError(moduleOp, deviceName);
@@ -243,7 +268,7 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
           })
           .Case<NpuWrite32Op>([&](auto op) {
             count++;
-            appendWrite32(instructions, op);
+            appendWrite32(instructions, op, offsets);
           })
           .Case<NpuBlockWriteOp>([&](auto op) {
             count++;
@@ -255,7 +280,7 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
           })
           .Case<NpuLoadPdiOp>([&](auto op) {
             count++;
-            appendLoadPdi(instructions, op);
+            appendLoadPdi(instructions, op, offsets);
           })
           .Case<NpuAddressPatchOp>([&](auto op) {
             count++;
