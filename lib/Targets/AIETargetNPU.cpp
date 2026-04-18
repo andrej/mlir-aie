@@ -116,7 +116,7 @@ void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op,
   words[4] = op.getValue();                   // Value
   words[5] = words.size() * sizeof(uint32_t); // Operation Size
 
-  if (offsets) {
+  if (offsets && op.getNameAttr()) {
     xilinx::AIE::NpuInstrOffset entry;
     entry.kind = xilinx::AIE::NpuInstrOffset::Write32;
     entry.offset_bytes = offsetBytes;

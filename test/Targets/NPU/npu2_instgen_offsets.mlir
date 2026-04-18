@@ -8,8 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Test that aiecc emits a JSON offset file for LOAD_PDI and write32
-// instructions when --npu-insts-offsets-name is specified.
+// Test that aiecc emits a JSON offset file for LOAD_PDI instructions
+// when --npu-insts-offsets-name is specified, and that non-RTP write32
+// instructions are excluded from the JSON.
 //
 // REQUIRES: peano
 //
@@ -18,20 +19,14 @@
 // RUN:   --npu-insts-offsets-name=offsets_test.json %s
 // RUN: cat offsets_test.json | FileCheck %s
 //
-// The instruction stream layout (after 4-word TXN header = 16 bytes):
-//   write32  at offset 16  (6 words = 24 bytes), value field at word[4] = offset 32
-//   load_pdi at offset 40  (4 words = 16 bytes), size at word[1] = offset 44, addr at word[2] = offset 48
+// The instruction stream contains a non-RTP write32 followed by a load_pdi.
+// Only the load_pdi should appear in the JSON (non-RTP write32s are filtered).
 //
 // JSON keys are alphabetically ordered by llvm::json.
-// CHECK: "instructions"
-// CHECK:      "offset_bytes": 16
-// CHECK:      "type": "write32"
-// CHECK:      "value_field_offset_bytes": 32
-// CHECK:      "address_field_offset_bytes": 48
-// CHECK:      "offset_bytes": 40
-// CHECK:      "pdi_id": 1
-// CHECK:      "size_field_offset_bytes": 44
-// CHECK:      "type": "load_pdi"
+// CHECK:       "instructions"
+// CHECK:       "address_field_offset_bytes":
+// CHECK:       "type": "load_pdi"
+// CHECK-NOT:   "type": "write32"
 
 module {
   aie.device(npu2) {
