@@ -232,6 +232,12 @@ static cl::opt<std::string> instsOffsetsName(
              "disable)"),
     cl::init(""), cl::cat(aieCompilerOptions));
 
+static cl::opt<bool> elideAddressPatches(
+    "elide-address-patches",
+    cl::desc("Suppress ADDRESS_PATCH firmware instructions from the "
+             "instruction binary while keeping JSON offset metadata"),
+    cl::init(false), cl::cat(aieCompilerOptions));
+
 static cl::opt<bool> generateElf(
     "aie-generate-elf",
     cl::desc("Generate ELF for AIE control/configuration (via aiebu)"),
@@ -3801,7 +3807,8 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
       bool collectOffsets = !instsOffsetsName.empty();
       if (failed(xilinx::AIE::AIETranslateNpuToBinary(
               *clonedModule, instructions, devName, seqName,
-              collectOffsets ? &instrOffsets : nullptr))) {
+              collectOffsets ? &instrOffsets : nullptr,
+              elideAddressPatches))) {
         llvm::errs() << "Error generating NPU instructions for sequence: "
                      << seqName << "\n";
         result = failure();
@@ -4080,9 +4087,9 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
   }
 
   std::vector<uint32_t> dmaSeqInstructions;
-  if (failed(xilinx::AIE::AIETranslateNpuToBinary(*clonedModule,
-                                                  dmaSeqInstructions, devName,
-                                                  "" /* all sequences */))) {
+  if (failed(xilinx::AIE::AIETranslateNpuToBinary(
+          *clonedModule, dmaSeqInstructions, devName, "" /* all sequences */,
+          nullptr, elideAddressPatches))) {
     llvm::errs() << "Error generating control packet DMA sequence for device: "
                  << devName << "\n";
     return failure();
@@ -4428,7 +4435,8 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
 
       std::vector<uint32_t> instructions;
       if (failed(xilinx::AIE::AIETranslateNpuToBinary(
-              *clonedModule, instructions, devName, seq.getSymName()))) {
+              *clonedModule, instructions, devName, seq.getSymName(),
+              nullptr, elideAddressPatches))) {
         llvm::errs() << "Error generating NPU instructions for ELF: "
                      << seq.getSymName() << "\n";
         result = failure();
@@ -5554,7 +5562,8 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
 
         std::vector<uint32_t> instructions;
         if (failed(xilinx::AIE::AIETranslateNpuToBinary(
-                *expandedModule, instructions, devName, seqName))) {
+                *expandedModule, instructions, devName, seqName, nullptr,
+                elideAddressPatches))) {
           llvm::errs() << "Error generating NPU instructions for sequence: "
                        << seqName << "\n";
           return;

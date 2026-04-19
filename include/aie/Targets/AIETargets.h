@@ -62,7 +62,8 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
 mlir::LogicalResult AIETranslateNpuToBinary(
     mlir::ModuleOp, std::vector<uint32_t> &, llvm::StringRef deviceName = "",
     llvm::StringRef sequenceName = "",
-    std::vector<NpuInstrOffset> *offsets = nullptr);
+    std::vector<NpuInstrOffset> *offsets = nullptr,
+    bool elideAddressPatches = false);
 mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp module,
                                         llvm::raw_ostream &output);
 mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp, std::string &assembly);
