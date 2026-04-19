@@ -218,11 +218,200 @@ int main() {
   assert(caught);
   std::cout << "PASS: patch_rtp throws on unknown name\n";
 
+  // === Address Patch tests ===
+
+  // --- Test parse_address_patch_offsets_json ---
+  std::string json_path4 = "/tmp/test_addr_patch.json";
+  uint32_t bd_mmio_base = 0x000A0000;
+  uint64_t bd_addr_reg = bd_mmio_base + 0x4; // Buffer address at BD Word[1]
+  write_file(json_path4, R"({
+  "instructions": [
+    {
+      "type": "address_patch",
+      "offset_bytes": 88,
+      "arg_idx": 2,
+      "arg_plus": 256,
+      "addr": )" + std::to_string(bd_addr_reg) +
+                             R"(
+    }
+  ]
+})");
+
+  auto addr_patches =
+      test_utils::parse_address_patch_offsets_json(json_path4);
+  assert(addr_patches.size() == 1);
+  assert(addr_patches[0].offset_bytes == 88);
+  assert(addr_patches[0].arg_idx == 2);
+  assert(addr_patches[0].arg_plus == 256);
+  assert(addr_patches[0].addr == bd_addr_reg);
+  std::cout << "PASS: parse_address_patch_offsets_json\n";
+
+  // --- Test patch_addresses with txn header ---
+  // Build a transaction binary: txn header + WRITE + BLOCKWRITE with 8-word BD
+  std::vector<uint32_t> addr_instr = {
+      // Txn header (4 words)
+      0x06030100, // version 0.1, device 6, num_cols 3
+      0x00000000, // reserved
+      0x00000002, // 2 operations
+      0x00000058, // total size: 88 bytes = 22 words * 4
+
+      // WRITE instruction (6 words)
+      0x00000000, // opcode: WRITE
+      0x00000000, // col/row
+      0x00010000, // MMIO address
+      0x00000018, // size: 24 bytes
+      0x12345678, // value
+      0x00000000, // unused
+
+      // BLOCKWRITE instruction (12 words = 4 header + 8 BD payload)
+      0x00000001,  // opcode: BLOCKWRITE
+      0x00000000,  // col=0, row=0
+      bd_mmio_base, // MMIO address of BD
+      0x00000030,  // size: 48 bytes = 12 words
+      // BD payload (8 words):
+      0x00001000, // BD Word 0: Buffer_Length
+      0x00000000, // BD Word 1: Buffer_Offset (lo addr - to be patched)
+      0x00000000, // BD Word 2: (hi addr - to be patched)
+      0x00000000, // BD Word 3
+      0x00000000, // BD Word 4
+      0x00000000, // BD Word 5
+      0x00000000, // BD Word 6
+      0x02000000, // BD Word 7: valid_bd
+  };
+
+  // arg_idx 2 -> buffer at 0x0001DEAD0000
+  std::map<uint32_t, uint64_t> arg_addrs;
+  arg_addrs[2] = 0x0001DEAD0000ULL;
+
+  test_utils::patch_addresses(addr_instr, addr_patches, arg_addrs);
+
+  // full_addr = 0x0001DEAD0000 + 256 = 0x0001DEAD0100
+  // BD Word 1 at index 15: lo = 0xDEAD0100
+  // BD Word 2 at index 16: hi = 0x00000001
+  assert(addr_instr[15] == 0xDEAD0100);
+  assert(addr_instr[16] == 0x00000001);
+  // Verify surrounding words unchanged
+  assert(addr_instr[14] == 0x00001000); // BD Word 0
+  assert(addr_instr[21] == 0x02000000); // BD Word 7
+  std::cout << "PASS: patch_addresses (with txn header)\n";
+
+  // --- Test patch_addresses without txn header (raw instructions) ---
+  uint32_t bd_mmio_base2 = 0x000B0000;
+  uint64_t bd_addr_reg2 = bd_mmio_base2 + 0x4;
+  std::vector<uint32_t> raw_instr = {
+      // BLOCKWRITE instruction (12 words)
+      0x00000001,   // opcode: BLOCKWRITE
+      0x00000100,   // col=0, row=1
+      bd_mmio_base2, // MMIO address
+      0x00000030,   // size: 48 bytes
+      // BD payload (8 words):
+      0x00002000, // BD Word 0: Buffer_Length
+      0x00000000, // BD Word 1: to be patched (lo)
+      0x00000000, // BD Word 2: to be patched (hi)
+      0x00000000, 0x00000000, 0x00000000, 0x00000000,
+      0x02000000, // BD Word 7: valid_bd
+  };
+
+  test_utils::AddressPatchInfo raw_patch;
+  raw_patch.offset_bytes = 48;
+  raw_patch.arg_idx = 0;
+  raw_patch.arg_plus = 0;
+  raw_patch.addr = bd_addr_reg2;
+
+  std::map<uint32_t, uint64_t> raw_args;
+  raw_args[0] = 0xABCD00000000ULL;
+
+  test_utils::patch_addresses(raw_instr, {raw_patch}, raw_args);
+
+  // full_addr = 0xABCD00000000 + 0 = 0xABCD00000000
+  // lo = 0x00000000, hi = 0x0000ABCD
+  assert(raw_instr[5] == 0x00000000);
+  assert(raw_instr[6] == 0x0000ABCD);
+  assert(raw_instr[4] == 0x00002000); // BD Word 0 unchanged
+  std::cout << "PASS: patch_addresses (no txn header)\n";
+
+  // --- Test patch_addresses with multiple patches ---
+  uint32_t bd_mmio_base3 = 0x000C0000;
+  uint32_t bd_mmio_base4 = 0x000C0020; // Second BD, offset 32 bytes
+  std::vector<uint32_t> multi_instr = {
+      // BLOCKWRITE 1 (12 words)
+      0x00000001, 0x00000000, bd_mmio_base3, 0x00000030,
+      0x00001000, 0x00000000, 0x00000000, 0x00000000,
+      0x00000000, 0x00000000, 0x00000000, 0x02000000,
+      // BLOCKWRITE 2 (12 words)
+      0x00000001, 0x00000000, bd_mmio_base4, 0x00000030,
+      0x00002000, 0x00000000, 0x00000000, 0x00000000,
+      0x00000000, 0x00000000, 0x00000000, 0x02000000,
+  };
+
+  std::vector<test_utils::AddressPatchInfo> multi_patches = {
+      {0, 0, 0x100, bd_mmio_base3 + 0x4},
+      {0, 3, 0x200, bd_mmio_base4 + 0x4},
+  };
+  std::map<uint32_t, uint64_t> multi_args;
+  multi_args[0] = 0x10000000ULL;
+  multi_args[3] = 0x20000000ULL;
+
+  test_utils::patch_addresses(multi_instr, multi_patches, multi_args);
+
+  // Patch 1: full_addr = 0x10000000 + 0x100 = 0x10000100
+  assert(multi_instr[5] == 0x10000100);
+  assert(multi_instr[6] == 0x00000000);
+  // Patch 2: full_addr = 0x20000000 + 0x200 = 0x20000200
+  assert(multi_instr[17] == 0x20000200);
+  assert(multi_instr[18] == 0x00000000);
+  std::cout << "PASS: patch_addresses (multiple patches)\n";
+
+  // --- Test patch_addresses throws on missing arg_idx ---
+  bool caught2 = false;
+  try {
+    std::map<uint32_t, uint64_t> empty_args;
+    test_utils::patch_addresses(multi_instr, multi_patches, empty_args);
+  } catch (const std::runtime_error &) {
+    caught2 = true;
+  }
+  assert(caught2);
+  std::cout << "PASS: patch_addresses throws on missing arg_idx\n";
+
+  // --- Test parse ignores non-address_patch entries ---
+  std::string json_path5 = "/tmp/test_addr_mixed.json";
+  write_file(json_path5, R"({
+  "instructions": [
+    {
+      "type": "load_pdi",
+      "offset_bytes": 0,
+      "pdi_id": 0,
+      "address_field_offset_bytes": 8,
+      "size_field_offset_bytes": 4
+    },
+    {
+      "type": "address_patch",
+      "offset_bytes": 16,
+      "arg_idx": 1,
+      "arg_plus": 64,
+      "addr": 655364
+    },
+    {
+      "type": "write32",
+      "offset_bytes": 32,
+      "value_field_offset_bytes": 36
+    }
+  ]
+})");
+  auto mixed_patches =
+      test_utils::parse_address_patch_offsets_json(json_path5);
+  assert(mixed_patches.size() == 1);
+  assert(mixed_patches[0].arg_idx == 1);
+  assert(mixed_patches[0].arg_plus == 64);
+  std::cout << "PASS: parse_address_patch_offsets_json ignores non-address_patch\n";
+
   // Cleanup
   std::remove(json_path.c_str());
   std::remove(json_path2.c_str());
   std::remove(pdi_path.c_str());
   std::remove(json_path3.c_str());
+  std::remove(json_path4.c_str());
+  std::remove(json_path5.c_str());
 
   std::cout << "ALL TESTS PASSED\n";
   return 0;
