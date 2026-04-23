@@ -24,7 +24,6 @@
 #if defined(__STDCPP_BFLOAT16_T__)
 #include <stdfloat>
 #endif
-#include <map>
 #include <string>
 #include <vector>
 
@@ -168,26 +167,6 @@ parse_write32_offsets_json(const std::string &json_path);
 void patch_rtp(std::vector<uint32_t> &instr_v,
                const std::vector<Write32PatchInfo> &infos,
                const std::string &name, uint32_t value);
-
-struct AddressPatchInfo {
-  uint32_t offset_bytes; // byte offset of ADDRESS_PATCH instr in original binary
-  uint32_t arg_idx;      // which buffer argument
-  uint64_t arg_plus;     // offset to add to buffer base address
-  uint64_t addr;         // BD register MMIO address to patch
-};
-
-std::vector<AddressPatchInfo>
-parse_address_patch_offsets_json(const std::string &json_path);
-
-// Patch buffer addresses into the instruction stream on the host side.
-// Replicates what the firmware DDR_PATCH instruction does: for each patch
-// entry, finds the BLOCKWRITE instruction whose MMIO target range covers
-// 'addr', then writes the 48-bit address (arg_base + arg_plus) into the
-// BD payload at the corresponding word offset.
-void patch_addresses(std::vector<uint32_t> &instr_v,
-                     const std::vector<AddressPatchInfo> &patches,
-                     const std::map<uint32_t, uint64_t> &arg_addresses,
-                     int verbosity = 0);
 
 } // namespace test_utils
 
