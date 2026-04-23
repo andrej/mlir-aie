@@ -29,3 +29,9 @@ utils/vitisVariables.config
 runtime_lib/xaiengine/src
 /ironenv
 /.cache
+
+# Auto-detected build artifacts
+*.bin
+*.elf
+*.o
+*.xclbin
