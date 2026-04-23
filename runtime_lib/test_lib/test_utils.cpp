@@ -446,6 +446,31 @@ void test_utils::patch_rtp(std::vector<uint32_t> &instr_v,
 }
 
 // --------------------------------------------------------------------------
+// AddressPatch Parsing
+// --------------------------------------------------------------------------
+
+std::vector<test_utils::AddressPatchInfo>
+test_utils::parse_address_patch_offsets_json(const std::string &json_path) {
+  auto objs = find_json_objects_by_type(json_path, "address_patch");
+
+  std::vector<AddressPatchInfo> results;
+  for (const auto &obj : objs) {
+    AddressPatchInfo info;
+    info.offset_bytes =
+        static_cast<size_t>(extract_json_int(obj, "offset_bytes"));
+    info.address_field_offset_bytes =
+        static_cast<size_t>(extract_json_int(obj, "address_field_offset_bytes"));
+    info.arg_idx =
+        static_cast<uint32_t>(extract_json_int(obj, "arg_idx"));
+    info.arg_plus =
+        static_cast<uint32_t>(extract_json_int(obj, "arg_plus"));
+    results.push_back(info);
+  }
+
+  return results;
+}
+
+// --------------------------------------------------------------------------
 // Tracing
 // --------------------------------------------------------------------------
 void test_utils::write_out_trace(char *traceOutPtr, size_t trace_size,

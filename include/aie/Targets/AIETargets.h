@@ -24,7 +24,7 @@ namespace AIE {
 /// Metadata describing the byte offset of a notable instruction within the NPU
 /// instruction binary (LOAD_PDI or Write32/RTP).
 struct NpuInstrOffset {
-  enum Kind { LoadPdi, Write32 };
+  enum Kind { LoadPdi, Write32, AddressPatch };
   Kind kind;
   uint32_t offset_bytes;          // byte offset of the instruction start
   // LOAD_PDI fields:
@@ -34,6 +34,9 @@ struct NpuInstrOffset {
   // Write32 fields:
   uint32_t value_field_offset_bytes = 0;
   std::string name; // RTP buffer name (empty if not from an RTP write)
+  // AddressPatch fields:
+  uint32_t arg_idx = 0;
+  uint32_t arg_plus = 0;
 };
 
 mlir::LogicalResult AIETranslateToXAIEV2(mlir::ModuleOp module,

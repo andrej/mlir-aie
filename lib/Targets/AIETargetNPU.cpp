@@ -176,8 +176,10 @@ void appendLoadPdi(std::vector<uint32_t> &instructions, NpuLoadPdiOp op,
 }
 
 void appendAddressPatch(std::vector<uint32_t> &instructions,
-                        NpuAddressPatchOp op) {
+                        NpuAddressPatchOp op,
+                        std::vector<xilinx::AIE::NpuInstrOffset> *offsets) {
 
+  uint32_t offsetBytes = instructions.size() * sizeof(uint32_t);
   auto words = reserveAndGetTail(instructions, 12);
 
   // XAIE_IO_CUSTOM_OP_DDR_PATCH
@@ -191,6 +193,16 @@ void appendAddressPatch(std::vector<uint32_t> &instructions,
   words[8] = op.getArgIdx();
 
   words[10] = op.getArgPlus();
+
+  if (offsets) {
+    xilinx::AIE::NpuInstrOffset entry;
+    entry.kind = xilinx::AIE::NpuInstrOffset::AddressPatch;
+    entry.offset_bytes = offsetBytes;
+    entry.arg_idx = op.getArgIdx();
+    entry.arg_plus = op.getArgPlus();
+    entry.address_field_offset_bytes = offsetBytes + 24; // words[6] = op.getAddr()
+    offsets->push_back(entry);
+  }
 }
 
 void appendBlockWrite(std::vector<uint32_t> &instructions, NpuBlockWriteOp op) {
@@ -284,7 +296,7 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
           })
           .Case<NpuAddressPatchOp>([&](auto op) {
             count++;
-            appendAddressPatch(instructions, op);
+            appendAddressPatch(instructions, op, offsets);
           })
           .Case<NpuPreemptOp>([&](auto op) {
             count++;

@@ -168,6 +168,16 @@ void patch_rtp(std::vector<uint32_t> &instr_v,
                const std::vector<Write32PatchInfo> &infos,
                const std::string &name, uint32_t value);
 
+struct AddressPatchInfo {
+  size_t offset_bytes;
+  size_t address_field_offset_bytes;
+  uint32_t arg_idx;
+  uint32_t arg_plus;
+};
+
+std::vector<AddressPatchInfo>
+parse_address_patch_offsets_json(const std::string &json_path);
+
 } // namespace test_utils
 
 #endif // _TEST_UTILS_H_
