@@ -3850,15 +3850,6 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
             if (!entry.name.empty())
               obj["name"] = entry.name;
             instrArray.push_back(std::move(obj));
-          } else if (entry.kind ==
-                     xilinx::AIE::NpuInstrOffset::AddressPatch) {
-            instrArray.push_back(llvm::json::Object{
-                {"type", "address_patch"},
-                {"offset_bytes", static_cast<int64_t>(entry.offset_bytes)},
-                {"arg_idx", static_cast<int64_t>(entry.arg_idx)},
-                {"arg_plus", static_cast<int64_t>(entry.arg_plus)},
-                {"addr", static_cast<int64_t>(entry.addr)},
-            });
           }
         }
         llvm::json::Object root{
