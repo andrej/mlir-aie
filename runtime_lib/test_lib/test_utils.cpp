@@ -476,16 +476,13 @@ static uint32_t get_instr_size_words(const std::vector<uint32_t> &instr_v,
     return 0;
   uint32_t opc = instr_v[i] & 0xFF;
   switch (opc) {
-  case 0x00: // XAIE_IO_WRITE — fixed 6 words (size at word[5])
-    return 6;
-  case 0x01: // XAIE_IO_BLOCKWRITE — variable size (size at word[3])
+  case 0x00: // XAIE_IO_WRITE
+  case 0x01: // XAIE_IO_BLOCKWRITE
+  case 0x02: // XAIE_IO_MASKWRITE
+  case 0x03: // XAIE_IO_MASKPOLL
     if (i + 3 >= instr_v.size())
       return 0;
     return instr_v[i + 3] / 4;
-  case 0x02: // XAIE_IO_MASKWRITE — fixed 7 words (size at word[6])
-    return 7;
-  case 0x03: // XAIE_IO_MASKPOLL — fixed 6 words (size at word[5])
-    return 6;
   case 0x06: // XAIE_IO_PREEMPT
     return 2;
   case 0x08: // XAIE_IO_LOAD_PDI
