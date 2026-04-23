@@ -230,16 +230,20 @@ class Tensor(ABC):
         """
         Moves the tensor to a specified target device.
 
+        Always performs the device sync even if the tensor's device flag
+        already matches ``target_device``.  Host-side writes to the
+        memory-mapped buffer (via ``torch_view()``, ``np.copyto()``, or
+        direct numpy indexing on the BO region) do not update the device
+        flag, so skipping the sync when the flag matches would silently
+        leave stale data on the device.
+
         Args:
             target_device (str): The target device.
 
         Returns:
            The tensor object on the target device.
         """
-        if target_device == self.device:
-            # nothing to do
-            pass
-        elif target_device == "npu":
+        if target_device == "npu":
             self._sync_to_device()
             self.device = "npu"
         elif target_device == "cpu":
