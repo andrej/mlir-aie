@@ -79,7 +79,7 @@ void emitApplyOffset57(CertApplyOffset57Op op, std::string &text) {
   ss << "  APPLY_OFFSET_57        ";
   ss << "@" << op.getSymbol().str() << ", ";
   ss << num_entries << ", ";
-  ss << llvm::format("0x%04x", offset) << "\n";
+  ss << offset << "\n";
   text += ss.str();
 }
 
@@ -118,6 +118,7 @@ void emitJob(CertJobOp jobOp, std::string &text, std::string &data) {
             [&](auto op) { emitUcDmaWriteDesSync(op, text); })
         .Case<CertWaitTCTSOp>([&](auto op) { emitWaitTCTS(op, text); })
         .Case<CertWrite32Op>([&](auto op) { emitWrite32(op, text); })
+        .Case<AIE::EndOp>([](auto) { /* block terminator — no CERT output */ })
         .Default([&](Operation *op) {
           op->emitError("Unsupported operation in CertJobOp");
         });

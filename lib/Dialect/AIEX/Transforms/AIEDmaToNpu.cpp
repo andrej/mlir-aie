@@ -529,8 +529,15 @@ public:
     int row = op.getRow();
 
     int num_words = 0;
-    if (isa<AIE::AIE2TargetModel>(tm)) {
-      // Tile DMAs have 6 words, MemTile and Shim have 8 words
+    if (isa<AIE::AIE2PSTargetModel>(tm)) {
+      // AIE2PS: shim BDs have 9 words (word 8 = 57-bit addr high bits)
+      if (tm.isShimNOCTile(col, row))
+        num_words = 9;
+      else if (tm.isCoreTile(col, row))
+        num_words = 6;
+      else
+        num_words = 8;
+    } else if (isa<AIE::AIE2TargetModel>(tm)) {
       if (tm.isCoreTile(col, row))
         num_words = 6;
       else
