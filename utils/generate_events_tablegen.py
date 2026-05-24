@@ -74,6 +74,12 @@ ARCH_CONFIGS = {
         "prefix": "XAIE2P_EVENTS_",
         "suffix": "AIE2P",
     },
+    "xaie_events_aie2ps.h": {
+        "name": "aie2ps",
+        "display_name": "AIE2PS",
+        "prefix": "XAIE2PS_EVENTS_",
+        "suffix": "AIE2PS",
+    },
 }
 
 

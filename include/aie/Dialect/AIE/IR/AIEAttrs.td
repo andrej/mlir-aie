@@ -231,5 +231,6 @@ def InitValuesArrayAttr
 include "AIEEventsAIE.td.inc"
 include "AIEEventsAIE2.td.inc"
 include "AIEEventsAIE2P.td.inc"
+include "AIEEventsAIE2PS.td.inc"
 
 #endif // AIE_ATTRS

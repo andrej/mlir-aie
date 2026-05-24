@@ -39,7 +39,6 @@ ARCH_CONFIGS = {
         "name": "aie2ps",
         "display_name": "AIE2PS",
         "prefix": "XAIE2PS_EVENTS_",
-        "python_name": "aie2ps",  # Python module name
     },
 }
 
