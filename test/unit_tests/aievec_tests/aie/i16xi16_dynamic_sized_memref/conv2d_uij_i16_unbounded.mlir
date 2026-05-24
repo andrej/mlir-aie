@@ -8,6 +8,9 @@
 // RUN: xchesscc_wrapper aie -f -g +s +w work +o work -I%S -I. %S/i16xi16.cc work/kernel.o
 // RUN: cp -r %S/data . && xca_udm_dbg -qf -T -P %aietools/data/versal_prod/lib -t "%S/../../profiling.tcl ./work/a.out"
 
+// xca_udm_dbg missing in latest vitis
+// XFAIL: *
+
 func.func @conv2d(%A: memref<?x?xi16>, %B: memref<?xi16>, %C: memref<?x?xi16>) {
     %c0 = arith.constant 0 : index
     %M = memref.dim %C, %c0 : memref<?x?xi16>
