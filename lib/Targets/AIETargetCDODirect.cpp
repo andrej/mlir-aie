@@ -146,8 +146,8 @@ translateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
 
   // things like XAIE_MEM_TILE_ROW_START and the missing
   // shim dma on tile (0,0) are hard-coded assumptions about NPU...
-  assert(targetModel.hasProperty(AIETargetModel::IsNPU) &&
-         "Only NPU currently supported");
+  assert(targetModel.hasProperty(AIETargetModel::UsesCDO) &&
+         "CDO generation requires a target with UsesCDO property");
 
   AIERTControl ctl(targetModel);
   if (failed(ctl.setIOBackend(aieSim, xaieDebug)))

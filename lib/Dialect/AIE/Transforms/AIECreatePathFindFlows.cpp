@@ -139,10 +139,15 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
                               dest.bundle == WireBundle::NOC)) {
 
           // shim DMAs at end of flows
-          if (dest.bundle == WireBundle::DMA)
-            // must be either N2 -> DMA0 or N3 -> DMA1
-            shimCh = dest.channel == 0 ? 2 : 3;
-          else if (dest.bundle == WireBundle::NOC)
+          if (dest.bundle == WireBundle::DMA) {
+            const auto &targetModel = device.getTargetModel();
+            if (isa<AIE2PSTargetModel>(targetModel))
+              // AIE2PS: must be either N1 -> DMA0 or N3 -> DMA1
+              shimCh = dest.channel == 0 ? 1 : 3;
+            else
+              // AIE2: must be either N2 -> DMA0 or N3 -> DMA1
+              shimCh = dest.channel == 0 ? 2 : 3;
+          } else if (dest.bundle == WireBundle::NOC)
             // must be either N2/3/4/5 -> NOC0/1/2/3
             shimCh = dest.channel + 2;
           else if (dest.bundle == WireBundle::PLIO)
@@ -163,8 +168,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
         }
       }
 
-      LLVM_DEBUG(llvm::dbgs() << tileId << ": " << setting << " | "
-                              << "\n");
+      LLVM_DEBUG(llvm::dbgs() << tileId << ": " << setting << " | " << "\n");
     }
 
     LLVM_DEBUG(llvm::dbgs()
@@ -800,14 +804,14 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     LLVM_DEBUG(llvm::dbgs()
                << "Port " << tile << " " << stringifyWireBundle(bundle) << " "
                << channel << '\n');
-    LLVM_DEBUG(llvm::dbgs() << "Mask "
-                            << "0x" << llvm::Twine::utohexstr(mask) << '\n');
-    LLVM_DEBUG(llvm::dbgs() << "ID "
-                            << "0x" << llvm::Twine::utohexstr(ID) << '\n');
+    LLVM_DEBUG(llvm::dbgs()
+               << "Mask " << "0x" << llvm::Twine::utohexstr(mask) << '\n');
+    LLVM_DEBUG(llvm::dbgs()
+               << "ID " << "0x" << llvm::Twine::utohexstr(ID) << '\n');
     for (int i = 0; i < 31; i++) {
       if ((i & mask) == (ID & mask))
-        LLVM_DEBUG(llvm::dbgs() << "matches flow ID "
-                                << "0x" << llvm::Twine::utohexstr(i) << '\n');
+        LLVM_DEBUG(llvm::dbgs() << "matches flow ID " << "0x"
+                                << llvm::Twine::utohexstr(i) << '\n');
     }
   }
 #endif
@@ -1025,10 +1029,15 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
           builder.setInsertionPointToStart(&b0);
 
           mtset.setDestBundle(WireBundle::South);
+          // AIE2PS: N1 -> DMA0, N3 -> DMA1
+          // Others: N2 -> DMA0, N3 -> DMA1
+          bool isAIE2PS =
+              device.getTargetModel().getTargetArch() == AIEArch::AIE2ps;
           if (mtset.getDestChannel() == 0) {
-            mtset.setDestChannel(2);
+            int northPort = isAIE2PS ? 1 : 2;
+            mtset.setDestChannel(northPort);
             ConnectOp::create(builder, builder.getUnknownLoc(),
-                              WireBundle::North, 2, WireBundle::DMA, 0);
+                              WireBundle::North, northPort, WireBundle::DMA, 0);
           }
           if (mtset.getDestChannel() == 1) {
             mtset.setDestChannel(3);

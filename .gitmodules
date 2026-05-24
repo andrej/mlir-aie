@@ -6,8 +6,8 @@
 	url = https://github.com/Xilinx/cmakeModules.git
 [submodule "runtime_lib/xaiengine/aie-rt"]
 	path = third_party/aie-rt
-	url = https://github.com/stephenneuendorffer/aie-rt.git
-	branch = strix_2024.2
+	url = https://github.com/fifield/aie-rt.git
+	branch = xlnx_rel_v2025.1
 [submodule "third_party/bootgen"]
 	path = third_party/bootgen
 	url = https://github.com/jgmelber/bootgen.git

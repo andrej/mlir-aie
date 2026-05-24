@@ -30,7 +30,39 @@ mlir::LogicalResult AIE::AIETranslateSCSimConfig(mlir::ModuleOp module,
   }
   AIEArch arch = targetOp.getTargetModel().getTargetArch();
 
-  if (arch == AIEArch::AIE2p) {
+  if (arch == AIEArch::AIE2ps) {
+    output << "{\n"
+           << "    \"SimulationConfig\": {\n"
+           << "        \"device_json\": {\n"
+           << "            \"directory\": \"data/aie2ps/devices\",\n"
+           << "            \"file\": \"XC2VE3858.json\"\n"
+           << "        },\n"
+           << "        \"phy_device_file\": \"XC2VE3858\",\n"
+           << "        \"aiearch\": \"aie2ps\",\n"
+           << "        \"aie_freq\": 1000000000.0,\n"
+           << "        \"use_real_noc\": 1,\n"
+           << "        \"evaluate_fifo_depth\": 0,\n"
+           << "        \"shim_sol\": \"arch/aieshim_solution.aiesol\",\n"
+           << "        \"xpe_report\": \"reports/graph.xpe\",\n"
+           << "        \"pl_ip_block\": [\n"
+           << "            {\n"
+           << "                \"name\": \"ps_ps_main\",\n"
+           << "                \"ip\": \"ps\",\n"
+           << "                \"lib_path\": \"ps/ps.so\",\n"
+           << "                \"pl_freq\": 250000000.0,\n"
+           << "                \"axi_mm\": [\n"
+           << "                    {\n"
+           << "                        \"port_name\": \"ps_axi\",\n"
+           << "                        \"direction\": \"ps_to_gm\",\n"
+           << "                        \"bus_width\": 0\n"
+           << "                    }\n"
+           << "                ],\n"
+           << "                \"event_bus\": []\n"
+           << "            }\n"
+           << "        ]\n"
+           << "    }\n"
+           << "}\n";
+  } else if (arch == AIEArch::AIE2p) {
     output << "{\n"
            << "    \"SimulationConfig\": {\n"
            << "        \"device_json\": {\n"
@@ -232,15 +264,17 @@ mlir::LogicalResult AIE::AIETranslateGraphXPE(mlir::ModuleOp module,
   if (!targetOp) {
     return mlir::failure();
   }
-  AIEArch arch = targetOp.getTargetModel().getTargetArch();
 
   // Generate boilerplate header
   // TODO: date and version should probably not be hardcoded
-  output << "<?xml version=\"1.0\"?>"
-         << "\n";
+  output << "<?xml version=\"1.0\"?>" << "\n";
   output << "<POWERDATA data=\"AI-Engine Compiler\" dataVersion=\"2022.2\" "
             "design=\"graph\" date=\"2023\">\n";
-  if ((arch == AIEArch::AIE2) || (arch == AIEArch::AIE2p)) {
+  if (llvm::isa<AIE::AIE2PSTargetModel>(targetOp.getTargetModel())) {
+    output << " <DEVICE part=\"xc2ve3858\" grade=\"extended\" "
+              "package=\"ssva2112\" "
+              "speed=\"-1LP\" process=\"typical\" vid=\"No\"></DEVICE>\n";
+  } else if (llvm::isa<AIE::AIE2TargetModel>(targetOp.getTargetModel())) {
     output
         // AIE2 xcve2802
         << " <DEVICE part=\"xcve2802\" grade=\"extended\" package=\"vsvh1760\" "
@@ -259,7 +293,7 @@ mlir::LogicalResult AIE::AIETranslateGraphXPE(mlir::ModuleOp module,
   auto module_tile_ops = targetOp.getOps<TileOp>();
   int num_tiles = std::distance(module_tile_ops.begin(), module_tile_ops.end());
   // TODO: clk_freq only 1150 for AIE2
-  if ((arch == AIEArch::AIE2) || (arch == AIEArch::AIE2p)) {
+  if (llvm::isa<AIE::AIE2TargetModel>(targetOp.getTargetModel())) {
     output << "    <AIE_MODULE name=\"graph\" num_tiles=\""
            << std::to_string(num_tiles) << "\" clk_freq=\"1150\">\n";
   } else {
@@ -284,7 +318,7 @@ mlir::LogicalResult AIE::AIETranslateGraphXPE(mlir::ModuleOp module,
     if (tileOp.isShimNOCorPLTile() || tileOp.isMemTile())
       continue; // Skip shim and mem tiles (handled below)
 
-    if ((arch == AIEArch::AIE2) || (arch == AIEArch::AIE2p)) {
+    if (llvm::isa<AIE::AIE2TargetModel>(targetOp.getTargetModel())) {
 
       output << "      <TILE name=\"CR(" <<
           // CR coordinates ignores shim, and 2 mem rows hence row-3
@@ -328,8 +362,8 @@ mlir::LogicalResult AIE::AIETranslateGraphXPE(mlir::ModuleOp module,
     for (auto coreOp : coreOps_in_tile) {
       (void)(coreOp); // get around unused variable warning for coreOp
       output << "        <KERNEL name=\"i" << std::to_string(kernel_count++)
-             << "\" "
-             << "int_core_load=\"" << std::to_string(1 / coreOps_in_tile.size())
+             << "\" " << "int_core_load=\""
+             << std::to_string(1 / coreOps_in_tile.size())
              << "\" fp_core_load=\"0\"></KERNEL>\n";
     }
     output << "      </TILE>\n";
@@ -337,7 +371,7 @@ mlir::LogicalResult AIE::AIETranslateGraphXPE(mlir::ModuleOp module,
 
   // For each ShimOp in the module, generate a <SHIM> section
   for (ShimDMAOp shimOp : targetOp.getOps<ShimDMAOp>()) {
-    if ((arch == AIEArch::AIE2) || (arch == AIEArch::AIE2p)) {
+    if (llvm::isa<AIE::AIE2TargetModel>(targetOp.getTargetModel())) {
       auto noc_label = (targetOp.getTargetModel().isShimNOCTile(
                            shimOp.colIndex(), shimOp.rowIndex()))
                            ? "AIE_PL_NOC_SIM"
@@ -351,8 +385,7 @@ mlir::LogicalResult AIE::AIETranslateGraphXPE(mlir::ModuleOp module,
           // TODO: how to get num_aximm_connections from mlir?
           "num_aximm_connections=\"1\" coordinates=\""
              << std::to_string(shimOp.colIndex()) << ","
-             << std::to_string(shimOp.rowIndex()) << "\" "
-             << "></SHIM>\n";
+             << std::to_string(shimOp.rowIndex()) << "\" " << "></SHIM>\n";
     } else {
       output << "      <SHIM name=\"SHIM(" << std::to_string(shimOp.colIndex())
              << ", " << std::to_string(shimOp.rowIndex()) << ")\" " <<
@@ -361,13 +394,12 @@ mlir::LogicalResult AIE::AIETranslateGraphXPE(mlir::ModuleOp module,
           // TODO: how to get num_aximm_connections from mlir?
           "num_aximm_connections=\"1\" coordinates=\""
              << std::to_string(shimOp.colIndex()) << ","
-             << std::to_string(shimOp.rowIndex()) << "\" "
-             << "></SHIM>\n";
+             << std::to_string(shimOp.rowIndex()) << "\" " << "></SHIM>\n";
     }
   }
 
   // For each memTile
-  if ((arch == AIEArch::AIE2) || (arch == AIEArch::AIE2p)) {
+  if (llvm::isa<AIE::AIE2TargetModel>(targetOp.getTargetModel())) {
     for (TileOp tileOp : module_tile_ops) {
       int col = tileOp.colIndex();
       int row = tileOp.rowIndex();
@@ -383,8 +415,7 @@ mlir::LogicalResult AIE::AIETranslateGraphXPE(mlir::ModuleOp module,
                 // TODO: stream_util can be 0 for aiesim purposes?
                 "type=\"AIE_MEM\" mem_banks=\"0\" mme_rw_rate=\"0.1\" "
              << "stream_util=\"0.1\" coordinates=\"" << std::to_string(col)
-             << "," << std::to_string(row - 1) << "\" "
-             << "></MEM>\n";
+             << "," << std::to_string(row - 1) << "\" " << "></MEM>\n";
     }
   }
 

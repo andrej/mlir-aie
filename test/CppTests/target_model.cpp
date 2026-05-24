@@ -200,6 +200,89 @@ void test() {
       throw std::runtime_error("Failed npu2_ncol rows");
     }
   }
+
+  // AIEDevice::xcve3858 (AIE2PS)
+  const auto &ve3558 = AIE::getTargetModel(AIE::AIEDevice::xcve3858);
+  if (!ve3558.hasProperty(AIE::AIETargetModel::UsesSemaphoreLocks)) {
+    throw std::runtime_error("Failed xcve3858 property check for "
+                             "'UsesSemaphoreLocks' returns false");
+  }
+  if (!ve3558.hasProperty(AIE::AIETargetModel::UsesMultiDimensionalBDs)) {
+    throw std::runtime_error("Failed xcve3858 property check for "
+                             "'UsesMultiDimensionalBDs' returns false");
+  }
+  if (ve3558.hasProperty(AIE::AIETargetModel::IsNPU)) {
+    throw std::runtime_error(
+        "Failed xcve3858 property check for 'IsNPU' returns true");
+  }
+  if (ve3558.hasProperty(AIE::AIETargetModel::IsVirtualized)) {
+    throw std::runtime_error(
+        "Failed xcve3858 property check for 'IsVirtualized' returns true");
+  }
+  if (ve3558.columns() != 24) {
+    throw std::runtime_error("Failed xcve3858 columns");
+  }
+  if (ve3558.rows() != 4) {
+    throw std::runtime_error("Failed xcve3858 rows");
+  }
+  if (ve3558.getTargetArch() != AIE::AIEArch::AIE2ps) {
+    throw std::runtime_error("Failed xcve3858 getTargetArch");
+  }
+  // Tile type checks: row0=shim, row1=mem, row2+=core
+  if (!ve3558.isShimNOCTile(0, 0)) {
+    throw std::runtime_error("Failed xcve3858 isShimNOCTile(0,0)");
+  }
+  if (!ve3558.isMemTile(0, 1)) {
+    throw std::runtime_error("Failed xcve3858 isMemTile(0,1)");
+  }
+  if (!ve3558.isCoreTile(0, 2)) {
+    throw std::runtime_error("Failed xcve3858 isCoreTile(0,2)");
+  }
+  if (!ve3558.isCoreTile(0, 3)) {
+    throw std::runtime_error("Failed xcve3858 isCoreTile(0,3)");
+  }
+  // Memory sizes (inherited from AIE2, verified against spec)
+  if (ve3558.getLocalMemorySize() != 0x10000) {
+    throw std::runtime_error("Failed xcve3858 getLocalMemorySize (expected "
+                             "64KB)");
+  }
+  if (ve3558.getMemTileSize() != 0x80000) {
+    throw std::runtime_error("Failed xcve3858 getMemTileSize (expected 512KB)");
+  }
+  // Lock counts (inherited from AIE2, verified against spec)
+  if (ve3558.getNumLocks(0, 0) != 16) {
+    throw std::runtime_error("Failed xcve3858 getNumLocks shim");
+  }
+  if (ve3558.getNumLocks(0, 1) != 64) {
+    throw std::runtime_error("Failed xcve3858 getNumLocks memtile");
+  }
+  if (ve3558.getNumLocks(0, 2) != 16) {
+    throw std::runtime_error("Failed xcve3858 getNumLocks core");
+  }
+  // BD counts (inherited from AIE2, verified against spec)
+  if (ve3558.getNumBDs(0, 0) != 16) {
+    throw std::runtime_error("Failed xcve3858 getNumBDs shim");
+  }
+  if (ve3558.getNumBDs(0, 1) != 48) {
+    throw std::runtime_error("Failed xcve3858 getNumBDs memtile");
+  }
+  if (ve3558.getNumBDs(0, 2) != 16) {
+    throw std::runtime_error("Failed xcve3858 getNumBDs core");
+  }
+  // Burst encodings: AIE2PS supports 512B (4 encodings, not 3)
+  auto bursts = ve3558.getShimBurstEncodingsAndLengths();
+  if (bursts.size() != 4) {
+    throw std::runtime_error("Failed xcve3858 burst encoding count "
+                             "(expected 4, got " +
+                             std::to_string(bursts.size()) + ")");
+  }
+  if (bursts[3].second != 512) {
+    throw std::runtime_error("Failed xcve3858 burst[3] should be 512B");
+  }
+  // Cascade size
+  if (ve3558.getAccumulatorCascadeSize() != 512) {
+    throw std::runtime_error("Failed xcve3858 getAccumulatorCascadeSize");
+  }
 }
 
 int main() {

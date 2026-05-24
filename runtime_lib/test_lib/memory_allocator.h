@@ -76,6 +76,16 @@ void mlir_aie_sync_mem_dev(ext_mem_model_t &handle);
 /// @return The device physical address corresponding to the host pointer
 u64 mlir_aie_get_device_address(aie_libxaie_ctx_t *ctx, void *host_address);
 
+/// @brief Write a 32-bit value to a simulator address
+/// @param addr The address to write to
+/// @param data The 32-bit value to write
+void mlir_aie_sim_write32(uint64_t addr, uint32_t data);
+
+/// @brief Read a 32-bit value from a simulator address
+/// @param addr The address to read from
+/// @return The 32-bit value read from the address
+uint32_t mlir_aie_sim_read32(uint64_t addr);
+
 } // extern "C"
 
 #endif

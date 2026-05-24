@@ -34,6 +34,9 @@ class kernel;
 
 namespace test_utils {
 
+void print_test_banner(const std::string &title,
+                       const std::string &description = "");
+
 void check_arg_file_exists(const cxxopts::ParseResult &result,
                            std::string name);
 
@@ -126,6 +129,9 @@ void print_matrix(const std::vector<T> matrix, int n_cols,
 }
 
 void write_out_trace(char *traceOutPtr, size_t trace_size, std::string path);
+
+// Write transaction binary in simulation
+void write_transaction_binary(unsigned char *data, uint64_t nbytes);
 
 } // namespace test_utils
 

@@ -22,5 +22,8 @@ from .device import (
     NPU2Col6,
     NPU2Col7,
     XCVC1902,
+    XCVE2302,
+    XCVE2802,
+    XCVE3858,
 )
 from .tile import AnyShimTile, AnyMemTile, AnyComputeTile, Tile

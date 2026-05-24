@@ -48,6 +48,8 @@ static StringRef getArchIntrinsicString(AIEArch arch) {
     return "aie2";
   case AIEArch::AIE2p:
     return "aie2p";
+  case AIEArch::AIE2ps:
+    return "aie2ps";
   }
   llvm::report_fatal_error("unsupported arch");
 }
@@ -152,6 +154,38 @@ static auto getAIE2pIntrinsics(OpBuilder &builder) {
   return functions;
 }
 
+
+static auto getAIE2psIntrinsics(OpBuilder &builder) {
+  Type int32Type = IntegerType::get(builder.getContext(), 32);
+  Type accType = VectorType::get({16}, int32Type);
+  IntrinsicDecls functions = {
+      {"debug_i32", {int32Type}, {}},
+      {"llvm.aie2ps.event", {int32Type}, {}},
+      {"llvm.aie2ps.put.ms",
+       {int32Type, int32Type},
+       {}}, //(%value, %tlast) -> ()
+      {"llvm.aie2ps.get.ss",
+       {},
+       {int32Type, int32Type}}, //() -> (%value, %tlast)
+      {"llvm.aie2ps.mcd.write.vec",
+       {accType, int32Type},
+       {}}, // (%value, %enable) -> ()
+      {"llvm.aie2ps.scd.read.vec",
+       {int32Type},
+       {accType}}, // (%enable) -> (%value)
+      {"llvm.aie2ps.acquire",
+       {int32Type, int32Type},
+       {}}, //(%lock_id, %lock_val) -> ()
+      {"llvm.aie2ps.release",
+       {int32Type, int32Type},
+       {}}, //(%lock_id, %lock_val) -> ()
+      {"llvm.aie2ps.set.ctrl.reg",
+       {int32Type, int32Type},
+       {}}, //(%reg_id, %value) -> ()
+  };
+  return functions;
+}
+
 static void declareAIEIntrinsics(AIEArch arch, OpBuilder &builder) {
   auto registerIntrinsics = [&builder](IntrinsicDecls functions) {
     for (auto &i : functions) {
@@ -171,6 +205,9 @@ static void declareAIEIntrinsics(AIEArch arch, OpBuilder &builder) {
     return;
   case AIEArch::AIE2p:
     registerIntrinsics(getAIE2pIntrinsics(builder));
+    return;
+  case AIEArch::AIE2ps:
+    registerIntrinsics(getAIE2psIntrinsics(builder));
     return;
   }
   llvm::report_fatal_error("unsupported arch");
@@ -236,7 +273,9 @@ struct AIEPutStreamToStdLowering : OpConversionPattern<PutStreamOp> {
     else if (targetModel.getTargetArch() == AIEArch::AIE2)
       funcName = "llvm.aie2.put.";
     else
-      funcName = "llvm.aie2p.put.";
+      funcName = "llvm." +
+                 getArchIntrinsicString(targetModel.getTargetArch()).str() +
+                 ".put.";
 
     if (op.isWideStream())
       funcName += "wms";
@@ -284,7 +323,9 @@ struct AIEGetStreamToStdLowering : OpConversionPattern<GetStreamOp> {
     else if (targetModel.getTargetArch() == AIEArch::AIE2)
       funcName = "llvm.aie2.get.";
     else
-      funcName = "llvm.aie2p.get.";
+      funcName = "llvm." +
+                 getArchIntrinsicString(targetModel.getTargetArch()).str() +
+                 ".get.";
 
     if (op.isWideStream())
       funcName += "wss";
@@ -327,7 +368,9 @@ struct AIEPutCascadeToStdLowering : OpConversionPattern<PutCascadeOp> {
     else if (targetModel.getTargetArch() == AIEArch::AIE2)
       funcName = "llvm.aie2.mcd.write.vec";
     else
-      funcName = "llvm.aie2p.mcd.write.vec";
+      funcName = "llvm." +
+                 getArchIntrinsicString(targetModel.getTargetArch()).str() +
+                 ".mcd.write.vec";
     auto putMCDFunc = module.lookupSymbol<func::FuncOp>(funcName);
     if (!putMCDFunc)
       return op.emitOpError("Could not find the intrinsic function ")
@@ -377,7 +420,9 @@ struct AIEGetCascadeToStdLowering : OpConversionPattern<GetCascadeOp> {
     else if (targetModel.getTargetArch() == AIEArch::AIE2)
       funcName = "llvm.aie2.scd.read.vec";
     else
-      funcName = "llvm.aie2p.scd.read.vec";
+      funcName = "llvm." +
+                 getArchIntrinsicString(targetModel.getTargetArch()).str() +
+                 ".scd.read.vec";
     auto getSCDFunc = module.lookupSymbol<func::FuncOp>(funcName);
     if (!getSCDFunc)
       return op.emitOpError("Could not find the intrinsic function ")
@@ -429,10 +474,10 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
       std::string funcName;
       if (targetModel.getTargetArch() == AIEArch::AIE1)
         funcName = "llvm.aie.lock.";
-      else if (targetModel.getTargetArch() == AIEArch::AIE2)
-        funcName = "llvm.aie2.";
       else
-        funcName = "llvm.aie2p.";
+        funcName = "llvm." +
+                   getArchIntrinsicString(targetModel.getTargetArch()).str() +
+                   ".";
       if (useLock.acquire() || useLock.acquireGE())
         funcName += "acquire";
       else if (useLock.release())
@@ -590,10 +635,10 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
       auto device = op->getParentOfType<DeviceOp>();
       if (device) {
         AIEArch arch = device.getTargetModel().getTargetArch();
-        if (arch == AIEArch::AIE2 || arch == AIEArch::AIE2p) {
-          std::string ctrlRegFuncName = (arch == AIEArch::AIE2p)
-                                            ? "llvm.aie2p.set.ctrl.reg"
-                                            : "llvm.aie2.set.ctrl.reg";
+        if (arch == AIEArch::AIE2 || arch == AIEArch::AIE2p ||
+            arch == AIEArch::AIE2ps) {
+          std::string ctrlRegFuncName =
+              "llvm." + getArchIntrinsicString(arch).str() + ".set.ctrl.reg";
           auto ctrlRegFunc = module.lookupSymbol<func::FuncOp>(ctrlRegFuncName);
           if (ctrlRegFunc) {
             Block &entryBlock = coreFunc.getBody().front();
@@ -608,7 +653,7 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
             // (index 0) requires updating downstream tests and is tracked
             // separately.
             int satRegIdx = 9;
-            int rndRegIdx = (arch == AIEArch::AIE2p) ? 1 : 6;
+            int rndRegIdx = (arch == AIEArch::AIE2) ? 6 : 1;
             // saturation_mode::saturate = 1
             auto cSatIdx = arith::ConstantOp::create(
                 rewriter, loc, rewriter.getI32IntegerAttr(satRegIdx));
@@ -690,6 +735,12 @@ struct AIEEventOpToStdLowering : OpConversionPattern<EventOp> {
       break;
     case AIEArch::AIE2p:
       funcName = "llvm.aie2p.event";
+      args.push_back(arith::ConstantOp::create(
+          rewriter, op.getLoc(), rewriter.getI32Type(),
+          rewriter.getI32IntegerAttr(op.getVal())));
+      break;
+    case AIEArch::AIE2ps:
+      funcName = "llvm.aie2ps.event";
       args.push_back(arith::ConstantOp::create(
           rewriter, op.getLoc(), rewriter.getI32Type(),
           rewriter.getI32IntegerAttr(op.getVal())));

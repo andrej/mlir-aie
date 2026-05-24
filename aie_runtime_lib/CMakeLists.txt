@@ -57,5 +57,3 @@ foreach(_aie_arch IN LISTS AIE_VITIS_COMPONENTS)
     add_subdirectory(${_aie_arch})
   endif()
 endforeach()
-
-
