@@ -64,6 +64,9 @@ public:
   /// Load database for AIE2 architecture
   static std::unique_ptr<RegisterDatabase> loadAIE2();
 
+  /// Load database for AIE2PS architecture
+  static std::unique_ptr<RegisterDatabase> loadAIE2PS();
+
   /// Lookup register by name and module
   const RegisterInfo *lookupRegister(llvm::StringRef name,
                                      llvm::StringRef module) const;
@@ -78,7 +81,8 @@ public:
 private:
   RegisterDatabase() = default;
 
-  bool loadFromJSON(llvm::StringRef registerPath, llvm::StringRef eventPath);
+  bool loadFromJSON(llvm::StringRef registerPath, llvm::StringRef eventPath,
+                    llvm::StringRef archKey);
 
   llvm::StringMap<RegisterInfo> registers_;
   llvm::StringMap<EventInfo> events_;

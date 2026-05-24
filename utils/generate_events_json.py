@@ -35,6 +35,12 @@ ARCH_CONFIGS = {
         "display_name": "AIE2P",
         "prefix": "XAIE2P_EVENTS_",
     },
+    "xaie_events_aie2ps.h": {
+        "name": "aie2ps",
+        "display_name": "AIE2PS",
+        "prefix": "XAIE2PS_EVENTS_",
+        "python_name": "aie2ps",  # Python module name
+    },
 }
 
 
@@ -61,9 +67,9 @@ def parse_event_declaration(regex, dict, line):
     name, num = match.group(1), int(match.group(2))
     if num in dict:
         sys.stderr.write(
-            f"Error: Duplicate event number {num} for {name} (already used by {dict[num]})\n"
+            f"Warning: Duplicate event number {num} for {name} (already used by {dict[num]}), skipping\n"
         )
-        sys.exit(1)
+        return
     dict[num] = name
 
 

@@ -64,6 +64,14 @@ def get_events_for_device(device: str):
             ShimTileEvent=ShimTileEventAIE,
             MemTileEvent=None,  # AIE1 has no mem tiles
         )
+    elif "xcve3858" in device:
+        # TODO: Add AIE2PS-specific enums once TableGen generation is extended
+        return SimpleNamespace(
+            CoreEvent=CoreEventAIE2,
+            MemEvent=MemEventAIE2,
+            ShimTileEvent=ShimTileEventAIE2,
+            MemTileEvent=MemTileEventAIE2,
+        )
     elif "npu2p" in device:
         return SimpleNamespace(
             CoreEvent=CoreEventAIE2P,
