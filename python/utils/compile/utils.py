@@ -83,18 +83,20 @@ def compile_mlir_module(
     insts_path: str | Path | None = None,
     pdi_path: str | Path | None = None,
     xclbin_path: str | Path | None = None,
+    elf_path: str | Path | None = None,
     verbose=False,
     work_dir: str | Path | None = None,
     options=None,
 ):
     """
-    Compile an MLIR module to instruction, PDI, and/or xclbin files using the aiecc module.
+    Compile an MLIR module to instruction, PDI, xclbin, and/or full-ELF files using the aiecc module.
     This function supports only the Peano compiler.
     Parameters:
         mlir_module (str): MLIR module to compile.
         insts_path (str): Path to the instructions binary file.
         pdi_path (str): Path to the PDI file.
         xclbin_path (str): Path to the xclbin file.
+        elf_path (str): Path to the full design ELF file (AIE4 / npu3 flow).
         verbose (bool): If True, enable verbose output.
         work_dir (str): Compilation working directory.
         options (list[str]): List of additional options.
@@ -112,6 +114,8 @@ def compile_mlir_module(
         args.extend(["--aie-generate-pdi", f"--pdi-name={pdi_path}"])
     if xclbin_path:
         args.extend(["--aie-generate-xclbin", f"--xclbin-name={xclbin_path}"])
+    if elf_path:
+        args.extend(["--generate-full-elf", f"--full-elf-name={elf_path}"])
     if work_dir:
         args.append(f"--tmpdir={work_dir}")
     if verbose:

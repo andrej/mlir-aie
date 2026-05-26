@@ -180,9 +180,21 @@ class XRTHostRuntime(HostRuntime):
             HostRuntimeError: If xclbin or insts files do not exist, or if kernel is not found.
         """
         self.check_device_consistency()
+        kernel_name = npu_kernel.kernel_name
+
+        if getattr(npu_kernel, "is_full_elf", False):
+            elf_path = Path(npu_kernel.elf_path).resolve()
+            if not elf_path.exists() or not elf_path.is_file():
+                raise HostRuntimeError(
+                    f"elf {elf_path} does not exist or is not a file."
+                )
+            elf = pyxrt.elf(str(elf_path))
+            context = pyxrt.hw_context(self._device, elf)
+            kernel = pyxrt.ext.kernel(context, kernel_name)
+            return XRTKernelHandle(kernel, xclbin=None, context=context, insts=None)
+
         xclbin_path = Path(npu_kernel.xclbin_path).resolve()
         insts_path = Path(npu_kernel.insts_path).resolve()
-        kernel_name = npu_kernel.kernel_name
 
         if not xclbin_path.exists() or not xclbin_path.is_file():
             raise HostRuntimeError(
@@ -252,6 +264,27 @@ class XRTHostRuntime(HostRuntime):
             )
         [a.to("npu") for a in args]
         buffers = [a.buffer_object() for a in args]
+
+        # Full-ELF (AIE4 / npu3) path: hw_context built directly from pyxrt.elf,
+        # kernel signature is just the runtime-sequence user buffers (no opcode,
+        # no instruction BO). Trace + control packets are not yet plumbed through
+        # the runtime sequence, so reject them here as well — see the matching
+        # JIT-side guard in jit.py and the C++ reference at
+        # runtime_lib/test_lib/xrt_test_wrapper.h:108-112.
+        if kernel_handle.insts is None:
+            if trace_config is not None:
+                raise HostRuntimeError(
+                    "AIE4 full-ELF kernels do not yet support trace_config; "
+                    "trace + control-packet plumbing for the runtime sequence is "
+                    "a follow-up."
+                )
+            start = time.time_ns()
+            h = kernel_handle.kernel(*buffers)
+            r = h.wait()
+            stop = time.time_ns()
+            if fail_on_error and r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
+                raise HostRuntimeError(f"Kernel returned {str(r)}")
+            return XRTKernelResult(r, stop - start)
 
         insts_bo = None
         insts_bytes = 0
@@ -487,9 +520,79 @@ class CachedXRTRuntime(XRTHostRuntime):
             HostRuntimeError: If xclbin or insts files do not exist, or if kernel is not found.
         """
         self.check_device_consistency()
+        kernel_name = npu_kernel.kernel_name
+
+        # Full-ELF (AIE4 / npu3) path: cache by (elf_path, mtime). The hw_context
+        # is built directly from pyxrt.elf and the kernel is constructed with the
+        # 2-arg pyxrt.ext.kernel(ctx, name) overload. No insts BO is involved.
+        if getattr(npu_kernel, "is_full_elf", False):
+            elf_path = Path(npu_kernel.elf_path).resolve()
+            if not elf_path.exists() or not elf_path.is_file():
+                raise HostRuntimeError(
+                    f"elf {elf_path} does not exist or is not a file."
+                )
+            elf_mtime = elf_path.stat().st_mtime
+            context_key = (str(elf_path), elf_mtime)
+
+            try:
+                if context_key in self._context_cache:
+                    entry = self._context_cache[context_key]
+                    self._context_cache.move_to_end(context_key)
+                    context = entry["context"]
+                    entry["handles"] = [
+                        ref for ref in entry["handles"] if ref() is not None
+                    ]
+                else:
+                    elf = pyxrt.elf(str(elf_path))
+                    if len(self._context_cache) >= self._cache_size:
+                        self._evict()
+                    context = None
+                    retries = 0
+                    max_retries = len(self._context_cache) if retry else 0
+                    while context is None:
+                        try:
+                            context = pyxrt.hw_context(self._device, elf)
+                        except RuntimeError as e:
+                            if (
+                                "No such file or directory" in str(e)
+                                and self._context_cache
+                                and retries < max_retries
+                            ):
+                                self._evict()
+                                gc.collect()
+                                retries += 1
+                            else:
+                                raise e
+                    entry = {
+                        "context": context,
+                        "xclbin": None,
+                        "kernels": {},  # parity with xclbin entry for _cleanup_entry
+                        "handles": [],
+                        "uuid": None,
+                        "elf": elf,
+                    }
+                    self._context_cache[context_key] = entry
+
+                kernel = pyxrt.ext.kernel(context, kernel_name)
+                kernel_handle = CachedXRTKernelHandle(
+                    kernel, xclbin=None, context=context, insts=None
+                )
+                entry["handles"].append(weakref.ref(kernel_handle))
+                return kernel_handle
+
+            except Exception:
+                if context_key in self._context_cache:
+                    entry = self._context_cache[context_key]
+                    entry["handles"] = [
+                        ref for ref in entry["handles"] if ref() is not None
+                    ]
+                    if not entry["handles"]:
+                        del self._context_cache[context_key]
+                        self._cleanup_entry(entry)
+                raise
+
         xclbin_path = Path(npu_kernel.xclbin_path).resolve()
         insts_path = Path(npu_kernel.insts_path).resolve()
-        kernel_name = npu_kernel.kernel_name
 
         if not xclbin_path.exists() or not xclbin_path.is_file():
             raise HostRuntimeError(
