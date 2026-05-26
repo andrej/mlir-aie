@@ -2,7 +2,7 @@
 
 Feeds the same (4, 3, 512, 512) RGB int8 input that test_block_ort.py uses,
 runs ORT to get the chain's final tensor (post-SiLU int8 for non-head tails,
-fp32 softmax for the m10 head), then runs the chain xclbin on the NPU and
+fp32 softmax for the m10 head), then runs the chain ELF on the NPU and
 bit-exact compares.
 
 For an N>1 chain (built with CHAIN_N_SAMPLES=N at MLIR-generation time), set
@@ -12,13 +12,13 @@ reference.
 
 Run:
     make run_chain                          # N=1
-    CHAIN_N_SAMPLES=15 make run_chain       # N=15 (also rebuilds xclbin)
-    python3 test_chain_ort.py -x build/final_chain.xclbin \\
-                              -i build/insts_chain.bin -k MLIR_AIE
+    CHAIN_N_SAMPLES=15 make run_chain       # N=15 (also rebuilds ELF)
+    python3 test_chain_ort.py -e build/final_chain.elf
 """
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 from pathlib import Path
@@ -28,8 +28,7 @@ import onnx
 import onnxruntime as ort
 
 import aie.iron as iron
-import aie.utils.test as test_utils
-from aie.utils import DefaultNPURuntime
+from aie.utils import DefaultNPURuntime, NPUKernel
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -73,7 +72,15 @@ def get_input_qparams(graph):
 
 
 def main():
-    p = test_utils.create_default_argparser()
+    p = argparse.ArgumentParser()
+    p.add_argument(
+        "-e", "--elf", default="build/final_chain.elf",
+        help="path to the chain full-ELF (default: build/final_chain.elf)",
+    )
+    p.add_argument(
+        "-k", "--kernel", default="yolo26n_chain:sequence",
+        help="kernel name = '<device_name>:<sequence_name>' baked into the ELF",
+    )
     opts = p.parse_args(sys.argv[1:])
 
     m0 = yolo_spec.block("m0")
@@ -148,7 +155,7 @@ def main():
     in_tensor_iron = iron.tensor(in_flat, dtype=np.int8)
     out_tensor_iron = iron.zeros([n_samples * out_total], dtype=np.int8)
 
-    npu_opts = test_utils.create_npu_kernel(opts)
+    npu_kernel = NPUKernel(elf_path=opts.elf, kernel_name=opts.kernel)
     print(f"Running NPU chain (N={n_samples})...")
     # Call rt.load+run directly (instead of run_test) so we get the
     # XRTKernelResult and can read its NPU-reported execution time.
@@ -156,7 +163,7 @@ def main():
     # context appears wedged after the first invocation) — one timing
     # per process; benchmark via scripts/time_chain.py.
     rt = DefaultNPURuntime
-    handle = rt.load(npu_opts.npu_kernel)
+    handle = rt.load(npu_kernel)
     result = rt.run(handle, [in_tensor_iron, out_tensor_iron])
     print(
         f"  NPU compute time: {result.npu_time / 1e6:.3f} ms total "

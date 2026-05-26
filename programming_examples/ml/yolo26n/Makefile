@@ -95,7 +95,7 @@ MLIR   := $(BUILD)/aie_$(BLOCK).mlir
 XCLBIN := $(BUILD)/final_$(BLOCK).xclbin
 INSTS  := $(BUILD)/insts_$(BLOCK).bin
 
-.PHONY: all run_ort chain run_chain time time_chain trace clean clean_chain data help FORCE
+.PHONY: all run_ort chain run_chain time time_chain trace test clean clean_chain data help FORCE
 
 # Default goal: print help.
 .DEFAULT_GOAL := help
@@ -132,6 +132,10 @@ Chain batched throughput (set CHAIN_N_SAMPLES=N at the make line):
 
 Tracing (HW packet trace of the m8 megakernel; see scripts/trace_m8.sh):
   make trace                    — build with trace ops, run 1 iter, parse summary
+
+End-to-end inference (C++/XRT, person/no-person on a single image):
+  make test                     — build build/test.exe (from test.cpp)
+  ./build/test.exe -e build/final_chain.elf --image <path>
 
 Data + cleanup:
   make data                     — regenerate weights + LUTs from ONNX
@@ -454,10 +458,13 @@ time: $(XCLBIN) $(INSTS)
 	cd $(SRCDIR) && python3 scripts/time_block.py --block $(BLOCK) \
 	    -x $(XCLBIN) -i $(INSTS) -k MLIR_AIE $(TIME_ARGS)
 
-# --- Full m0..m10 chain ---
-CHAIN_MLIR   := $(BUILD)/aie_chain.mlir
-CHAIN_XCLBIN := $(BUILD)/final_chain.xclbin
-CHAIN_INSTS  := $(BUILD)/insts_chain.bin
+# --- Full m0..m10 chain (full-ELF flow) ---
+# aiecc with --generate-full-elf packages PDIs + runtime sequence into one
+# self-contained ELF (replaces the old xclbin + insts.bin pair). The IRON
+# builder emits a load_pdi at the start of the sequence; XRT patches its
+# address at dispatch time. Host loads via xrt::elf / xrt::hw_context(elf).
+CHAIN_MLIR := $(BUILD)/aie_chain.mlir
+CHAIN_ELF  := $(BUILD)/final_chain.elf
 
 $(CHAIN_MLIR): $(SRCDIR)/aie2_yolo_iron_partial.py $(SRCDIR)/aie2_yolo_per_block.py \
                $(DATA)/manifest.json $(SILU_LUTS) $(BUILD)/.chain_n_samples \
@@ -466,33 +473,50 @@ $(CHAIN_MLIR): $(SRCDIR)/aie2_yolo_iron_partial.py $(SRCDIR)/aie2_yolo_per_block
 	cd $(SRCDIR) && CHAIN_N_SAMPLES=$(CHAIN_N_SAMPLES) CHAIN_BLOCKS="$(CHAIN_BLOCKS)" \
 	    python3 aie2_yolo_iron_partial.py > $@
 
-$(CHAIN_XCLBIN) $(CHAIN_INSTS): $(CHAIN_MLIR) $(KERNEL_OBJS)
+$(CHAIN_ELF): $(CHAIN_MLIR) $(KERNEL_OBJS)
 	cd $(BUILD) && aiecc.py \
-	    --aie-generate-xclbin --no-compile-host --no-xchesscc --no-xbridge \
-	    --aie-generate-npu-insts --npu-insts-name=$(notdir $(CHAIN_INSTS)) \
-	    --xclbin-name=$(notdir $(CHAIN_XCLBIN)) $(notdir $(CHAIN_MLIR))
+	    --generate-full-elf --no-compile-host --no-xchesscc --no-xbridge \
+	    --full-elf-name=$(notdir $(CHAIN_ELF)) $(notdir $(CHAIN_MLIR))
 
-chain: $(CHAIN_XCLBIN) $(CHAIN_INSTS)
+chain: $(CHAIN_ELF)
 
-run_chain: $(CHAIN_XCLBIN) $(CHAIN_INSTS)
+run_chain: $(CHAIN_ELF)
 	cd $(SRCDIR) && CHAIN_N_SAMPLES=$(CHAIN_N_SAMPLES) CHAIN_BLOCKS="$(CHAIN_BLOCKS)" \
-	    python3 test_chain_ort.py -x $(CHAIN_XCLBIN) -i $(CHAIN_INSTS) -k MLIR_AIE
+	    python3 test_chain_ort.py -e $(CHAIN_ELF)
 
 # Chain timing. For batched throughput, set CHAIN_N_SAMPLES at the make line.
-time_chain: $(CHAIN_XCLBIN) $(CHAIN_INSTS)
+time_chain: $(CHAIN_ELF)
 	cd $(SRCDIR) && CHAIN_N_SAMPLES=$(CHAIN_N_SAMPLES) CHAIN_BLOCKS="$(CHAIN_BLOCKS)" \
-	    python3 scripts/time_chain.py -x $(CHAIN_XCLBIN) -i $(CHAIN_INSTS) \
-	    -k MLIR_AIE $(TIME_ARGS)
+	    python3 scripts/time_chain.py -e $(CHAIN_ELF) $(TIME_ARGS)
 
 # HW packet trace of the m8 megakernel. Sub-script handles the build/run/parse
 # pipeline; honors TRACE_SIZE_PER_WORKER and TRACE_EVENTS env vars.
 trace:
 	bash $(SRCDIR)/scripts/trace_m8.sh
 
+# End-to-end C++/XRT host driver: loads an image, runs the chain ELF on the
+# NPU, prints person/no-person. Full-ELF flow — host links against XRT
+# coreutils only; cxxopts.hpp is pulled from test_lib (header-only) but no
+# link against -ltest_utils is needed.
+TEST_EXE      := $(BUILD)/test.exe
+XRT_INC_DIR   ?= /opt/xilinx/xrt/include
+XRT_LIB_DIR   ?= /opt/xilinx/xrt/lib
+TEST_LIB_DIR  ?= $(MLIR_AIE_INSTALL_DIR)/runtime_lib/x86_64/test_lib
+OPENCV_FLAGS  := $(shell pkg-config --cflags --libs opencv4)
+
+$(TEST_EXE): $(SRCDIR)/test.cpp
+	mkdir -p $(BUILD)
+	clang++ $< -o $@ -std=c++17 -Wall \
+	    -I$(XRT_INC_DIR) -L$(XRT_LIB_DIR) -lxrt_coreutil \
+	    -I$(TEST_LIB_DIR)/include \
+	    $(OPENCV_FLAGS)
+
+test: $(TEST_EXE)
+
 # Wipe just the chain artifacts (cheap; preserves kernel .o cache).
 clean_chain:
 	rm -rf $(CHAIN_MLIR) $(BUILD)/aie_chain.mlir.prj \
-	       $(CHAIN_XCLBIN) $(CHAIN_INSTS) $(BUILD)/.chain_n_samples
+	       $(CHAIN_ELF) $(BUILD)/.chain_n_samples
 
 clean:
 	rm -rf $(BUILD)

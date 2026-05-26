@@ -1,14 +1,14 @@
-"""Quick HW timing for a built chain xclbin (m0..m10).
+"""Quick HW timing for a built chain ELF (m0..m10).
 
-Sizes input/output buffers from CHAIN_N_SAMPLES (must match what the xclbin
+Sizes input/output buffers from CHAIN_N_SAMPLES (must match what the ELF
 was built with) and the yolo_spec input/output shapes. Runs a small number
 of iterations and reports mean/median per-sample times.
 
 Usage:
-  CHAIN_N_SAMPLES=1 python3 scripts/time_chain.py \\
-    -x build/final_chain.xclbin -i build/insts_chain.bin -k MLIR_AIE
+  CHAIN_N_SAMPLES=1 python3 scripts/time_chain.py -e build/final_chain.elf
 """
 
+import argparse
 import os
 import sys
 from pathlib import Path
@@ -18,14 +18,21 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
 import aie.iron as iron
-import aie.utils.test as test_utils
-from aie.utils import DefaultNPURuntime
+from aie.utils import DefaultNPURuntime, NPUKernel
 
 import yolo_spec  # noqa: E402
 
 
 def main():
-    p = test_utils.create_default_argparser()
+    p = argparse.ArgumentParser()
+    p.add_argument(
+        "-e", "--elf", default="build/final_chain.elf",
+        help="path to the chain full-ELF (default: build/final_chain.elf)",
+    )
+    p.add_argument(
+        "-k", "--kernel", default="yolo26n_chain:sequence",
+        help="kernel name = '<device_name>:<sequence_name>' baked into the ELF",
+    )
     p.add_argument("--n-iters", type=int, default=10)
     p.add_argument("--n-warmup", type=int, default=2)
     opts = p.parse_args()
@@ -67,16 +74,16 @@ def main():
     in_tensor = iron.tensor(in_data, dtype=np.int8)
     out_tensor = iron.zeros([N * ((out_bytes_per + 3) // 4) * 4], dtype=np.int8)
 
-    npu_opts = test_utils.create_npu_kernel(opts)
+    npu_kernel = NPUKernel(elf_path=opts.elf, kernel_name=opts.kernel)
     rt = DefaultNPURuntime
 
     print(f"chain N={N}: warmup x{opts.n_warmup}, time x{opts.n_iters}")
     for _ in range(opts.n_warmup):
-        rt.load_and_run(npu_opts.npu_kernel, [in_tensor, out_tensor])
+        rt.load_and_run(npu_kernel, [in_tensor, out_tensor])
 
     times_ms = []
     for _ in range(opts.n_iters):
-        _h, result = rt.load_and_run(npu_opts.npu_kernel, [in_tensor, out_tensor])
+        _h, result = rt.load_and_run(npu_kernel, [in_tensor, out_tensor])
         times_ms.append(result.npu_time / 1e6)
 
     arr = np.array(times_ms)
