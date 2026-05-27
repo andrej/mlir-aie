@@ -51,9 +51,10 @@ constexpr int PERSON_IDX = 1; // alphabetical: ["no_person", "person"]
 static_assert(PERSON_IDX < OUT_C, "PERSON_IDX out of range");
 
 // Kernel name format for full-ELF flow is "<device_sym_name>:<sequence_name>".
-// device_sym_name is set in aie2_yolo_iron_partial.py (DEVICE_NAME) and baked
-// into the ELF via Program(...).resolve_program(device_name=...).
-constexpr const char *KERNEL_NAME = "yolo26n_chain:sequence";
+// device_sym_name is set in aie2_yolo_per_block.py (DEVICE_NAME) and baked
+// into the ELF via Program(...).resolve_program(device_name=...). All yolo
+// builders share this name so one constant works for any per-block / chain ELF.
+constexpr const char *KERNEL_NAME = "yolo26n:sequence";
 
 // Input QuantizeLinear scale from phase1_25k_xint8_acc0.8968.onnx (ZP=0).
 // Verified via:

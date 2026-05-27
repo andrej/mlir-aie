@@ -39,6 +39,7 @@ sys.path.insert(0, str(HERE.parent))
 from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2, Tile
+from aie.dialects.aiex import npu_load_pdi
 
 import placement  # noqa: E402
 import yolo_spec  # noqa: E402
@@ -46,7 +47,7 @@ import aie2_yolo_per_block as B  # noqa: E402
 from lowlevel_dma import StaticWeightStream  # noqa: E402
 
 # Trace-aware Worker subclass; honors TRACE_SIZE_PER_WORKER env var.
-from aie2_yolo_per_block import Worker, TRACE_SIZE_PER_WORKER  # noqa: E402
+from aie2_yolo_per_block import Worker, TRACE_SIZE_PER_WORKER, DEVICE_NAME  # noqa: E402
 
 BLOCK = "m9"
 DATA_DIR = B.DATA_DIR
@@ -1415,6 +1416,9 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
 
     rt = Runtime()
     with rt.sequence(in_ty, out_ty) as (inp, out):
+        # Full-ELF flow: load_pdi at sequence head; device_ref matches
+        # resolve_program device_name.
+        rt.inline_ops(lambda: npu_load_pdi(device_ref=DEVICE_NAME), [])
         if TRACE_SIZE_PER_WORKER > 0:
             rt.enable_trace(
                 trace_size=TRACE_SIZE_PER_WORKER * len(workers),
@@ -1435,7 +1439,7 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
         )
         rt.finish_task_group(tg)
 
-    return Program(NPU2(), rt).resolve_program()
+    return Program(NPU2(), rt).resolve_program(device_name=DEVICE_NAME)
 
 
 def main():

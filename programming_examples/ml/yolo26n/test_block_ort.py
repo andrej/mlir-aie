@@ -6,7 +6,7 @@ For block m_N:
   - ORT returns:
       - the int8 input tensor of /model.N/conv (== expected NPU input)
       - the post-SiLU int8 output of /model.N/act (== expected NPU output)
-  - The NPU xclbin is run with the same input, then compared.
+  - The NPU full-ELF is run with the same input, then compared.
 
 For m9 (psa), the M9_STAGE env var selects which intermediate ORT tensor to
 compare:
@@ -32,8 +32,7 @@ import onnx
 import onnxruntime as ort
 
 import aie.iron as iron
-import aie.utils.test as test_utils
-from aie.utils import DefaultNPURuntime
+from aie.utils import DefaultNPURuntime, NPUKernel
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -128,12 +127,21 @@ def find_block_io_tensors(
 
 
 def main():
-    p = test_utils.create_default_argparser()
+    p = argparse.ArgumentParser()
     p.add_argument(
         "--block",
         required=True,
         help="block name (m0/m1/m2/m3/m4/m5/m6/m7/m8/m9). m9 also reads M9_STAGE "
         "env var (1 = cv1 only, 10 = full block; default 10).",
+    )
+    p.add_argument(
+        "-e", "--elf", required=True,
+        help="path to the per-block full-ELF (e.g. build/aie_m0.elf)",
+    )
+    p.add_argument(
+        "-k", "--kernel", default="yolo26n:sequence",
+        help="kernel name = '<device>:<sequence>' baked into the ELF (default: "
+        "yolo26n:sequence; matches DEVICE_NAME in aie2_yolo_per_block.py)",
     )
     opts = p.parse_args(sys.argv[1:])
     model_n = int(opts.block[1:])
@@ -207,17 +215,14 @@ def main():
     in_tensor_iron = iron.tensor(in_padded.reshape(-1), dtype=np.int8)
     out_tensor_iron = iron.zeros([out_h * out_w * out_c], dtype=np.int8)
 
-    npu_opts = test_utils.create_npu_kernel(opts)
+    npu_kernel = NPUKernel(elf_path=opts.elf, kernel_name=opts.kernel)
     print("Running NPU...")
-    rc = DefaultNPURuntime.run_test(
-        npu_opts.npu_kernel,
-        [in_tensor_iron, out_tensor_iron],
-        {},
-        verify=False,
-        verbosity=opts.verbosity,
+    _h, result = DefaultNPURuntime.load_and_run(
+        npu_kernel, [in_tensor_iron, out_tensor_iron]
     )
-    if rc != 0:
-        return rc
+    if result.ret.name != "ERT_CMD_STATE_COMPLETED":
+        print(f"NPU run failed: {result.ret.name}", file=sys.stderr)
+        return 1
 
     out_tensor_iron.to("cpu")
     actual = out_tensor_iron.numpy().reshape(out_h, out_w, out_c)

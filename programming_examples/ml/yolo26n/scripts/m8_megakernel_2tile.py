@@ -41,6 +41,7 @@ sys.path.insert(0, str(HERE.parent))
 from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2, Tile
+from aie.dialects.aiex import npu_load_pdi
 
 import placement  # noqa: E402
 import yolo_spec  # noqa: E402
@@ -50,6 +51,7 @@ from aie2_yolo_per_block import (
     Worker,
     TRACE_SIZE_PER_WORKER,
     TRACE_EVENTS,
+    DEVICE_NAME,
 )  # noqa: E402
 
 BLOCK = "m8"
@@ -832,6 +834,10 @@ def build(act_in_external=None, return_program: bool = True):
 
     rt = Runtime()
     with rt.sequence(in_ty, out_ty) as (inp, out):
+        # Full-ELF flow: load_pdi must precede any DMA setup so XRT can patch
+        # the PDI address at dispatch. device_ref matches the resolve_program
+        # device_name below.
+        rt.inline_ops(lambda: npu_load_pdi(device_ref=DEVICE_NAME), [])
         if TRACE_SIZE_PER_WORKER > 0:
             # Mirror aie2_yolo_per_block.py:2784-2804: respect TRACE_EVENTS and
             # TRACE_DDR_ID env vars so we can do stall-attribution traces from
@@ -865,7 +871,7 @@ def build(act_in_external=None, return_program: bool = True):
         )
         rt.finish_task_group(tg)
 
-    return Program(NPU2(), rt).resolve_program()
+    return Program(NPU2(), rt).resolve_program(device_name=DEVICE_NAME)
 
 
 def main():

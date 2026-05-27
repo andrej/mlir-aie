@@ -32,6 +32,7 @@ from aie.iron import Worker as _IronWorker
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2, Tile
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
+from aie.dialects.aiex import npu_load_pdi
 
 import yolo_spec
 import placement
@@ -75,6 +76,14 @@ def _resolve_trace_events():
 
 
 TRACE_EVENTS = _resolve_trace_events()
+
+
+# Full-ELF flow: device sym_name baked into every yolo ELF. Used by the
+# load_pdi op at the top of the runtime sequence and as the device_name arg
+# to Program.resolve_program. Shared across per-block, chain, m8 megakernel,
+# and m9 staged builders so a single kernel_name ("yolo26n:sequence") works
+# for every ELF.
+DEVICE_NAME = "yolo26n"
 
 
 class Worker(_IronWorker):
@@ -2771,6 +2780,10 @@ def per_block_iron(block_name: str) -> str:
 
     rt = Runtime()
     with rt.sequence(in_ty, out_ty) as (inp, out):
+        # Full-ELF flow: emit load_pdi at the head of the runtime sequence so
+        # XRT can patch the PDI address at dispatch time. device_ref must
+        # match the sym_name baked in by resolve_program(device_name=...).
+        rt.inline_ops(lambda: npu_load_pdi(device_ref=DEVICE_NAME), [])
         if TRACE_SIZE_PER_WORKER > 0:
             # Per-tile packet trace → DRAM, appended after `out` (ddr_id=-1
             # default, override via TRACE_DDR_ID env). TRACE_EVENTS env (csv
@@ -2849,7 +2862,7 @@ def per_block_iron(block_name: str) -> str:
             )
         rt.finish_task_group(tg)
 
-    return Program(NPU2(), rt).resolve_program()
+    return Program(NPU2(), rt).resolve_program(device_name=DEVICE_NAME)
 
 
 if __name__ == "__main__":

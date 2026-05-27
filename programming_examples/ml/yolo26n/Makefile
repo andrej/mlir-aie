@@ -6,11 +6,16 @@
 
 # yolo26n-cls per-block + chain IRON build targets.
 #
+# Full-ELF flow throughout — aiecc.py --generate-full-elf packages PDIs +
+# runtime sequence into one self-contained ELF (no xclbin / insts.bin pair).
+# Every builder bakes the same device sym_name `yolo26n` so a single
+# kernel_name `yolo26n:sequence` works for any of the per-block / chain ELFs.
+#
 # Usage (with the mlir-aie env active — see ../../../utils/env_setup.sh):
-#   make BLOCK=m0          -> build m0 .o + MLIR + xclbin + insts.bin
+#   make BLOCK=m0          -> build m0 .o + MLIR + ELF
 #   make run_ort BLOCK=m0  -> compile + run on NPU, bit-exact compare vs ORT
-#   make chain             -> build full m0..m10 chain xclbin
-#   make run_chain         -> run chain xclbin on NPU, bit-exact compare vs ORT
+#   make chain             -> build full m0..m10 chain ELF
+#   make run_chain         -> run chain ELF on NPU, bit-exact compare vs ORT
 #   make clean             -> wipe build/
 #
 # data/ is regenerated from models/phase1_25k_xint8_acc0.8968.onnx by
@@ -92,8 +97,12 @@ M10_KERNELS := conv2dk1_silu_xy_pool linear_gemm softmax
 KERNEL_OBJS += $(foreach k,$(M10_KERNELS),$(BUILD)/yolo_m10_$(k).o)
 
 MLIR   := $(BUILD)/aie_$(BLOCK).mlir
-XCLBIN := $(BUILD)/final_$(BLOCK).xclbin
-INSTS  := $(BUILD)/insts_$(BLOCK).bin
+ELF    := $(BUILD)/aie_$(BLOCK).elf
+# Kernel name baked into every yolo ELF — `<device>:<sequence>` where
+# `device` is the DEVICE_NAME from aie2_yolo_per_block.py and `sequence` is
+# IRON's anonymous rt.sequence symbol. One name covers all per-block and
+# chain ELFs.
+KERNEL_NAME := yolo26n:sequence
 
 .PHONY: all run_ort chain run_chain time time_chain trace test clean clean_chain data help FORCE
 
@@ -110,18 +119,18 @@ CHAIN_N_SAMPLES ?= 1
 # e.g. `make time BLOCK=m8 TIME_ARGS="--n-iters 50"`.
 TIME_ARGS ?=
 
-all: $(XCLBIN) $(INSTS)
+all: $(ELF)
 
 define HELP_TEXT
-yolo26n-cls on AMD Strix NPU — make targets
+yolo26n-cls on AMD Strix NPU — make targets (full-ELF flow)
 
 Per-block (set BLOCK=mN; default $(BLOCK)):
-  make BLOCK=m8                 — build per-block xclbin + insts.bin
+  make BLOCK=m8                 — build per-block ELF (build/aie_m8.elf)
   make run_ort BLOCK=m8         — build + bit-exact compare vs ORT
   make time BLOCK=m8            — build + time on NPU (mean/min/max ms, fps)
 
 Full m0..m10 chain:
-  make chain                    — build chain xclbin + insts.bin (N=1)
+  make chain                    — build chain ELF (build/final_chain.elf, N=1)
   make run_chain                — build + bit-exact compare vs ORT (N=1)
   make time_chain               — build + time on NPU (N=1 latency)
 
@@ -421,13 +430,12 @@ $(MLIR): $(SRCDIR)/aie2_yolo_per_block.py $(DATA)/manifest.json $(SILU_LUTS) \
 	mkdir -p $(BUILD)
 	cd $(SRCDIR) && M9_STAGE=$(M9_STAGE) python3 aie2_yolo_per_block.py $(BLOCK) > $@
 
-# MLIR + kernel objs -> xclbin + insts.bin. aiecc runs from $(BUILD) so it
+# MLIR + kernel objs -> full ELF. aiecc runs from $(BUILD) so it
 # resolves kernel .o by basename via the MLIR's `link_with` attr.
-$(XCLBIN) $(INSTS): $(MLIR) $(KERNEL_OBJS)
+$(ELF): $(MLIR) $(KERNEL_OBJS)
 	cd $(BUILD) && aiecc.py \
-	    --aie-generate-xclbin --no-compile-host --no-xchesscc --no-xbridge \
-	    --aie-generate-npu-insts --npu-insts-name=$(notdir $(INSTS)) \
-	    --xclbin-name=$(notdir $(XCLBIN)) $(notdir $(MLIR))
+	    --generate-full-elf --no-compile-host --no-xchesscc --no-xbridge \
+	    --full-elf-name=$(notdir $(ELF)) $(notdir $(MLIR))
 
 # Quark XINT8 ONNX -> data/* via gen_yolo_data.py.
 $(DATA)/manifest.json: $(SRCDIR)/gen_yolo_data.py $(ONNX)
@@ -448,15 +456,15 @@ data: $(DATA)/manifest.json $(SILU_LUTS)
 #              PSA tensors with no clean ORT analog; use `run_chain` for
 #              end-to-end verification.
 #   m10 — not yet wired; verify via `make run_chain`.
-run_ort: $(XCLBIN) $(INSTS)
+run_ort: $(ELF)
 	cd $(SRCDIR) && M9_STAGE=$(M9_STAGE) python3 test_block_ort.py --block $(BLOCK) \
-	    -x $(XCLBIN) -i $(INSTS) -k MLIR_AIE
+	    -e $(ELF) -k $(KERNEL_NAME)
 
 # Per-block timing: warmup + N timed dispatches, reports mean/min/max ms + fps.
 # Add `TIME_ARGS="--n-warmup 5 --n-iters 50"` to tune.
-time: $(XCLBIN) $(INSTS)
+time: $(ELF)
 	cd $(SRCDIR) && python3 scripts/time_block.py --block $(BLOCK) \
-	    -x $(XCLBIN) -i $(INSTS) -k MLIR_AIE $(TIME_ARGS)
+	    -e $(ELF) -k $(KERNEL_NAME) $(TIME_ARGS)
 
 # --- Full m0..m10 chain (full-ELF flow) ---
 # aiecc with --generate-full-elf packages PDIs + runtime sequence into one
@@ -482,12 +490,12 @@ chain: $(CHAIN_ELF)
 
 run_chain: $(CHAIN_ELF)
 	cd $(SRCDIR) && CHAIN_N_SAMPLES=$(CHAIN_N_SAMPLES) CHAIN_BLOCKS="$(CHAIN_BLOCKS)" \
-	    python3 test_chain_ort.py -e $(CHAIN_ELF)
+	    python3 test_chain_ort.py -e $(CHAIN_ELF) -k $(KERNEL_NAME)
 
 # Chain timing. For batched throughput, set CHAIN_N_SAMPLES at the make line.
 time_chain: $(CHAIN_ELF)
 	cd $(SRCDIR) && CHAIN_N_SAMPLES=$(CHAIN_N_SAMPLES) CHAIN_BLOCKS="$(CHAIN_BLOCKS)" \
-	    python3 scripts/time_chain.py -e $(CHAIN_ELF) $(TIME_ARGS)
+	    python3 scripts/time_chain.py -e $(CHAIN_ELF) -k $(KERNEL_NAME) $(TIME_ARGS)
 
 # HW packet trace of the m8 megakernel. Sub-script handles the build/run/parse
 # pipeline; honors TRACE_SIZE_PER_WORKER and TRACE_EVENTS env vars.

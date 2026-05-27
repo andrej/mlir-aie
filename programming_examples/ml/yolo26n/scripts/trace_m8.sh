@@ -17,8 +17,7 @@ cd "$(dirname "$0")/.."
 SRCDIR=$(pwd)
 BUILD="$SRCDIR/build"
 BLOCK=m8
-XCLBIN="$BUILD/final_${BLOCK}.xclbin"
-INSTS="$BUILD/insts_${BLOCK}.bin"
+ELF="$BUILD/aie_${BLOCK}.elf"
 MLIR="$BUILD/aie_${BLOCK}.mlir"
 PHYS_MLIR="$BUILD/aie_${BLOCK}.mlir.prj/input_with_addresses.mlir"
 
@@ -36,8 +35,8 @@ export M8_MEGAKERNEL_2TILE=1
 echo "[trace_m8] TRACE_SIZE_PER_WORKER=$TRACE_SIZE_PER_WORKER  TRACE_EVENTS=${TRACE_EVENTS:-<default 8>}  TRACE_DDR_ID=$TRACE_DDR_ID"
 
 # The MLIR depends on env vars (TRACE_*), so always regenerate.
-rm -f "$MLIR" "$XCLBIN" "$INSTS"
-make -C "$SRCDIR" BLOCK="$BLOCK" "$XCLBIN" "$INSTS"
+rm -f "$MLIR" "$ELF"
+make -C "$SRCDIR" BLOCK="$BLOCK" "$ELF"
 
 # Run one warmup + one traced iteration. trace.txt is overwritten per iter,
 # so only the final iter's trace is kept. n-iters=1 keeps it.
@@ -46,12 +45,12 @@ TRACE_TXT="$BUILD/trace_m8.txt"
 TRACE_JSON="$BUILD/trace_m8.json"
 
 # Force load_and_run to write trace.txt into build/ by cd-ing there.
-# --trace-sz must be set on the host CLI too — it's what makes create_npu_kernel
+# --trace-sz must be set on the host CLI too — it's what makes time_block.py
 # attach a TraceConfig to the NPUKernel; without it the host never reads the
 # trace BO back even though the MLIR has trace ops baked in.
 # --ddr-id mirrors the build-time TRACE_DDR_ID so host buffer layout matches.
 ( cd "$BUILD" && python3 "$SRCDIR/scripts/time_block.py" --block "$BLOCK" \
-    -x "$XCLBIN" -i "$INSTS" -k MLIR_AIE --n-iters 1 --n-warmup 1 \
+    -e "$ELF" --n-iters 1 --n-warmup 1 \
     --trace-sz "$TRACE_TOTAL" --ddr-id "$TRACE_DDR_ID" )
 
 # load_and_run writes ./trace.txt; rename for archival.

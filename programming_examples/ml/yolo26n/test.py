@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
-"""End-to-end person/no-person classifier on the NPU.
+"""End-to-end person/no-person classifier on the NPU (full-ELF flow).
 
 Loads an image from disk, preprocesses it to match the calibration pipeline
 (center-crop -> 512x512 -> /255 -> CHW), int8-quantizes at the model's
-input scale, runs the full m0..m10 chain xclbin on the NPU, and prints
+input scale, runs the full m0..m10 chain ELF on the NPU, and prints
 the predicted class + probabilities.
 
-The xclbin must have been built with CHAIN_N_SAMPLES=1 (default), i.e.
+The ELF must have been built with CHAIN_N_SAMPLES=1 (default), i.e.
 plain `make chain`. Class order is alphabetical, matching the calibration
 notebook: index 0 = no_person, index 1 = person.
 
 Run:
     source ~/setup_buildenv.sh
-    python3 test.py -x build/final_chain.xclbin -i build/insts_chain.bin \\
-                    -k MLIR_AIE --image /path/to/img.jpg
+    python3 test.py -e build/final_chain.elf --image /path/to/img.jpg
 """
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -26,8 +26,7 @@ import onnx
 from PIL import Image
 
 import aie.iron as iron
-import aie.utils.test as test_utils
-from aie.utils import DefaultNPURuntime
+from aie.utils import DefaultNPURuntime, NPUKernel
 
 HERE = Path(__file__).resolve().parent
 ONNX_PATH = HERE / "models" / "phase1_25k_xint8_acc0.8968.onnx"
@@ -77,8 +76,17 @@ def preprocess(img_path: Path, in_scale: float) -> np.ndarray:
 
 
 def main():
-    p = test_utils.create_default_argparser()
+    p = argparse.ArgumentParser()
     p.add_argument("--image", required=True, help="path to an input image (jpg/png/...)")
+    p.add_argument(
+        "-e", "--elf", default="build/final_chain.elf",
+        help="path to the chain full-ELF (default: build/final_chain.elf)",
+    )
+    p.add_argument(
+        "-k", "--kernel", default="yolo26n:sequence",
+        help="kernel name = '<device>:<sequence>' baked into the ELF (default: "
+        "yolo26n:sequence; matches DEVICE_NAME in aie2_yolo_per_block.py)",
+    )
     p.add_argument(
         "--threshold",
         type=float,
@@ -98,9 +106,9 @@ def main():
     in_tensor = iron.tensor(in_flat, dtype=np.int8)
     out_tensor = iron.zeros([OUT_PAD], dtype=np.int8)
 
-    npu_opts = test_utils.create_npu_kernel(opts)
+    npu_kernel = NPUKernel(elf_path=opts.elf, kernel_name=opts.kernel)
     rt = DefaultNPURuntime
-    handle = rt.load(npu_opts.npu_kernel)
+    handle = rt.load(npu_kernel)
     result = rt.run(handle, [in_tensor, out_tensor])
     if result.ret.name != "ERT_CMD_STATE_COMPLETED":
         print(f"NPU run failed: {result.ret.name}", file=sys.stderr)

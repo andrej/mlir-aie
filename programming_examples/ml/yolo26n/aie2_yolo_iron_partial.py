@@ -25,6 +25,7 @@ import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime
 from aie.iron.device import NPU2
 from aie.helpers.taplib import TensorAccessPattern
+from aie.dialects.aiex import npu_load_pdi
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
@@ -37,6 +38,7 @@ from aie2_yolo_per_block import (
     _i32,
     TRACE_SIZE_PER_WORKER,
     TRACE_EVENTS,
+    DEVICE_NAME,
 )
 
 _DEFAULT_BLOCKS = ("m0", "m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8", "m9", "m10")
@@ -54,6 +56,11 @@ CHAIN_BLOCKS = tuple(_chain_env.split(",")) if _chain_env else _DEFAULT_BLOCKS
 import os
 
 N_SAMPLES = int(os.environ.get("CHAIN_N_SAMPLES", "1"))
+
+# DEVICE_NAME ("yolo26n") is shared via aie2_yolo_per_block so every yolo
+# builder (chain / per-block / m8 megakernel / m9 staged) bakes the same
+# device sym_name into the ELF, and a single kernel_name "yolo26n:sequence"
+# works for every ELF.
 
 
 def yolo_iron_partial() -> str:
@@ -104,6 +111,10 @@ def yolo_iron_partial() -> str:
 
     rt = Runtime()
     with rt.sequence(in_ty, out_ty) as (inp, out):
+        # Full-ELF flow requires an explicit load_pdi at the head of the
+        # runtime sequence (no pass auto-inserts it). device_ref must match
+        # the sym_name baked in below via resolve_program(device_name=...).
+        rt.inline_ops(lambda: npu_load_pdi(device_ref=DEVICE_NAME), [])
         if TRACE_SIZE_PER_WORKER > 0 and workers_to_trace:
             # Append trace BO after the last sequence tensor (`out`); host
             # runtime resizes `out` to include trace bytes when ddr_id == -1.
@@ -196,7 +207,7 @@ def yolo_iron_partial() -> str:
             )
             rt.finish_task_group(tg)
 
-    return Program(NPU2(), rt).resolve_program()
+    return Program(NPU2(), rt).resolve_program(device_name=DEVICE_NAME)
 
 
 if __name__ == "__main__":

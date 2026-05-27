@@ -78,8 +78,11 @@ def main():
         help="path to the chain full-ELF (default: build/final_chain.elf)",
     )
     p.add_argument(
-        "-k", "--kernel", default="yolo26n_chain:sequence",
-        help="kernel name = '<device_name>:<sequence_name>' baked into the ELF",
+        "-k", "--kernel", default="yolo26n:sequence",
+        help="kernel name = '<device>:<sequence>' baked into the ELF. The "
+        "yolo builders use DEVICE_NAME=\"yolo26n\" (see aie2_yolo_per_block.py) "
+        "and IRON's anonymous rt.sequence lowers to symbol 'sequence', so the "
+        "ELF's kernel module is 'yolo26n:sequence'.",
     )
     opts = p.parse_args(sys.argv[1:])
 
