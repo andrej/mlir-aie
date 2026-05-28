@@ -19,11 +19,12 @@ from __future__ import annotations
 import os
 import sys
 import pathlib
+import argparse
 
 import numpy as np
 
 from aie.iron import ObjectFifo, Program, Runtime
-from aie.iron.device import NPU2
+from aie.iron.device import Device, Tile, XCVE3858 
 from aie.helpers.taplib import TensorAccessPattern
 from aie.dialects.aiex import npu_load_pdi
 
@@ -40,6 +41,8 @@ from aie2_yolo_per_block import (
     TRACE_EVENTS,
     DEVICE_NAME,
 )
+
+from common import devs
 
 _DEFAULT_BLOCKS = ("m0", "m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8", "m9", "m10")
 # CHAIN_BLOCKS env override for bisect-style debug:
@@ -63,7 +66,12 @@ N_SAMPLES = int(os.environ.get("CHAIN_N_SAMPLES", "1"))
 # works for every ELF.
 
 
-def yolo_iron_partial() -> str:
+def yolo_iron_partial(dev: Device) -> str:
+    # Retarget placement for the selected device. XCVE3858 (Telluride) has
+    # 2 memtile rows (rows 1-2), so compute starts at row 3 instead of 2.
+    compute_row_start = 3 if isinstance(dev, XCVE3858) else 2
+    placement.retarget(compute_row_start)
+
     manifest = _load_manifest()
 
     m0 = yolo_spec.block("m0")
@@ -207,8 +215,12 @@ def yolo_iron_partial() -> str:
             )
             rt.finish_task_group(tg)
 
-    return Program(NPU2(), rt).resolve_program(device_name=DEVICE_NAME)
+    return Program(dev, rt).resolve_program(device_name=DEVICE_NAME)
 
 
 if __name__ == "__main__":
-    print(yolo_iron_partial())
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--device", choices=devs.keys(), help="target device")
+    args = ap.parse_args()
+    dev = devs[args.device]
+    print(yolo_iron_partial(dev))

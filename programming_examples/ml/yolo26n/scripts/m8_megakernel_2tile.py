@@ -96,7 +96,7 @@ def _of(shape, *, depth, name, delegate=None, disable_sync=True):
     return ObjectFifo(B._i8(shape), **kwargs)
 
 
-def build(act_in_external=None, return_program: bool = True):
+def build(act_in_external=None, return_program: bool = True, dev=None):
     manifest = B._load_manifest()
     blk = yolo_spec.block(BLOCK)
     L_cv1, L_m0c1, L_m0c2, L_p0c1, L_p0c2, L_p1c1, L_p1c2, L_m0c3, L_cv2 = blk.layers
@@ -107,11 +107,12 @@ def build(act_in_external=None, return_program: bool = True):
     cp = L_m0c1.out_shape[2]
     out_c = L_cv2.out_shape[2]
 
-    # Tiles
-    t_a = Tile(5, 3)  # cv1+split, pair0
-    t_b = Tile(5, 4)  # pair1, cv3+cv2
+    # Tiles — read from placement (already retargeted for the active device).
+    plc = placement.PLACEMENT[BLOCK]
+    t_a = plc["tile_a"]
+    t_b = plc["tile_b"]
     # Buffer-delegate-only neighbor (used to spill big OFs off A and B)
-    t_south = Tile(5, 2)
+    t_south = plc["delegate_south"]
     # (5,5) for the other side if needed; for now use only south + the two compute tiles
 
     # ----- Static weights on each tile -----
@@ -197,18 +198,16 @@ def build(act_in_external=None, return_program: bool = True):
     lut_p1c2 = _lut_buf("m.0/m/m.1/cv2", name="m8_2t_p1c2_lut")
     rs_p1c1 = m_p1c1["right_shift"]
     rs_p1c2 = m_p1c2["right_shift"]
-    # ws_pair1's recv buffer is placed on (4,4), the WEST neighbor of
-    # worker_b (5,4). Key constraints:
-    #   1. Cannot live on the worker tile (5,4) itself — that deadlocks
+    # ws_pair1's recv buffer is placed on the WEST neighbor of worker_b.
+    # Key constraints:
+    #   1. Cannot live on the worker tile itself — that deadlocks
     #      (root cause unknown; ws_cv2 on the same worker tile works fine).
     #   2. (5,5) and (5,3) would work for shared L1 too, but in the chain
     #      context (5,5) collides with m9's ffn0_wts and (5,3) is worker_a.
     #   3. AIE2P shared L1 is asymmetric east-to-west: a tile can read its
     #      WEST neighbor's L1, but not its EAST neighbor's. So buffer must
-    #      live WEST of the worker. (4,4) is west of (5,4) and free in the
-    #      chain. An earlier test with buffer at (6,4) east of worker_b
-    #      failed with "tile (5,4) violates shared-L1 buffer adjacency".
-    t_west = Tile(4, 4)
+    #      live WEST of the worker.
+    t_west = plc["delegate_west"]
     ws_pair1 = StaticWeightStream(
         obj_type=B._i8((sz_p0c1,)),
         initial_value=data_p1c1,
@@ -871,7 +870,9 @@ def build(act_in_external=None, return_program: bool = True):
         )
         rt.finish_task_group(tg)
 
-    return Program(NPU2(), rt).resolve_program(device_name=DEVICE_NAME)
+    if dev is None:
+        dev = NPU2()
+    return Program(dev, rt).resolve_program(device_name=DEVICE_NAME)
 
 
 def main():

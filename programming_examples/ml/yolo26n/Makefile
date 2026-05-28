@@ -22,20 +22,31 @@
 # gen_yolo_data.py (gitignored).
 
 SRCDIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
-BUILD  := $(SRCDIR)/build
 DATA   := $(SRCDIR)/data
 
 BLOCK  ?= m0
 ONNX   := $(SRCDIR)/models/phase1_25k_xint8_acc0.8968.onnx
 
+DEVICE ?= telluride
+
+ifeq ($(DEVICE),strix)
+  ARCH := aie2p
+else ifeq ($(DEVICE),telluride)
+  ARCH := aie2ps
+else
+  $(error "Unknown DEVICE '$(DEVICE)'; valid options are 'strix' or 'telluride'")
+endif
+
+BUILD  := $(SRCDIR)/build-$(DEVICE)
+
 # Peano flags — same shape as programming_examples/makefile-common's
 # PEANOWRAP2P_FLAGS, inlined so the example is self-contained.
-PEANOWRAP2P_FLAGS := -O2 -std=c++20 --target=aie2p-none-unknown-elf \
+PEANOWRAP2P_FLAGS := -O2 -std=c++20 --target=$(ARCH)-none-unknown-elf \
     -Wno-parentheses -Wno-attributes -Wno-macro-redefined -Wno-empty-body \
     -Wno-missing-template-arg-list-after-template-kw \
     -DNDEBUG -I $(MLIR_AIE_INSTALL_DIR)/include
 
-CHESSCCWRAP2P_FLAGS = aie2p -I ${AIETOOLS_DIR}/include
+CHESSCCWRAP2P_FLAGS = $(ARCH) -I ${AIETOOLS_DIR}/include
 
 AIECC_FLAGS := --no-compile-host
 
@@ -439,7 +450,7 @@ SILU_LUTS := $(DATA)/model.0/silu_lut.bin $(DATA)/model.1/silu_lut.bin \
 $(MLIR): $(SRCDIR)/aie2_yolo_per_block.py $(DATA)/manifest.json $(SILU_LUTS) \
          $(BUILD)/.m9_stage
 	mkdir -p $(BUILD)
-	cd $(SRCDIR) && M9_STAGE=$(M9_STAGE) python3 aie2_yolo_per_block.py $(BLOCK) > $@
+	cd $(SRCDIR) && M9_STAGE=$(M9_STAGE) python3 aie2_yolo_per_block.py $(BLOCK) --device $(DEVICE) > $@
 
 # MLIR + kernel objs -> full ELF. aiecc runs from $(BUILD) so it
 # resolves kernel .o by basename via the MLIR's `link_with` attr.
@@ -490,7 +501,7 @@ $(CHAIN_MLIR): $(SRCDIR)/aie2_yolo_iron_partial.py $(SRCDIR)/aie2_yolo_per_block
                $(BUILD)/.chain_blocks
 	mkdir -p $(BUILD)
 	cd $(SRCDIR) && CHAIN_N_SAMPLES=$(CHAIN_N_SAMPLES) CHAIN_BLOCKS="$(CHAIN_BLOCKS)" \
-	    python3 aie2_yolo_iron_partial.py > $@
+	    python3 aie2_yolo_iron_partial.py --device $(DEVICE) > $@
 
 $(CHAIN_ELF): $(CHAIN_MLIR) $(KERNEL_OBJS)
 	cd $(BUILD) && aiecc.py \
