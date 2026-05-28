@@ -82,7 +82,7 @@ def _lut(layer):
     return Buffer(B._i8((256,)), initial_value=data)
 
 
-def build(stage: int, act_in_external=None, return_program: bool = True):
+def build(stage: int, act_in_external=None, return_program: bool = True, dev=None):
     """Build m9 stage `stage`.
 
     return_program=True (default): standalone build. Creates its own
@@ -1439,7 +1439,9 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
         )
         rt.finish_task_group(tg)
 
-    return Program(NPU2(), rt).resolve_program(device_name=DEVICE_NAME)
+    if dev is None:
+        dev = NPU2()
+    return Program(dev, rt).resolve_program(device_name=DEVICE_NAME)
 
 
 def main():

@@ -30,13 +30,14 @@ import numpy as np
 from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime
 from aie.iron import Worker as _IronWorker
 from aie.iron.controlflow import range_
-from aie.iron.device import NPU2, Tile
+from aie.iron.device import Device, Tile, XCVE3858
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
 from aie.dialects.aiex import npu_load_pdi
 
 import yolo_spec
 import placement
 from lowlevel_dma import StaticWeightStream
+from common import devs
 
 # ---------------------------------------------------------------------------
 # Trace gating. When env var TRACE_SIZE_PER_WORKER > 0 at MLIR-generation
@@ -2707,11 +2708,17 @@ _BUILDERS = {
 }
 
 
-def per_block_iron(block_name: str) -> str:
+def per_block_iron(block_name: str, dev: Device) -> str:
     if block_name not in _BUILDERS:
         raise NotImplementedError(
             f"per-block IRON not yet drafted for {block_name!r} (have: {sorted(_BUILDERS)})"
         )
+
+    # Retarget placement for the selected device. XCVE3858 (Telluride) has
+    # 2 memtile rows (rows 1-2), so compute starts at row 3 instead of 2.
+    compute_row_start = 3 if isinstance(dev, XCVE3858) else 2
+    placement.retarget(compute_row_start)
+
     manifest = _load_manifest()
 
     # m9 stages can produce outputs LARGER than the final block output
@@ -2735,7 +2742,7 @@ def per_block_iron(block_name: str) -> str:
         )
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        return mod.build(stage=stage, return_program=True)
+        return mod.build(stage=stage, return_program=True, dev=dev)
 
     # m8: 2-tile megakernel (see scripts/m8_megakernel_2tile.py).
     if block_name == "m8":
@@ -2747,7 +2754,7 @@ def per_block_iron(block_name: str) -> str:
         )
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        return mod.build(return_program=True)
+        return mod.build(return_program=True, dev=dev)
 
     blk = yolo_spec.block(block_name)
     in_w, in_h, in_c_raw = blk.layers[0].in_shape
@@ -2862,11 +2869,13 @@ def per_block_iron(block_name: str) -> str:
             )
         rt.finish_task_group(tg)
 
-    return Program(NPU2(), rt).resolve_program(device_name=DEVICE_NAME)
+    return Program(dev, rt).resolve_program(device_name=DEVICE_NAME)
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Emit MLIR for one yolo26n-cls block.")
     ap.add_argument("block", help="block name from yolo_spec.NETWORK (e.g. m0)")
+    ap.add_argument("--device", choices=devs.keys(), help="target device")
     args = ap.parse_args()
-    print(per_block_iron(args.block))
+    dev = devs[args.device]
+    print(per_block_iron(args.block, dev))

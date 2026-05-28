@@ -173,6 +173,10 @@ except ImportError:
             return f"Tile({self.col},{self.row})"
 
 
+# First compute row for the current target. Updated by retarget().
+_COMPUTE_ROW_START = 2
+
+
 # ---------------------------------------------------------------------------
 # PLACEMENT — keyed by block name from yolo_spec.NETWORK
 # ---------------------------------------------------------------------------
@@ -340,6 +344,50 @@ _validate()
 
 
 # ---------------------------------------------------------------------------
+# retarget — shift placement for devices with different memtile row counts.
+#
+# NPU2 (Strix):     shim=row 0, memtile=row 1,   compute=rows 2-5
+# XCVE3858 (Telluride): shim=row 0, memtile=rows 1-2, compute=rows 3-6
+# ---------------------------------------------------------------------------
+def retarget(compute_row_start: int) -> None:
+    """Shift all compute tile rows so the first compute row is at
+    `compute_row_start`. Memtile entries are updated to cover rows 1
+    through compute_row_start-1. Shim (row 0) is unchanged.
+
+    Call once before any builder accesses PLACEMENT. Idempotent if called
+    with the current _COMPUTE_ROW_START.
+    """
+    global PLACEMENT, CASCADES, _COMPUTE_ROW_START
+    offset = compute_row_start - _COMPUTE_ROW_START
+    if offset == 0:
+        return
+
+    def _shift_tile(t):
+        # Shim row 0 and memtile rows (< current compute start) are unchanged.
+        if t.row < _COMPUTE_ROW_START:
+            return t
+        return Tile(t.col, t.row + offset)
+
+    def _shift_val(v):
+        if isinstance(v, Tile):
+            return _shift_tile(v)
+        elif isinstance(v, dict):
+            return {k: _shift_val(sub) for k, sub in v.items()}
+        elif isinstance(v, list):
+            return [_shift_val(item) for item in v]
+        return v
+
+    PLACEMENT = {k: _shift_val(v) for k, v in PLACEMENT.items()}
+    # Update memtile available list to cover all memtile rows.
+    PLACEMENT["memtile"]["available"] = [
+        Tile(c, r) for r in range(1, compute_row_start) for c in range(8)
+    ]
+    CASCADES = tuple(
+        tuple(_shift_tile(t) for t in pair) for pair in CASCADES
+    )
+    _COMPUTE_ROW_START = compute_row_start
+
+# ---------------------------------------------------------------------------
 # Diagnostic
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
@@ -347,7 +395,7 @@ if __name__ == "__main__":
     print(
         f"placement: {len(compute)} compute tiles assigned across {len(set(c.col for _,_,c in compute))} columns"
     )
-    spare = {(c, r) for c in range(8) for r in range(2, 6)} - {
+    spare = {(c, r) for c in range(8) for r in range(_COMPUTE_ROW_START, _COMPUTE_ROW_START + 4)} - {
         (t.col, t.row) for _, _, t in compute
     }
     print(f"  spare compute tiles ({len(spare)}/32): {sorted(spare)}")
