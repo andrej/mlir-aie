@@ -34,6 +34,15 @@
 
 #include "../../../../aie_kernels/aie_kernel_utils.h"
 
+// AIE_LOOP_UNROLL_FULL causes chess to generate one copy of the loop body
+// per iteration for small constant-bound loops (kXTiles=4, p<4, j<8),
+// multiplying code size. Suppress it for chess; peano still gets the hint.
+#ifdef __chess__
+#define UNROLL_UNLESS_CHESS
+#else
+#define UNROLL_UNLESS_CHESS AIE_LOOP_UNROLL_FULL
+#endif
+
 // Compile-time shape specialization. Caller-side Makefile MUST pass:
 //   -DYOLO_M9_FFN0_IN_W=<input spatial width>
 //   -DYOLO_M9_FFN0_IN_C=<input channels, multiple of 8>
@@ -130,7 +139,7 @@ void yolo_m9_ffn_0_silu_row_i8_i8(
       bias_acc.from_vector(b32);
     }
     MMUL4x8x8 acc[kXTiles];
-    AIE_LOOP_UNROLL_FULL
+    UNROLL_UNLESS_CHESS
     for (int xt = 0; xt < kXTiles; ++xt)
       acc[xt] = bias_acc;
 
@@ -142,7 +151,7 @@ void yolo_m9_ffn_0_silu_row_i8_i8(
       aie::vector<int8, 64> in_b = aie::load_v<64>(b_ptr);
       b_ptr += 64;
       const int8_t *__restrict a_base = scratch + ic_t * kInW * 8;
-      AIE_LOOP_UNROLL_FULL
+      UNROLL_UNLESS_CHESS
       for (int xt = 0; xt < kXTiles; ++xt) {
         aie::vector<int8, 32> in_a = aie::load_v<32>(a_base + xt * 32);
         acc[xt].mac(in_a, in_b);
@@ -150,17 +159,17 @@ void yolo_m9_ffn_0_silu_row_i8_i8(
     }
 
     // Vec SRS+saturate per x_tile (bias baked in) + scalar SiLU LUT gather.
-    AIE_LOOP_UNROLL_FULL
+    UNROLL_UNLESS_CHESS
     for (int xt = 0; xt < kXTiles; ++xt) {
       aie::vector<int8, 32> srs_v =
           acc[xt].template to_vector<int8>(right_shift);
       const int x_out_base = xt * 4;
-      AIE_LOOP_UNROLL_FULL
+      UNROLL_UNLESS_CHESS
       for (int p = 0; p < 4; ++p) {
         int x_out = x_out_base + p;
         int8_t *__restrict row_dst =
             mid_out + x_out * kOutC + dst_oc_offset + oc_t * 8;
-        AIE_LOOP_UNROLL_FULL
+        UNROLL_UNLESS_CHESS
         for (int j = 0; j < 8; ++j) {
           row_dst[j] = silu_lut[int(srs_v[p * 8 + j]) + 128];
         }

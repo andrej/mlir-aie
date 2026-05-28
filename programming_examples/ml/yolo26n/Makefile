@@ -37,7 +37,10 @@ PEANOWRAP2P_FLAGS := -O2 -std=c++20 --target=aie2p-none-unknown-elf \
 
 CHESSCCWRAP2P_FLAGS = aie2p -I ${AIETOOLS_DIR}/include
 
+AIECC_FLAGS := --no-compile-host
+
 ifeq ($(USE_PEANO),1)
+AIECC_FLAGS += --no-xchesscc --no-xbridge
 KERNEL_CC := $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS)
 else
 KERNEL_CC := xchesscc_wrapper $(CHESSCCWRAP2P_FLAGS)
@@ -442,7 +445,7 @@ $(MLIR): $(SRCDIR)/aie2_yolo_per_block.py $(DATA)/manifest.json $(SILU_LUTS) \
 # resolves kernel .o by basename via the MLIR's `link_with` attr.
 $(ELF): $(MLIR) $(KERNEL_OBJS)
 	cd $(BUILD) && aiecc.py \
-	    --generate-full-elf --no-compile-host --no-xchesscc --no-xbridge \
+	    --generate-full-elf $(AIECC_FLAGS) \
 	    --full-elf-name=$(notdir $(ELF)) $(notdir $(MLIR))
 
 # Quark XINT8 ONNX -> data/* via gen_yolo_data.py.
@@ -491,7 +494,7 @@ $(CHAIN_MLIR): $(SRCDIR)/aie2_yolo_iron_partial.py $(SRCDIR)/aie2_yolo_per_block
 
 $(CHAIN_ELF): $(CHAIN_MLIR) $(KERNEL_OBJS)
 	cd $(BUILD) && aiecc.py \
-	    --generate-full-elf --no-compile-host --no-xchesscc --no-xbridge \
+	    --generate-full-elf $(AIECC_FLAGS) \
 	    --full-elf-name=$(notdir $(CHAIN_ELF)) $(notdir $(CHAIN_MLIR))
 
 chain: $(CHAIN_ELF)

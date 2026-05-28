@@ -42,6 +42,31 @@
 #define SHAPES_ARE_CONST 0
 #endif
 
+#if defined(__chess__) && SHAPES_ARE_CONST
+// Chess generates code too large for the 16 KB program-memory limit when
+// the SHAPES_ARE_CONST=1 path is active (MMUL8x8x8 pixel-hoist with p<8
+// loops that chess auto-unrolls from constexpr bounds). Fall back to the
+// MMUL4x8x8 generic #else path which is compact enough for chess.
+#undef SHAPES_ARE_CONST
+#define SHAPES_ARE_CONST 0
+#endif
+
+#ifdef __chess__
+// In the SHAPES_ARE_CONST=0 (#else) path, AIE_LOOP_RANGE(3,3) on the kx
+// loop would cause chess to unroll it 3x, on top of constexpr MMUL_M=4
+// bounds causing the p-loop to unroll 4x (= 12x body copies). Without
+// the hint, chess uses a zero-overhead loop for kx instead.
+#undef AIE_LOOP_RANGE
+#define AIE_LOOP_RANGE(min, max)
+// Also prevent chess from unrolling the for-p and for-b loops in the #else
+// path: constexpr MMUL_M=4 and literal-8 bounds would each cause full
+// unrolling, multiplying the inner body 4x (or 32x combined). Use a
+// chess-only no-unroll attribute so peano is unaffected.
+#define CHESS_NOROLL [[chess::no_unroll]]
+#else
+#define CHESS_NOROLL
+#endif
+
 #ifndef KERNEL_SUFFIX
 #define KERNEL_SUFFIX
 #endif
@@ -252,6 +277,7 @@ void KERNEL_NAME(
           for (int kx = 0; kx < KW; ++kx) {
             alignas(32) int8_t a_buf[32];
             bool any_valid = false;
+            CHESS_NOROLL
             for (int p = 0; p < MMUL_M; ++p) {
               int col = x_in_base + p + kx;
               if (col < 0 || col >= IN_W) {
@@ -278,6 +304,7 @@ void KERNEL_NAME(
 
       aie::vector<int8, MMUL_MN> srs_v =
           acc.template to_vector<int8>(right_shift);
+      CHESS_NOROLL
       for (int p = 0; p < MMUL_M; ++p) {
         int x_out = x_out_base + p;
         for (int j = 0; j < 8; ++j) {

@@ -61,6 +61,16 @@
 #define SHAPES_ARE_CONST 0
 #endif
 
+#if defined(__chess__) && SHAPES_ARE_CONST
+// Chess generates code too large for the 16 KB program-memory limit when
+// the SHAPES_ARE_CONST=1 path is active (explicit AIE_LOOP_UNROLL_FULL on
+// kx=3 loops + always_inline gather templates with compile-time-constant
+// inner loops all multiply code size). Fall back to the generic #else path
+// which is compact enough for chess.
+#undef SHAPES_ARE_CONST
+#define SHAPES_ARE_CONST 0
+#endif
+
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
 
@@ -343,6 +353,7 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
   // single-acc body with bounds check on every iter. Slower but works
   // for any shape.
   for (int oc_t = 0; oc_t < oc_tiles; ++oc_t) {
+    auto bias_acc = make_bias_acc(&bias[oc_t * 8]);
     for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
       MMUL4x8x8 acc;
       acc = bias_acc;
