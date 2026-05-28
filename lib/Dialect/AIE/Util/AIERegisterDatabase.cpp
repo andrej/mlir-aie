@@ -79,14 +79,32 @@ std::unique_ptr<RegisterDatabase> RegisterDatabase::loadAIE2() {
   }
 
   auto db = std::unique_ptr<RegisterDatabase>(new RegisterDatabase());
-  if (!db->loadFromJSON(*registerPath, *eventPath))
+  if (!db->loadFromJSON(*registerPath, *eventPath, "aie2"))
     return nullptr;
 
   return db;
 }
 
-bool RegisterDatabase::loadFromJSON(StringRef registerPath,
-                                    StringRef eventPath) {
+std::unique_ptr<RegisterDatabase> RegisterDatabase::loadAIE2PS() {
+  auto registerPath = findRegDBFile("aie_registers_aie2ps.json");
+  auto eventPath = findRegDBFile("events_database.json");
+
+  if (!registerPath || !eventPath) {
+    llvm::errs() << "Failed to locate AIE2PS register database resources. "
+                 << "Set MLIR_AIE_INSTALL_DIR to the "
+                 << "MLIR-AIE installation path.\n";
+    return nullptr;
+  }
+
+  auto db = std::unique_ptr<RegisterDatabase>(new RegisterDatabase());
+  if (!db->loadFromJSON(*registerPath, *eventPath, "aie2ps"))
+    return nullptr;
+
+  return db;
+}
+
+bool RegisterDatabase::loadFromJSON(StringRef registerPath, StringRef eventPath,
+                                    StringRef archKey) {
   // Load register database
   auto registerBuf = MemoryBuffer::getFile(registerPath);
   if (!registerBuf) {
@@ -207,18 +225,18 @@ bool RegisterDatabase::loadFromJSON(StringRef registerPath,
     return false;
   }
 
-  // Parse event database for aie2
   auto *eventRoot = eventJSON->getAsObject();
   if (!eventRoot)
     return false;
 
-  auto *aie2 = eventRoot->getObject("aie2");
-  if (!aie2) {
-    llvm::errs() << "Failed to find 'aie2' architecture in event database\n";
+  auto *archObj = eventRoot->getObject(archKey);
+  if (!archObj) {
+    llvm::errs() << "Failed to find '" << archKey
+                 << "' architecture in event database\n";
     return false;
   }
 
-  auto *eventModules = aie2->getObject("modules");
+  auto *eventModules = archObj->getObject("modules");
   if (!eventModules)
     return false;
 

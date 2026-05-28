@@ -19,9 +19,11 @@
 #include <llvm/ADT/APInt.h>
 
 extern "C" {
+#include "xaiengine/xaiegbl.h"
 #include "xaiengine/xaiegbl_defs.h"
 // above needs to go first for u32, u64 typedefs
 #include "xaiengine/xaie_txn.h"
+#include "xaiengine/xaiegbl.h"
 }
 
 #include <cstring>
@@ -739,8 +741,6 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
   const AIETargetModel &targetModel =
       (const AIETargetModel &)device.getTargetModel();
 
-  if (!targetModel.hasProperty(AIETargetModel::IsNPU))
-    return failure();
 
   bool aieSim = false;
   bool xaieDebug = false;

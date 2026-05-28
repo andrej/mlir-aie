@@ -872,6 +872,11 @@ static std::string downgradeIRForChess(StringRef llvmIR) {
   replace("captures(none)", "nocapture");
   replace("getelementptr inbounds nuw", "getelementptr inbounds");
 
+  // AIE2PS: Chess xbridge resolves llvm.aie2p.* names, not llvm.aie2ps.*
+  // AIECoreToStandard emits the architecturally correct llvm.aie2ps.* names;
+  // remap them here for Chess compatibility.
+  replace("llvm.aie2ps.", "llvm.aie2p.");
+
   // Remove nocreateundeforpoison attribute using regex-like logic
   // Pattern: \bnocreateundeforpoison\s+
   // We'll do a simple find-and-replace for this attribute
@@ -899,10 +904,21 @@ static std::string getChessTarget(StringRef aieTarget) {
   } else if (target == "aie" || target == "aie1") {
     return "target";
   }
+  if (target == "aie2ps") {
+    return "target_aie2ps";
+  }
   // Unknown target - warn and return empty
   llvm::errs() << "Warning: Unsupported AIE target for chess toolchain: "
                << aieTarget << "\n";
   return "";
+}
+
+/// Check if the given AIE target is a CERT-based device (uses microcontroller
+/// control plane instead of NPU instruction sequences).
+static bool isCertDevice(StringRef aieTarget) {
+  std::string target = aieTarget.lower();
+  return target.find("aie2ps") != std::string::npos ||
+         target.find("aie4") != std::string::npos;
 }
 
 // Get the install path for mlir-aie (for finding runtime libraries)
@@ -3704,6 +3720,99 @@ static void assignPdiIds(ModuleOp moduleOp,
 }
 
 //===----------------------------------------------------------------------===//
+// CERT Pipeline Helper
+//===----------------------------------------------------------------------===//
+
+/// Run the CERT pipeline on a module that has already been through NPU
+/// lowering. This runs:
+///   convert-aie-to-transaction{elf-dir=...} + aie-npu-to-cert +
+///   cert-legalize-pages
+/// Then translates the result to cert assembly via aie-translate.
+/// The assembly is written to tmpDirName/input_physical.mlir.asm.
+///
+/// We use subprocess calls because in-memory pass execution can silently
+/// fail to transform the module (same issue as with
+/// convert-aie-to-transaction).
+static LogicalResult runCertPipelineAndTranslate(ModuleOp moduleOp,
+                                                 StringRef tmpDirName) {
+  // Write the input module to a temp file for aie-opt subprocess
+  SmallString<128> inputMlirPath(tmpDirName);
+  sys::path::append(inputMlirPath, "cert_input.mlir");
+  {
+    std::error_code ec;
+    raw_fd_ostream inputFile(inputMlirPath, ec, sys::fs::OpenFlags::OF_None);
+    if (ec) {
+      llvm::errs() << "Error writing module for cert pipeline: " << ec.message()
+                   << "\n";
+      return failure();
+    }
+    moduleOp->print(inputFile);
+  }
+
+  // Step 1: Run cert pipeline via aie-opt subprocess
+  SmallString<128> certMlirPath(tmpDirName);
+  sys::path::append(certMlirPath, "cert.mlir");
+
+  std::string aieOptPath = findAieTool("aie-opt");
+  if (aieOptPath.empty()) {
+    llvm::errs() << "Error: aie-opt not found for cert pipeline\n";
+    return failure();
+  }
+
+  std::string pipelineStr =
+      "builtin.module(aie.device(aie-dma-to-npu, "
+      "convert-aie-to-transaction{elf-dir=" +
+      tmpDirName.str() +
+      "}), aie-npu-to-cert, aie.device(cert-legalize-pages))";
+
+  // Ensure MLIR_AIE_INSTALL_DIR is set so aie-opt can find register databases.
+  // Derive it from the aie-opt binary location (../../ from bin/aie-opt).
+  if (!std::getenv("MLIR_AIE_INSTALL_DIR")) {
+    SmallString<128> installDir(sys::path::parent_path(aieOptPath)); // bin/
+    sys::path::remove_filename(installDir);                          // install/
+    ::setenv("MLIR_AIE_INSTALL_DIR", installDir.c_str(), /*overwrite=*/0);
+  }
+
+  SmallVector<std::string, 8> optCmd = {
+      aieOptPath, "--pass-pipeline=" + pipelineStr, std::string(inputMlirPath),
+      "-o", std::string(certMlirPath)};
+
+  if (verbose) {
+    llvm::outs() << "Running CERT pipeline via subprocess\n";
+  }
+
+  if (!executeCommand(optCmd)) {
+    llvm::errs() << "Error running cert pipeline\n";
+    return failure();
+  }
+
+  // Step 2: Translate cert MLIR to assembly via aie-translate subprocess
+  SmallString<128> asmPath(tmpDirName);
+  sys::path::append(asmPath, "input_physical.mlir.asm");
+
+  std::string aieTranslatePath = findAieTool("aie-translate");
+  if (aieTranslatePath.empty()) {
+    llvm::errs() << "Error: aie-translate not found for cert-to-asm\n";
+    return failure();
+  }
+
+  SmallVector<std::string, 8> translateCmd = {
+      aieTranslatePath, "--aie-cert-to-asm", std::string(certMlirPath), "-o",
+      std::string(asmPath)};
+
+  if (!executeCommand(translateCmd)) {
+    llvm::errs() << "Error translating cert to assembly\n";
+    return failure();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Generated cert assembly: " << asmPath << "\n";
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // NPU Instruction Generation
 //===----------------------------------------------------------------------===//
 
@@ -3711,7 +3820,8 @@ static void assignPdiIds(ModuleOp moduleOp,
 /// This clones the module since NPU lowering is destructive.
 static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
                                              StringRef tmpDirName,
-                                             StringRef devName) {
+                                             StringRef devName,
+                                             StringRef aieTarget = "aie2") {
   // Full ELF requires NPU instructions
   if (!generateNpuInsts && !generateFullElf) {
     return success();
@@ -3747,6 +3857,14 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
   SmallString<128> npuLoweredPath(tmpDirName);
   sys::path::append(npuLoweredPath, devName.str() + "_npu_lowered.mlir");
   dumpModuleToFile(*clonedModule, npuLoweredPath, "NPU lowered module");
+
+  // CERT devices: run cert pipeline instead of NPU binary translation
+  if (isCertDevice(aieTarget)) {
+    if (failed(runCertPipelineAndTranslate(*clonedModule, tmpDirName))) {
+      return failure();
+    }
+    return success();
+  }
 
   // Step 2: Translate to NPU binary
   // Find device and generate instructions for each runtime sequence
@@ -3876,7 +3994,45 @@ static LogicalResult generateTransactionOutput(ModuleOp moduleOp,
   sys::path::append(txnMlirPath, devName.str() + "_txn.mlir");
   dumpModuleToFile(*clonedModule, txnMlirPath, "Transaction MLIR");
 
-  // Copy to output location
+  // If output ends in .bin, translate to binary via aie-translate
+  if (StringRef(outputFileName).ends_with(".bin")) {
+    // First write the transaction MLIR to the temp dir
+    SmallString<128> txnMlirOutput(tmpDirName);
+    sys::path::append(txnMlirOutput, devName.str() + "_txn_for_bin.mlir");
+    {
+      std::error_code ec;
+      raw_fd_ostream mlirFile(txnMlirOutput, ec, sys::fs::OpenFlags::OF_None);
+      if (ec) {
+        llvm::errs() << "Error writing transaction MLIR: " << ec.message()
+                     << "\n";
+        return failure();
+      }
+      clonedModule->print(mlirFile);
+    }
+
+    // Translate to binary
+    std::string aieTranslatePath = findAieTool("aie-translate");
+    if (aieTranslatePath.empty()) {
+      llvm::errs() << "Error: aie-translate not found for txn-to-binary\n";
+      return failure();
+    }
+
+    SmallVector<std::string, 8> translateCmd = {
+        aieTranslatePath, "-aie-npu-to-binary", std::string(txnMlirOutput),
+        "-o", std::string(outputPath)};
+
+    if (!executeCommand(translateCmd)) {
+      llvm::errs() << "Error translating transaction MLIR to binary\n";
+      return failure();
+    }
+
+    if (verbose) {
+      llvm::outs() << "Wrote transaction binary to: " << outputPath << "\n";
+    }
+    return success();
+  }
+
+  // Otherwise write MLIR text
   std::error_code ec;
   raw_fd_ostream outFile(outputPath, ec, sys::fs::OpenFlags::OF_None);
   if (ec) {
@@ -4307,7 +4463,8 @@ static std::string findAiebuAsm() {
 /// This generates an ELF that can be loaded using xrt::elf API.
 static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
                                           StringRef tmpDirName,
-                                          StringRef devName) {
+                                          StringRef devName,
+                                          StringRef aieTarget = "aie2") {
   if (!generateElf) {
     return success();
   }
@@ -4330,12 +4487,46 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
     return success();
   }
 
+  // Determine output ELF path
+  std::string outputElfPath = formatString(elfName, devName.str(), "");
+
   // Clone and run NPU lowering (same as generateNpuInstructions)
   OwningOpRef<ModuleOp> clonedModule = moduleOp.clone();
 
   if (failed(runNpuLoweringPipeline(*clonedModule, tmpDirName))) {
     llvm::errs() << "Error running NPU lowering pipeline for ELF generation\n";
     return failure();
+  }
+
+  // CERT devices: run cert pipeline then aiebu-asm -t aie2ps
+  if (isCertDevice(aieTarget)) {
+    if (failed(runCertPipelineAndTranslate(*clonedModule, tmpDirName))) {
+      return failure();
+    }
+
+    SmallString<128> asmPath(tmpDirName);
+    sys::path::append(asmPath, "input_physical.mlir.asm");
+
+    // Run aiebu-asm -t aie2ps -c <asm> -o <elf>
+    std::string aiebuAsmBin = findAiebuAsm();
+    if (aiebuAsmBin.empty()) {
+      llvm::errs() << "Error: aiebu-asm not found for CERT ELF generation\n";
+      return failure();
+    }
+
+    SmallVector<std::string, 10> aiebuCmd = {
+        aiebuAsmBin,          "-t", "aie2ps",     "-c",
+        std::string(asmPath), "-o", outputElfPath};
+
+    if (!executeCommand(aiebuCmd)) {
+      llvm::errs() << "Error running aiebu-asm for CERT ELF\n";
+      return failure();
+    }
+
+    if (verbose) {
+      llvm::outs() << "Generated CERT ELF: " << outputElfPath << "\n";
+    }
+    return success();
   }
 
   // Generate instructions for each sequence and combine them
@@ -4379,9 +4570,6 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
     llvm::errs() << "Warning: No NPU instructions generated for ELF\n";
     return success();
   }
-
-  // Determine output ELF path
-  std::string outputElfPath = formatString(elfName, devName.str(), "");
 
 #ifdef AIECC_HAS_AIEBU_LIBRARY
   // Try library path first: convert instructions directly to ELF in-memory
@@ -4467,6 +4655,7 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
 struct DeviceElfInfo {
   std::string deviceName;
   std::string pdiPath;
+  std::string certAsmPath; // CERT devices: path to cert assembly file
   std::vector<std::pair<std::string, std::string>>
       sequences; // (seqName, instsPath)
   int pdiId;
@@ -4474,10 +4663,11 @@ struct DeviceElfInfo {
 };
 
 /// Generate full ELF containing PDIs and instruction sequences.
-/// This creates a config.json and calls aiebu-asm -t aie2_config.
+/// For CERT devices (AIE2PS, AIE4): config.json uses ctrl_code_file, no PDIs.
+/// For non-CERT devices: config.json uses TXN_ctrl_code_file with PDIs.
 static LogicalResult
 generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
-                        StringRef tmpDirName) {
+                        StringRef tmpDirName, StringRef aieTarget = "aie2") {
   if (!generateFullElf) {
     return success();
   }
@@ -4498,9 +4688,12 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
     return success();
   }
 
+  bool isCert = isCertDevice(aieTarget);
+
   // Build config.json structure
-  // Format: { "xrt-kernels": [ { "name": ..., "PDIs": [...], "instance": [...]
-  // } ] }
+  // Format: { "xrt-kernels": [ { "name": ..., "instance": [...] } ] }
+  // CERT devices: use ctrl_code_file, no PDIs
+  // Non-CERT: use TXN_ctrl_code_file with PDIs
   //
   // Filter out devices with no runtime sequences (matching Python behavior).
   SmallVector<const DeviceElfInfo *> activeDevices;
@@ -4520,33 +4713,50 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
     for (int i = 0; i < info.argCount; ++i) {
       char offsetBuf[16];
       snprintf(offsetBuf, sizeof(offsetBuf), "0x%x", i * 8);
-      arguments.push_back(
-          llvm::json::Object{{"name", ("arg_" + Twine(i)).str()},
-                             {"type", "char *"},
-                             {"offset", std::string(offsetBuf)}});
-    }
-
-    // PDIs - list ALL device PDIs in each kernel entry (matching Python driver
-    // behavior). aiebu-asm needs all PDI references available because the
-    // instruction binary may reference PDIs from any device.
-    llvm::json::Array pdis;
-    for (const auto &di : deviceInfos) {
-      pdis.push_back(
-          llvm::json::Object{{"id", di.pdiId}, {"PDI_file", di.pdiPath}});
+      if (isCert) {
+        // CERT devices: use integer argument names (matching medusa-dev aie4)
+        arguments.push_back(
+            llvm::json::Object{{"name", i},
+                               {"type", "char *"},
+                               {"offset", std::string(offsetBuf)}});
+      } else {
+        arguments.push_back(
+            llvm::json::Object{{"name", ("arg_" + Twine(i)).str()},
+                               {"type", "char *"},
+                               {"offset", std::string(offsetBuf)}});
+      }
     }
 
     // Instances (runtime sequences)
     llvm::json::Array instances;
-    for (const auto &seq : info.sequences) {
-      instances.push_back(llvm::json::Object{
-          {"id", seq.first}, {"TXN_ctrl_code_file", seq.second}});
+    if (isCert) {
+      // CERT devices: use ctrl_code_file pointing to cert assembly
+      for (const auto &seq : info.sequences) {
+        instances.push_back(llvm::json::Object{
+            {"id", seq.first}, {"ctrl_code_file", info.certAsmPath}});
+      }
+    } else {
+      for (const auto &seq : info.sequences) {
+        instances.push_back(llvm::json::Object{
+            {"id", seq.first}, {"TXN_ctrl_code_file", seq.second}});
+      }
     }
 
-    xrtKernels.push_back(
-        llvm::json::Object{{"name", info.deviceName},
-                           {"arguments", std::move(arguments)},
-                           {"PDIs", std::move(pdis)},
-                           {"instance", std::move(instances)}});
+    llvm::json::Object kernelObj{{"name", info.deviceName},
+                                 {"arguments", std::move(arguments)},
+                                 {"instance", std::move(instances)}};
+
+    // Non-CERT devices: add PDIs section
+    if (!isCert) {
+      llvm::json::Array pdis;
+      for (const auto &di : deviceInfos) {
+        pdis.push_back(
+            llvm::json::Object{{"id", di.pdiId}, {"PDI_file", di.pdiPath}});
+      }
+      kernelObj["PDIs"] = std::move(pdis);
+    }
+
+    xrtKernels.push_back(std::move(kernelObj));
   }
 
   llvm::json::Value configValue(
@@ -4591,7 +4801,7 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
   }
 #endif // AIECC_HAS_AIEBU_LIBRARY
 
-  // Subprocess fallback: run aiebu-asm -t aie2_config -j config.json -o
+  // Subprocess fallback: run aiebu-asm -t <config_type> -j config.json -o
   // output.elf
   std::string aiebuAsmBin = findAiebuAsm();
   if (aiebuAsmBin.empty()) {
@@ -4599,9 +4809,16 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
     return failure();
   }
 
+  // Select aiebu-asm target type based on AIE architecture
+  std::string configType = "aie2_config";
+  if (aieTarget.lower().find("aie4") != std::string::npos)
+    configType = "aie4_config";
+  else if (aieTarget.lower().find("aie2ps") != std::string::npos)
+    configType = "aie2ps_config";
+
   SmallVector<std::string, 10> aiebuCmd = {aiebuAsmBin,
                                            "-t",
-                                           "aie2_config",
+                                           configType,
                                            "-j",
                                            std::string(configPath),
                                            "-o",
@@ -5311,8 +5528,8 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
     }
 
     // Generate NPU instructions from in-memory module.
-    if (!generateCtrlPkt &&
-        failed(generateNpuInstructions(moduleOp, tmpDirName, devName))) {
+    if (!generateCtrlPkt && failed(generateNpuInstructions(
+                                moduleOp, tmpDirName, devName, aieTarget))) {
       return failure();
     }
 
@@ -5322,18 +5539,28 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
     }
 
     // Generate ELF from NPU instructions (via aiebu-asm)
-    if (failed(generateElfFromInsts(moduleOp, tmpDirName, devName))) {
+    if (failed(
+            generateElfFromInsts(moduleOp, tmpDirName, devName, aieTarget))) {
       return failure();
     }
 
-    // Generate CDO/PDI/xclbin from in-memory module
-    if (failed(generateCdoArtifacts(moduleOp, tmpDirName, devName))) {
-      return failure();
+    // Generate CDO/PDI/xclbin from in-memory module (only for UsesCDO targets).
+    // CERT devices (AIE2PS, AIE4) use ELF directly — no CDO/PDI needed.
+    {
+      auto deviceOps = moduleOp.getOps<xilinx::AIE::DeviceOp>();
+      auto deviceOp = *deviceOps.begin();
+      const auto &tm = deviceOp.getTargetModel();
+      if (tm.hasProperty(xilinx::AIE::AIETargetModel::UsesCDO) &&
+          failed(generateCdoArtifacts(moduleOp, tmpDirName, devName))) {
+        return failure();
+      }
     }
 
     // Generate aie_inc.cpp and aiesim work folder if requested
+    // (skip aie_inc.cpp for CERT devices (AIE2PS, AIE4) - not applicable)
     auto aiesimConfig = createAiesimConfig();
-    if (failed(xilinx::aiecc::generateAieIncCpp(moduleOp, tmpDirName, devName,
+    if (!isCertDevice(aieTarget) &&
+        failed(xilinx::aiecc::generateAieIncCpp(moduleOp, tmpDirName, devName,
                                                 aiesimConfig))) {
       return failure();
     }
@@ -5369,6 +5596,13 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
         sys::path::append(pdiFullPath, pdiFileName);
       }
       info.pdiPath = std::string(pdiFullPath);
+
+      // CERT devices: set path to cert assembly
+      if (isCertDevice(aieTarget)) {
+        SmallString<256> certAsmFullPath(absTmpDir);
+        sys::path::append(certAsmFullPath, "input_physical.mlir.asm");
+        info.certAsmPath = std::string(certAsmFullPath);
+      }
 
       for (auto seqOp : deviceOp.getOps<xilinx::AIE::RuntimeSequenceOp>()) {
         StringRef seqName = seqOp.getSymName();
@@ -5521,7 +5755,7 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
   }
 
   // Generate full ELF after all devices are processed
-  if (failed(generateFullElfArtifact(deviceElfInfos, tmpDirName))) {
+  if (failed(generateFullElfArtifact(deviceElfInfos, tmpDirName, aieTarget))) {
     return failure();
   }
 

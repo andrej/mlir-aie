@@ -10,6 +10,7 @@
 
 #include "aie/Dialect/AIE/Transforms/AIEGenerateColumnControlOverlay.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
 #include "mlir/IR/Attributes.h"
@@ -118,7 +119,7 @@ struct AIEAssignTileCtrlIDsPass
     }
 
     auto tileIDMap =
-        getTileToControllerIdMap(clColumnWiseUniqueIDs, targetModel);
+        targetModel.getTileToControllerIdMap(clColumnWiseUniqueIDs);
     for (int col : occupiedCols) {
       SmallVector<AIE::TileOp> tilesOnCol;
       for (auto &[tId, tOp] : tiles) {
@@ -164,7 +165,7 @@ struct AIEGenerateColumnControlOverlayPass
       occupiedCols.insert(colIndex);
     }
 
-    auto tileIDMap = getTileToControllerIdMap(true, targetModel);
+    auto tileIDMap = targetModel.getTileToControllerIdMap(true);
     for (int col : occupiedCols) {
       builder.setInsertionPointToStart(device.getBody());
       AIE::TileOp shimTile = TileOp::getOrCreate(builder, device, col, 0);
@@ -181,9 +182,14 @@ struct AIEGenerateColumnControlOverlayPass
           tilesOnCol.push_back(tOp);
         }
 
-        generatePacketFlowsForControl(
-            builder, device, shimTile, AIE::WireBundle::South, tilesOnCol,
-            AIE::WireBundle::TileControl, 0, tileIDMap, false);
+        // AIE2PS: route TCTs to the uC-Module's dedicated stream switch port
+        // (Controller32, master index 22) instead of South (which goes to PL).
+        auto tctDestBundle = isa<AIE2PSTargetModel>(targetModel)
+                                 ? AIE::WireBundle::Controller32
+                                 : AIE::WireBundle::South;
+        generatePacketFlowsForControl(builder, device, shimTile, tctDestBundle,
+                                      tilesOnCol, AIE::WireBundle::TileControl,
+                                      0, tileIDMap, false);
       }
       if (clRouteShimDmaToTileCTRL) {
         // Get all tile ops on column col

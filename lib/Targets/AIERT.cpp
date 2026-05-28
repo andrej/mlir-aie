@@ -75,6 +75,7 @@ static const std::map<xilinx::AIE::WireBundle, StrmSwPortType>
         // missing PLIO from WireBundle
         // missing NOC from WireBundle
         {xilinx::AIE::WireBundle::Trace, StrmSwPortType::TRACE},
+        {xilinx::AIE::WireBundle::Controller32, StrmSwPortType::UCTRLR},
 };
 
 #ifndef NDEBUG
@@ -226,6 +227,12 @@ xilinx::AIE::AIERTControl::AIERTControl(const AIE::AIETargetModel &tm)
     break;
   case AIEArch::AIE2p:
     devGen = XAIE_DEV_GEN_AIE2P_STRIX_B0;
+    break;
+  case AIEArch::AIE2ps:
+    devGen = XAIE_DEV_GEN_AIE2PS;
+    break;
+  default:
+    llvm::report_fatal_error("Unsupported AIE architecture");
     break;
   }
   aiert->configPtr = XAie_Config{
@@ -620,8 +627,6 @@ LogicalResult xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp) {
     int32_t col = switchboxOp.colIndex();
     int32_t row = switchboxOp.rowIndex();
     XAie_LocType tileLoc = XAie_TileLoc(col, row);
-    assert(targetModel.hasProperty(AIETargetModel::IsNPU) &&
-           "Only NPU currently supported");
 
     Block &b = switchboxOp.getConnections().front();
     for (auto connectOp : b.getOps<ConnectOp>())

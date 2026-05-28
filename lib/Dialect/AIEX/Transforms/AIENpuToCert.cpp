@@ -72,7 +72,14 @@ struct NpuWrite32ToCertWrite32 : OpConversionPattern<AIEX::NpuWrite32Op> {
   LogicalResult
   matchAndRewrite(AIEX::NpuWrite32Op op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<AIEX::CertWrite32Op>(op, op.getAddress(),
+    // Use absolute address which encodes col/row into the upper bits.
+    // Without this, writes to non-shim tiles (e.g., trace config on core
+    // tile row 3) would use a tile-relative offset and the CERT firmware
+    // would write to the wrong tile.
+    std::optional<uint32_t> absAddress = op.getAbsoluteAddress();
+    if (!absAddress)
+      return failure();
+    rewriter.replaceOpWithNewOp<AIEX::CertWrite32Op>(op, *absAddress,
                                                      op.getValue());
     return success();
   }
@@ -85,8 +92,11 @@ struct NpuMaskWrite32ToCertMaskWrite32
   LogicalResult
   matchAndRewrite(AIEX::NpuMaskWrite32Op op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    std::optional<uint32_t> absAddress = op.getAbsoluteAddress();
+    if (!absAddress)
+      return failure();
     rewriter.replaceOpWithNewOp<AIEX::CertMaskWrite32Op>(
-        op, op.getAddress(), op.getMask(), op.getValue());
+        op, *absAddress, op.getMask(), op.getValue());
     return success();
   }
 };
@@ -207,10 +217,10 @@ struct NpuAddressPatchToCertApplyOffset57
       if (!tm.isValidTile({col, row}))
         return failure();
 
-      // if it's not a matching blockwrite, give up.
+      // if it's not a matching blockwrite, keep looking.
       if (blockWriteOp.getAddress() + tm.getDmaBdAddressOffset(col, row) !=
           addr)
-        break;
+        continue;
 
       Value data = blockWriteOp.getData();
       auto getGlobalOp = dyn_cast<memref::GetGlobalOp>(data.getDefiningOp());
@@ -414,7 +424,15 @@ struct SplitNpuBlockWriteOpPattern : OpRewritePattern<AIEX::NpuBlockWriteOp> {
 
 struct AIENpuToCertPass
     : xilinx::AIEX::impl::AIENpuToCertBase<AIENpuToCertPass> {
+
   void runOnOperation() override {
+    getOperation()->walk([&](AIE::DeviceOp deviceOp) {
+      if (failed(runOnDeviceOp(deviceOp)))
+        signalPassFailure();
+    });
+  }
+
+  LogicalResult runOnDeviceOp(AIE::DeviceOp deviceOp) {
     ConversionTarget target(getContext());
     target.addIllegalOp<AIE::RuntimeSequenceOp>();
 
@@ -432,8 +450,8 @@ struct AIENpuToCertPass
     p0.insert<RuntimeSequenceToCertJob>(&getContext());
     p0.insert<NpuAddressPatchToCertApplyOffset57>(&getContext());
 
-    if (failed(applyPartialConversion(getOperation(), target, std::move(p0))))
-      signalPassFailure();
+    if (failed(applyPartialConversion(deviceOp, target, std::move(p0))))
+      return failure();
 
     target.addIllegalOp<AIEX::NpuAddressPatchOp>();
 
@@ -441,15 +459,15 @@ struct AIENpuToCertPass
     RewritePatternSet p1(&getContext());
     p1.insert<NpuAddressPatchToCertApplyOffset57>(&getContext());
 
-    if (failed(applyPartialConversion(getOperation(), target, std::move(p1))))
-      signalPassFailure();
+    if (failed(applyPartialConversion(deviceOp, target, std::move(p1))))
+      return failure();
 
     // Split oversized NpuBlockWriteOps before lowering them to cert ops
     {
       RewritePatternSet p(&getContext());
       p.insert<SplitNpuBlockWriteOpPattern>(&getContext());
-      if (failed(applyPatternsGreedily(getOperation(), std::move(p))))
-        signalPassFailure();
+      if (failed(applyPatternsGreedily(deviceOp, std::move(p))))
+        return failure();
     }
 
     target.addIllegalOp<AIEX::NpuBlockWriteOp>();
@@ -465,17 +483,19 @@ struct AIENpuToCertPass
       p.insert<NpuWrite32ToCertWrite32>(&getContext());
       p.insert<NpuSyncToCertWaitTCTS>(&getContext());
 
-      if (failed(applyPartialConversion(getOperation(), target, std::move(p))))
-        signalPassFailure();
+      if (failed(applyPartialConversion(deviceOp, target, std::move(p))))
+        return failure();
     }
 
     // Run the merge pattern for CertUcDmaWriteDesSyncOps
     {
       RewritePatternSet p(&getContext());
       p.insert<MergeConsecutiveCertUcDmaWriteDesSyncOps>(&getContext());
-      if (failed(applyPatternsGreedily(getOperation(), std::move(p))))
-        signalPassFailure();
+      if (failed(applyPatternsGreedily(deviceOp, std::move(p))))
+        return failure();
     }
+
+    return success();
   }
 };
 
@@ -599,7 +619,7 @@ struct AIECertPagesPass
 
 } // namespace
 
-std::unique_ptr<OperationPass<AIE::DeviceOp>> AIEX::createAIENpuToCertPass() {
+std::unique_ptr<OperationPass<mlir::ModuleOp>> AIEX::createAIENpuToCertPass() {
   return std::make_unique<AIENpuToCertPass>();
 }
 

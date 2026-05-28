@@ -11,7 +11,10 @@
 // This file contains common helper functions for the generic host code
 
 #include "test_utils.h"
+#include "memory_allocator.h"
 #include <cassert>
+#include <cinttypes>
+#include <cstring>
 #include <filesystem>
 
 #ifdef TEST_UTILS_USE_XRT
@@ -22,6 +25,19 @@
 // --------------------------------------------------------------------------
 // Command Line Argument Handling
 // --------------------------------------------------------------------------
+
+void test_utils::print_test_banner(const std::string &title,
+                                   const std::string &description) {
+  constexpr std::size_t ruleWidth = 72;
+  const std::string rule(ruleWidth, '=');
+
+  std::cout << '\n' << rule << '\n';
+  std::cout << title << '\n';
+  if (!description.empty()) {
+    std::cout << description << '\n';
+  }
+  std::cout << rule << '\n';
+}
 
 void test_utils::check_arg_file_exists(const cxxopts::ParseResult &result,
                                        std::string name) {
@@ -211,5 +227,133 @@ void test_utils::write_out_trace(char *traceOutPtr, size_t trace_size,
   for (int i = 0; i < trace_size / sizeof(traceOut[0]); i++) {
     fout << std::setfill('0') << std::setw(8) << std::hex << (int)traceOut[i];
     fout << std::endl;
+  }
+}
+
+// --------------------------------------------------------------------------
+// Transaction Binary for Simulation
+// --------------------------------------------------------------------------
+#include <cstdio>
+
+// Unpack transaction binary and write it to the aie array simulation
+void test_utils::write_transaction_binary(unsigned char *data,
+                                          uint64_t nbytes) {
+  assert(nbytes >= 12);
+  uint32_t major = data[0];
+  uint32_t minor = data[1];
+  uint32_t num_cols = data[4];
+
+  uint32_t num_ops, txn_size;
+  std::memcpy(&num_ops, &data[8], 4);
+  std::memcpy(&txn_size, &data[12], 4);
+
+  uint32_t i = 16;
+
+  uint64_t addr = 0;
+  uint32_t value = 0;
+  uint32_t size = 0;
+  uint32_t mask = 0;
+  const uint32_t *data_ptr = nullptr;
+
+  if (major == 0 && minor == 1) {
+    while (i < nbytes) {
+      uint8_t opc = data[i];
+      // printf("  at offset %u: opc=0x%02x\n", i, opc);
+      if (opc == 0x00) {
+        uint32_t addr0, addr1;
+        std::memcpy(&addr0, &data[i + 8], 4);
+        std::memcpy(&addr1, &data[i + 12], 4);
+        std::memcpy(&value, &data[i + 16], 4);
+        std::memcpy(&size, &data[i + 20], 4);
+        addr = (static_cast<uint64_t>(addr1) << 32) | addr0;
+        // printf("    write32 addr=0x%016llx value=0x%08x size=%u\n",
+        //        (unsigned long long)addr, (unsigned int)value, size);
+        i += size;
+        mlir_aie_sim_write32(addr, value);
+      } else if (opc == 0x01) {
+        std::memcpy(&addr, &data[i + 8], 4);
+        std::memcpy(&size, &data[i + 12], 4);
+        data_ptr = reinterpret_cast<const uint32_t *>(data + i + 16);
+        // printf("    burst write addr=0x%016llx size=%u (payload words=%u)\n",
+        //        (unsigned long long)addr, size, (size - 16) / 4);
+        i += size;
+        size = size - 16;
+        for (int j = 0; j < size / 4; j++) {
+          // printf("      write32 addr=0x%016llx value=0x%08x\n",
+          //        (unsigned long long)(addr + (4 * j)),
+          //        (unsigned int)data_ptr[j]);
+          mlir_aie_sim_write32(addr + (4 * j), data_ptr[j]);
+        }
+      } else if (opc == 0x03) {
+        uint32_t addr0, addr1;
+        std::memcpy(&addr0, &data[i + 8], 4);
+        std::memcpy(&addr1, &data[i + 12], 4);
+        std::memcpy(&value, &data[i + 16], 4);
+        std::memcpy(&mask, &data[i + 20], 4);
+        std::memcpy(&size, &data[i + 24], 4);
+        addr = (static_cast<uint64_t>(addr1) << 32) | addr0;
+        uint32_t r = mlir_aie_sim_read32(addr);
+        uint32_t w = (r & ~mask) | (value & mask);
+        // printf("    read-modify-write addr=0x%016llx r=0x%08x value=0x%08x "
+        //        "mask=0x%08x -> w=0x%08x size=%u\n",
+        //        (unsigned long long)addr, (unsigned int)r, (unsigned
+        //        int)value, (unsigned int)mask, (unsigned int)w, size);
+        mlir_aie_sim_write32(addr, w);
+        i += size;
+      } else {
+        printf("    ERROR: unhandled transaction binary opcode 0x%02x at "
+               "offset %u\n",
+               opc, i);
+        assert(0 && "unhandled transaction binary opcode");
+      }
+    }
+  } else if (major == 1 && minor == 0) {
+    while (i < nbytes) {
+      uint8_t opc = data[i];
+      // printf("  at offset %u: opc=0x%02x\n", i, opc);
+      if (opc == 0x00) {
+        std::memcpy(&addr, &data[i + 4], 4);
+        std::memcpy(&value, &data[i + 8], 4);
+        // printf("    write32 addr=0x%016llx value=0x%08x (fixed hdr)\n",
+        //        (unsigned long long)addr, (unsigned int)value);
+        i += 12;
+        mlir_aie_sim_write32(addr, value);
+      } else if (opc == 0x01) {
+        std::memcpy(&addr, &data[i + 4], 4);
+        std::memcpy(&size, &data[i + 8], 4);
+        data_ptr = reinterpret_cast<const uint32_t *>(data + i + 12);
+        // printf("    burst write addr=0x%016llx size=%u (payload words=%u) "
+        //        "(fixed hdr)\n",
+        //        (unsigned long long)addr, size, (size - 12) / 4);
+        i += size;
+        size = size - 12;
+        for (int j = 0; j < size / 4; j++) {
+          // printf("      write32 addr=0x%016llx value=0x%08x\n",
+          //        (unsigned long long)(addr + (4 * j)),
+          //        (unsigned int)data_ptr[j]);
+          mlir_aie_sim_write32(addr + (4 * j), data_ptr[j]);
+        }
+      } else if (opc == 0x03) {
+        std::memcpy(&addr, &data[i + 4], 4);
+        std::memcpy(&value, &data[i + 8], 4);
+        std::memcpy(&mask, &data[i + 12], 4);
+        uint32_t r = mlir_aie_sim_read32(addr);
+        uint32_t w = (r & ~mask) | (value & mask);
+        // printf("    read-modify-write addr=0x%016llx r=0x%08x value=0x%08x "
+        //        "mask=0x%08x -> w=0x%08x (fixed hdr)\n",
+        //        (unsigned long long)addr, (unsigned int)r, (unsigned
+        //        int)value, (unsigned int)mask, (unsigned int)w);
+        mlir_aie_sim_write32(addr, w);
+        i += 16;
+      } else {
+        printf("    ERROR: unhandled transaction binary opcode 0x%02x at "
+               "offset %u\n",
+               opc, i);
+        assert(0 && "unhandled transaction binary opcode");
+      }
+    }
+  } else {
+    printf("ERROR: unhandled transaction binary version %u.%u\n", major, minor);
+    assert(0 && "unhandled transaction binary version");
   }
 }

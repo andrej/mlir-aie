@@ -147,7 +147,7 @@ def AIEDmaToNpu : Pass<"aie-dma-to-npu", "AIE::DeviceOp"> {
   ];
 }
 
-def AIENpuToCert : Pass<"aie-npu-to-cert", "AIE::DeviceOp"> {
+def AIENpuToCert : Pass<"aie-npu-to-cert", "mlir::ModuleOp"> {
   let summary = "transform aiex.npu operations to aiex.cert operations";
   let description = [{
     This pass transforms low level aiex.npu operations contained in

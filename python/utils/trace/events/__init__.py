@@ -31,6 +31,10 @@ from aie.dialects._aie_enum_gen import (
     MemEventAIE2P,
     ShimTileEventAIE2P,
     MemTileEventAIE2P,
+    CoreEventAIE2PS,
+    MemEventAIE2PS,
+    ShimTileEventAIE2PS,
+    MemTileEventAIE2PS,
 )
 
 from aie.dialects.aie import WireBundle, DMAChannelDir
@@ -63,6 +67,13 @@ def get_events_for_device(device: str):
             MemEvent=MemEventAIE,
             ShimTileEvent=ShimTileEventAIE,
             MemTileEvent=None,  # AIE1 has no mem tiles
+        )
+    elif "xcve3858" in device:
+        return SimpleNamespace(
+            CoreEvent=CoreEventAIE2PS,
+            MemEvent=MemEventAIE2PS,
+            ShimTileEvent=ShimTileEventAIE2PS,
+            MemTileEvent=MemTileEventAIE2PS,
         )
     elif "npu2p" in device:
         return SimpleNamespace(

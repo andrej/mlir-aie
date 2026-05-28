@@ -95,7 +95,11 @@ config.aie_tools_dir = os.path.join(config.aie_obj_root, "bin")
 # Setup the PATH with all necessary tool directories
 if config.vitis_root:
     config.vitis_aietools_bin = os.path.join(config.vitis_aietools_dir, "bin")
-    LitConfigHelper.prepend_path(llvm_config, config.vitis_aietools_bin)
+    llvm_config.config.environment["PATH"] = (
+        llvm_config.config.environment.get("PATH", None)
+        + ":"
+        + config.vitis_aietools_bin
+    )
     llvm_config.with_environment("VITIS", config.vitis_root)
 
 # Prepend path to XRT installation, which contains a more recent `aiebu-asm` than the Vitis installation.

@@ -1,0 +1,69 @@
+//===- aie.mlir (AIE2PS tile_dma_to_memtile) -------------------*- MLIR -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2026 Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
+
+// REQUIRES: aiesimulator, chess
+//
+// RUN: %python aiecc.py --alloc-scheme=basic-sequential --xchesscc --xbridge --no-compile-host --aie-generate-txn --txn-name=transaction.bin --aiesim %s %test_utils_flags %S/test.cpp
+// RUN: aie.mlir.prj/aiesim.sh | FileCheck %s
+//
+// CHECK: AIE2PS
+// CHECK: PASS!
+//
+// Core tile (0,2) MM2S -> MemTile (0,1) S2MM
+
+module @test07_tile_dma_to_memtile_aie2ps {
+  aie.device(xcve3558) {
+    %tile_0_2 = aie.tile(0, 2)
+    %buf02_0 = aie.buffer(%tile_0_2) {address = 2048 : i32, sym_name = "buf02_0"} : memref<256xi32>
+    %buf02_1 = aie.buffer(%tile_0_2) {address = 4096 : i32, sym_name = "buf02_1"} : memref<256xi32>
+    %lock_0_2 = aie.lock(%tile_0_2, 0) { init = 0 : i32 }
+    %lock_0_2_0 = aie.lock(%tile_0_2, 1)
+
+    %mem_0_2 = aie.mem(%tile_0_2) {
+      %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
+    ^bb1:
+      aie.use_lock(%lock_0_2, AcquireGreaterEqual, 1)
+      aie.dma_bd(%buf02_0 : memref<256xi32>, 0, 256) {bd_id = 0 : i32, next_bd_id = 1 : i32}
+      aie.use_lock(%lock_0_2_0, Release, 1)
+      aie.next_bd ^bb2
+    ^bb2:
+      aie.use_lock(%lock_0_2, AcquireGreaterEqual, 1)
+      aie.dma_bd(%buf02_1 : memref<256xi32>, 0, 256) {bd_id = 1 : i32, next_bd_id = 0 : i32}
+      aie.use_lock(%lock_0_2_0, Release, 1)
+      aie.next_bd ^bb1
+    ^bb3:
+      aie.end
+    }
+
+    %tile_0_1 = aie.tile(0, 1)
+    %buf01_0 = aie.buffer(%tile_0_1) {address = 2048 : i32, sym_name = "buf01_0"} : memref<256xi32>
+    %buf01_1 = aie.buffer(%tile_0_1) {address = 4096 : i32, sym_name = "buf01_1"} : memref<256xi32>
+    %lock_0_1 = aie.lock(%tile_0_1, 0) { init = 2 : i32 }
+    %lock_0_1_0 = aie.lock(%tile_0_1, 1) { init = 0 : i32 }
+
+    %mem_0_1 = aie.memtile_dma(%tile_0_1) {
+      %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
+    ^bb1:
+      aie.use_lock(%lock_0_1, AcquireGreaterEqual, 1)
+      aie.dma_bd(%buf01_0 : memref<256xi32>, 0, 256) {bd_id = 0 : i32, next_bd_id = 1 : i32}
+      aie.use_lock(%lock_0_1_0, Release, 1)
+      aie.next_bd ^bb2
+    ^bb2:
+      aie.use_lock(%lock_0_1, AcquireGreaterEqual, 1)
+      aie.dma_bd(%buf01_1 : memref<256xi32>, 0, 256) {bd_id = 1 : i32, next_bd_id = 0 : i32}
+      aie.use_lock(%lock_0_1_0, Release, 1)
+      aie.next_bd ^bb1
+    ^bb3:
+      aie.end
+    }
+
+    aie.flow(%tile_0_2, DMA : 0, %tile_0_1, DMA : 0)
+  }
+}

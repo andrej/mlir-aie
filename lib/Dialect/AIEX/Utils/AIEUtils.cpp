@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIEX/AIEUtils.h"
+#include "aie/Dialect/AIE/IR/AIETargetModel.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -120,17 +121,22 @@ memref::GlobalOp AIEX::getOrCreateDataMemref(OpBuilder &builder,
       RankedTensorType::get({num_words}, builder.getI32Type());
   memref::GlobalOp global = nullptr;
   auto initVal = DenseElementsAttr::get<uint32_t>(tensorType, words);
-  auto otherGlobals = dev.getOps<memref::GlobalOp>();
-  for (auto g : otherGlobals) {
-    if (g.getType() != memrefType)
-      continue;
-    auto otherValue = g.getInitialValue();
-    if (!otherValue)
-      continue;
-    if (*otherValue != initVal)
-      continue;
-    global = g;
-    break;
+  // CERT devices (AIE2PS, AIE4) use APPLY_OFFSET_57 to patch BD addresses
+  // at runtime. Each BD needs its own data symbol so patches don't collide.
+  const auto &tm = AIE::getTargetModel(dev);
+  if (!isa<AIE::AIE2PSTargetModel>(tm)) {
+    auto otherGlobals = dev.getOps<memref::GlobalOp>();
+    for (auto g : otherGlobals) {
+      if (g.getType() != memrefType)
+        continue;
+      auto otherValue = g.getInitialValue();
+      if (!otherValue)
+        continue;
+      if (*otherValue != initVal)
+        continue;
+      global = g;
+      break;
+    }
   }
   if (!global) {
     std::string name = "blockwrite_data_";

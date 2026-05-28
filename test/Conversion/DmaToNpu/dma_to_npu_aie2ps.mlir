@@ -1,0 +1,33 @@
+//===- dma_to_npu_aie2ps.mlir ------------------------------------*- MLIR -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2026 Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
+
+// Verify DMA-to-NPU lowering works for AIE2PS (xcve3558).
+// AIE2PS uses the same BD format as AIE2 (8 words, shared BD pool).
+
+// RUN: aie-opt --aie-dma-to-npu %s | FileCheck %s
+
+// CHECK: module
+// CHECK: aiex.npu.blockwrite
+// CHECK: aiex.npu.address_patch
+// CHECK-SAME: arg_idx = 0 : i32
+// CHECK: aiex.npu.blockwrite
+// CHECK: aiex.npu.address_patch
+// CHECK-SAME: arg_idx = 1 : i32
+module {
+  aie.device(xcve3558) {
+    aie.runtime_sequence(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
+      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64, 1]) { metadata = @toMem, id = 1 : i64 } : memref<16xi32>
+      aiex.npu.dma_memcpy_nd (%arg1[0, 0, 0, 16][1, 1, 16, 16][0, 0, 64, 1]) { metadata = @fromMem, id = 0 : i64 } : memref<16xi32>
+    }
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @fromMem (%tile_0_0, MM2S, 0)
+    aie.shim_dma_allocation @toMem (%tile_0_0, S2MM, 0)
+  }
+}
