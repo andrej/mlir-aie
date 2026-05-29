@@ -3734,7 +3734,8 @@ static void assignPdiIds(ModuleOp moduleOp,
 /// fail to transform the module (same issue as with
 /// convert-aie-to-transaction).
 static LogicalResult runCertPipelineAndTranslate(ModuleOp moduleOp,
-                                                 StringRef tmpDirName) {
+                                                 StringRef tmpDirName,
+                                                 StringRef devName) {
   // Write the input module to a temp file for aie-opt subprocess
   SmallString<128> inputMlirPath(tmpDirName);
   sys::path::append(inputMlirPath, "cert_input.mlir");
@@ -3763,7 +3764,9 @@ static LogicalResult runCertPipelineAndTranslate(ModuleOp moduleOp,
       "builtin.module(aie.device(aie-dma-to-npu, "
       "convert-aie-to-transaction{elf-dir=" +
       tmpDirName.str() +
-      "}), aie-npu-to-cert, aie.device(cert-legalize-pages))";
+      "}), aie-npu-to-cert{device-name=" +
+      devName.str() +
+      "}, aie.device(cert-legalize-pages))";
 
   // Ensure MLIR_AIE_INSTALL_DIR is set so aie-opt can find register databases.
   // Derive it from the aie-opt binary location (../../ from bin/aie-opt).
@@ -3803,6 +3806,19 @@ static LogicalResult runCertPipelineAndTranslate(ModuleOp moduleOp,
   if (!executeCommand(translateCmd)) {
     llvm::errs() << "Error translating cert to assembly\n";
     return failure();
+  }
+
+  // aie-translate writes section .asm sidecar files to CWD (since the
+  // raw_ostream translation API cannot pass the output path). Move them
+  // into tmpDirName so aiebu-asm can find them next to the main .asm.
+  std::string sectionFileName = devName.str() + ".asm";
+  SmallString<128> sectionSrc;
+  sys::fs::current_path(sectionSrc);
+  sys::path::append(sectionSrc, sectionFileName);
+  if (sys::fs::exists(sectionSrc)) {
+    SmallString<128> sectionDst(tmpDirName);
+    sys::path::append(sectionDst, sectionFileName);
+    sys::fs::rename(sectionSrc, sectionDst);
   }
 
   if (verbose) {
@@ -3860,7 +3876,7 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
 
   // CERT devices: run cert pipeline instead of NPU binary translation
   if (isCertDevice(aieTarget)) {
-    if (failed(runCertPipelineAndTranslate(*clonedModule, tmpDirName))) {
+    if (failed(runCertPipelineAndTranslate(*clonedModule, tmpDirName, devName))) {
       return failure();
     }
     return success();
@@ -4500,7 +4516,7 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
 
   // CERT devices: run cert pipeline then aiebu-asm -t aie2ps
   if (isCertDevice(aieTarget)) {
-    if (failed(runCertPipelineAndTranslate(*clonedModule, tmpDirName))) {
+    if (failed(runCertPipelineAndTranslate(*clonedModule, tmpDirName, devName))) {
       return failure();
     }
 

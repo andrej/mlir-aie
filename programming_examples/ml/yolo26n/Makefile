@@ -48,7 +48,7 @@ PEANOWRAP2P_FLAGS := -O2 -std=c++20 --target=$(ARCH)-none-unknown-elf \
 
 CHESSCCWRAP2P_FLAGS = $(ARCH) -I ${AIETOOLS_DIR}/include
 
-AIECC_FLAGS := -v --no-compile-host
+AIECC_FLAGS := -v --no-compile-host --device-name=yolo26n
 
 ifeq ($(USE_PEANO),1)
 AIECC_FLAGS += --no-xchesscc --no-xbridge
