@@ -30,14 +30,14 @@ import numpy as np
 from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime
 from aie.iron import Worker as _IronWorker
 from aie.iron.controlflow import range_
-from aie.iron.device import Device, Tile, XCVE3858
+from aie.iron.device import Device, Tile
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
 from aie.dialects.aiex import npu_load_pdi
 
 import yolo_spec
 import placement
 from lowlevel_dma import StaticWeightStream
-from common import devs
+from common import devs, XCVE3858
 
 # ---------------------------------------------------------------------------
 # Trace gating. When env var TRACE_SIZE_PER_WORKER > 0 at MLIR-generation

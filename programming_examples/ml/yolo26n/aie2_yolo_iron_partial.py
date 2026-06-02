@@ -24,7 +24,7 @@ import argparse
 import numpy as np
 
 from aie.iron import ObjectFifo, Program, Runtime
-from aie.iron.device import Device, Tile, XCVE3858 
+from aie.iron.device import Device, Tile
 from aie.helpers.taplib import TensorAccessPattern
 from aie.dialects.aiex import npu_load_pdi
 
@@ -42,7 +42,7 @@ from aie2_yolo_per_block import (
     DEVICE_NAME,
 )
 
-from common import devs
+from common import devs, XCVE3858
 
 _DEFAULT_BLOCKS = ("m0", "m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8", "m9", "m10")
 # CHAIN_BLOCKS env override for bisect-style debug:
