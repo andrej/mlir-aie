@@ -41,10 +41,17 @@ BUILD  := $(SRCDIR)/build-$(DEVICE)
 
 # Peano flags — same shape as programming_examples/makefile-common's
 # PEANOWRAP2P_FLAGS, inlined so the example is self-contained.
+#
+# AIE_API_INCLUDE_DIR is searched first so <aie_api/...> resolves to the
+# ryzen-ai site-packages copy when set, instead of the (older) aie_api/
+# vendored inside $(MLIR_AIE_INSTALL_DIR)/include.
+AIE_API_INCLUDE_DIR ?=
 PEANOWRAP2P_FLAGS := -O2 -std=c++20 --target=$(ARCH)-none-unknown-elf \
     -Wno-parentheses -Wno-attributes -Wno-macro-redefined -Wno-empty-body \
     -Wno-missing-template-arg-list-after-template-kw \
-    -DNDEBUG -I $(MLIR_AIE_INSTALL_DIR)/include
+    -DNDEBUG \
+    $(if $(AIE_API_INCLUDE_DIR),-I $(AIE_API_INCLUDE_DIR)) \
+    -I $(MLIR_AIE_INSTALL_DIR)/include
 
 CHESSCCWRAP2P_FLAGS = $(ARCH) -I ${AIETOOLS_DIR}/include
 

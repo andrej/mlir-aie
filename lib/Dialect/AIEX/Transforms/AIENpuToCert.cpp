@@ -176,27 +176,35 @@ struct NpuBlockWriteToCertUcDma : OpConversionPattern<AIEX::NpuBlockWriteOp> {
     MemRefType dataType = cast<MemRefType>(dataOperand.getResult().getType());
     uint32_t dataSize = dataType.getNumElements();
 
+    // Insert the chain in the enclosing section if any, otherwise at the
+    // device level. aiebu scopes labels per file, so a chain referenced by a
+    // sync inside a section must live in the same section (same asm file).
+    auto parentSection = op->getParentOfType<AIEX::CertSectionOp>();
+    Operation *symbolTableOp = nullptr;
+    Block *insertBlock = nullptr;
+    if (parentSection) {
+      symbolTableOp = parentSection;
+      insertBlock = &parentSection.getBody().front();
+    } else {
+      auto parentDevice = op->getParentOfType<AIE::DeviceOp>();
+      if (!parentDevice)
+        return failure();
+      symbolTableOp = parentDevice;
+      insertBlock = parentDevice.getBody();
+    }
+
     int id = 0;
     std::string symbolName = "chain_" + std::to_string(id);
-    while (op->getParentOfType<AIE::DeviceOp>().lookupSymbol(symbolName))
+    while (SymbolTable::lookupSymbolIn(symbolTableOp, symbolName))
       symbolName = "chain_" + std::to_string(++id);
 
     // Create a new uc_dma_write_des_sync operation
     rewriter.replaceOpWithNewOp<AIEX::CertUcDmaWriteDesSyncOp>(op, symbolName);
 
-    // Create the uc_dma_chain operation
-    // Find the nearest device to insert the chain
-    auto parentDevice = op->getParentOfType<AIE::DeviceOp>();
-    if (!parentDevice) {
-      // No parent device - this shouldn't happen but handle gracefully
-      return failure();
-    }
-
     // Insert after the last existing uc_dma_chain (before any pages/jobs),
     // preserving the order of blockwrite ops.
-    Block *deviceBody = parentDevice.getBody();
     Operation *insertAfter = nullptr;
-    for (Operation &bodyOp : *deviceBody) {
+    for (Operation &bodyOp : *insertBlock) {
       if (isa<AIEX::CertUcDmaChainOp>(bodyOp))
         insertAfter = &bodyOp;
       else
@@ -205,7 +213,7 @@ struct NpuBlockWriteToCertUcDma : OpConversionPattern<AIEX::NpuBlockWriteOp> {
     if (insertAfter)
       rewriter.setInsertionPointAfter(insertAfter);
     else
-      rewriter.setInsertionPointToStart(deviceBody);
+      rewriter.setInsertionPointToStart(insertBlock);
 
     auto symbolAttr = rewriter.getStringAttr(symbolName);
     auto chainOp =
@@ -691,14 +699,12 @@ struct MergeConsecutiveCertUcDmaWriteDesSyncOps
     if (!prevWriteDesSync)
       return failure();
 
-    // find the uc_dma_chain
-    StringRef sym_name = op.getSymbol();
-    StringRef prev_sym_name = prevWriteDesSync.getSymbol();
+    // find the uc_dma_chain (may live inside an enclosing CertSectionOp)
     auto chain = dyn_cast_if_present<AIEX::CertUcDmaChainOp>(
-        op->getParentOfType<AIE::DeviceOp>().lookupSymbol(sym_name));
+        SymbolTable::lookupNearestSymbolFrom(op, op.getSymbolAttr()));
     auto prevChain = dyn_cast_if_present<AIEX::CertUcDmaChainOp>(
-        prevWriteDesSync->getParentOfType<AIE::DeviceOp>().lookupSymbol(
-            prev_sym_name));
+        SymbolTable::lookupNearestSymbolFrom(prevWriteDesSync,
+                                             prevWriteDesSync.getSymbolAttr()));
     if (!chain || !prevChain)
       return failure();
 
@@ -1158,10 +1164,9 @@ static void updateCostForOp(Operation &o, AIE::DeviceOp deviceOp,
     text_cost += 16; // apply offset
   } else if (auto syncOp = dyn_cast<AIEX::CertUcDmaWriteDesSyncOp>(o)) {
     text_cost += 16; // write des sync
-    // find the uc_dma_chain
-    StringRef sym_name = syncOp.getSymbol();
+    // find the uc_dma_chain (may live inside an enclosing CertSectionOp)
     auto chain = dyn_cast_if_present<AIEX::CertUcDmaChainOp>(
-        deviceOp.lookupSymbol(sym_name));
+        SymbolTable::lookupNearestSymbolFrom(syncOp, syncOp.getSymbolAttr()));
     if (!chain)
       return;
     for (auto bdOp : chain.getBody().front().getOps<AIEX::CertUcDmaBdOp>()) {
@@ -1202,7 +1207,20 @@ static uint32_t estimateCost(AIEX::CertPageOp op, uint32_t split_target,
         found_split_point = true;
       }
 
-      updateCostForOp(o, deviceOp, text_cost, data_cost);
+      uint32_t op_text = 0, op_data = 0;
+      updateCostForOp(o, deviceOp, op_text, op_data);
+
+      // Split before a heavy op that would otherwise push the page over the limit.
+      if (!found_split_point && !isa<AIE::EndOp>(o) &&
+          current != job.getBody().front().begin() &&
+          (text_cost + data_cost + op_text + op_data) > cert_page_size) {
+        split_job = job;
+        split_iter = current;
+        found_split_point = true;
+      }
+
+      text_cost += op_text;
+      data_cost += op_data;
 
       if (!found_split_point && (text_cost + data_cost) >= split_target) {
         Block::iterator next = current;

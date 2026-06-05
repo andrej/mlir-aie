@@ -137,6 +137,16 @@ SECTIONS
   .stack_sizes : {
      *(.stack_sizes)
   }
+  /* AIE2PS task-completion-token metadata emitted by recent peano builds. */
+  .tctmemstrtab : {
+     *(.tctmemstrtab)
+  }
+  .tctmemtab : {
+     *(.tctmemtab)
+  }
+  .tctmemtabl : {
+     *(.tctmemtabl)
+  }
 
 )THESCRIPT";
       auto doBuffer = [&](std::optional<TileID> tile, int offset,

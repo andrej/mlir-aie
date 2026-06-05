@@ -192,6 +192,9 @@ LogicalResult emitPage(CertPageOp pageOp, std::string &text,
   return result;
 }
 
+void emitUcDmaChain(CertUcDmaChainOp op, std::string &chains, std::string &data,
+                    llvm::StringSet<> &emittedGlobals);
+
 // label:
 // .include section_file.asm
 // .endl label
@@ -206,6 +209,10 @@ LogicalResult emitSection(CertSectionOp sectionOp, std::string &text,
   // Build the section content in separate strings
   std::string sectionText;
   std::string sectionData;
+  std::string sectionChains;
+  // Section data globals are emitted into the section file so they are in the
+  // same aiebu file scope as the chains/syncs that reference them.
+  llvm::StringSet<> sectionEmittedGlobals;
 
   // Process pages within the section
   for (auto page : sectionOp.getBody().getOps<CertPageOp>()) {
@@ -221,6 +228,14 @@ LogicalResult emitSection(CertSectionOp sectionOp, std::string &text,
       result = failure();
     sectionText += ".eop\n\n";
   }
+
+  // Emit any uc_dma_chains that live inside this section so they (and their
+  // data globals) end up in the section's asm file.
+  bool hasChains = !sectionOp.getBody().getOps<CertUcDmaChainOp>().empty();
+  if (hasChains)
+    sectionChains += "\n;\n; Data (chains)\n;\n\n";
+  for (auto chain : sectionOp.getBody().getOps<CertUcDmaChainOp>())
+    emitUcDmaChain(chain, sectionChains, sectionData, sectionEmittedGlobals);
 
   // Write section content to separate file
   std::string sectionFilePath;
@@ -244,6 +259,10 @@ LogicalResult emitSection(CertSectionOp sectionOp, std::string &text,
 
     // Emit EOF before data section
     sectionFile << "EOF\n\n";
+
+    // Emit chains (with their data globals appended after)
+    if (!sectionChains.empty())
+      sectionFile << sectionChains;
 
     // Emit data section
     if (!sectionData.empty()) {

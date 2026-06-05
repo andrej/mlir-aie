@@ -310,7 +310,7 @@ def AIE_CertNopOp: AIEX_Op<"cert.nop", []> {
 }
 
 def AIE_CertSectionOp: AIEX_Op<"cert.section",
-                               [Symbol,
+                               [Symbol, SymbolTable,
                                 ParentOneOf<["AIE::DeviceOp", "CertAttachToGroupOp"]>,
                                 SingleBlockImplicitTerminator<"AIE::EndOp">]> {
   let summary = "Named control code section";
