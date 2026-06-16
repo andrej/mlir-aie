@@ -541,7 +541,7 @@ XRT_LIB_DIR   ?= /opt/xilinx/xrt/lib
 TEST_LIB_DIR  ?= $(MLIR_AIE_INSTALL_DIR)/runtime_lib/x86_64/test_lib
 OPENCV_FLAGS  := $(shell pkg-config --cflags --libs opencv4)
 
-EDF_SDK_PATH  ?= $(HOME)/amd-edf-sdk
+EDF_SDK_PATH  ?= /scratch/roesti/edf-sdk-2
 EDF_SYSROOT   := $(EDF_SDK_PATH)/sysroots/cortexa72-cortexa53-amd-linux
 EDF_CXX       := $(EDF_SDK_PATH)/sysroots/x86_64-amdedfsdk-linux/usr/bin/aarch64-amd-linux/aarch64-amd-linux-g++
 
@@ -549,9 +549,11 @@ $(TEST_EXE): $(SRCDIR)/test.cpp
 	mkdir -p $(BUILD)
 ifeq ($(DEVICE),telluride)
 	$(EDF_CXX) --sysroot=$(EDF_SYSROOT) -std=c++17 -O2 -Wall \
-	    -I$(EDF_SYSROOT)/usr/include -L$(EDF_SYSROOT)/usr/lib \
+	    -I$(EDF_SYSROOT)/usr/include -I$(EDF_SYSROOT)/usr/include/opencv4 \
+	    -L$(EDF_SYSROOT)/usr/lib \
 	    -I$(TEST_LIB_DIR)/include \
-	    -lxrt_coreutil -lstdc++ -lpthread -lrt \
+	    -lxrt_coreutil -lopencv_core -lopencv_imgcodecs -lopencv_imgproc \
+	    -lstdc++ -lpthread -lrt \
 	    -o $@ $<
 else
 	clang++ $< -o $@ -std=c++17 -Wall \
