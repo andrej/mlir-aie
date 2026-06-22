@@ -2790,7 +2790,8 @@ def per_block_iron(block_name: str, dev: Device) -> str:
         # Full-ELF flow: emit load_pdi at the head of the runtime sequence so
         # XRT can patch the PDI address at dispatch time. device_ref must
         # match the sym_name baked in by resolve_program(device_name=...).
-        rt.inline_ops(lambda: npu_load_pdi(device_ref=DEVICE_NAME), [])
+        #rt.inline_ops(lambda: npu_load_pdi(device_ref=DEVICE_NAME), [])
+
         if TRACE_SIZE_PER_WORKER > 0:
             # Per-tile packet trace → DRAM, appended after `out` (ddr_id=-1
             # default, override via TRACE_DDR_ID env). TRACE_EVENTS env (csv

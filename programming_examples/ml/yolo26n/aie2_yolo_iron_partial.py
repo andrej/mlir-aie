@@ -122,7 +122,8 @@ def yolo_iron_partial(dev: Device) -> str:
         # Full-ELF flow requires an explicit load_pdi at the head of the
         # runtime sequence (no pass auto-inserts it). device_ref must match
         # the sym_name baked in below via resolve_program(device_name=...).
-        rt.inline_ops(lambda: npu_load_pdi(device_ref=DEVICE_NAME), [])
+        #rt.inline_ops(lambda: npu_load_pdi(device_ref=DEVICE_NAME), [])
+
         if TRACE_SIZE_PER_WORKER > 0 and workers_to_trace:
             # Append trace BO after the last sequence tensor (`out`); host
             # runtime resizes `out` to include trace bytes when ddr_id == -1.
