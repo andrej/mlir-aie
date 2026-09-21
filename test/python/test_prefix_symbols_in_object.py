@@ -358,3 +358,61 @@ def test_unwritable_directory_leaves_no_trusted_cache(tmp_path, func):
 
     assert not compile_utils._has_current_symbol_prefix_stamp(str(obj), "op0_")
     assert not func._compiled
+
+
+_MULTI_ENTRY_SOURCE = "\n".join(
+    f'extern "C" void entry_{i}(int *p) {{ *p += {i}; }}' for i in range(8)
+)
+
+
+def test_entry_points_of_one_object_all_keep_the_prefix(tmp_path):
+    """Several entry points in one object must not race each other's rename.
+
+    Each ExternalFunction compiles the object and then prefixes its symbols.
+    Grouped by source name, the eight below land in eight groups and run at
+    once, so a sibling's write lands after another's rename and drops it. The
+    object then exports one prefixed symbol out of eight, and which one varies
+    between runs.
+    """
+    source = tmp_path / "multi.cc"
+    source.write_text(_MULTI_ENTRY_SOURCE + "\n")
+    names = [f"entry_{i}" for i in range(8)]
+    funcs = [
+        SimpleNamespace(
+            _name=f"op0_{name}",
+            _original_name=name,
+            _source_string=None,
+            _source_file=str(source),
+            _include_dirs=[],
+            _compile_flags=[],
+            _symbol_prefix="op0",
+            _compiled=False,
+            object_file_name="multi.o",
+        )
+        for name in names
+    ]
+
+    assert len(compile_utils._serial_groups(funcs)) == 1
+
+    kernel_dir = tmp_path / "kdir"
+    kernel_dir.mkdir()
+    compile_utils.compile_external_kernels(funcs, str(kernel_dir), "aie2p")
+
+    assert _symbols(kernel_dir / "multi.o") == sorted(f"op0_{n}" for n in names)
+
+
+def test_groups_close_over_both_relations():
+    """A kernel sharing an object with one and a source name with another.
+
+    Neither relation alone orders all three, and both write paths that overlap,
+    so the three have to land in one group.
+    """
+    shared_object = SimpleNamespace(
+        _name="a", _original_name="a", object_file_name="shared.o"
+    )
+    bridge = SimpleNamespace(_name="b", _original_name="b", object_file_name="shared.o")
+    shared_name = SimpleNamespace(
+        _name="c", _original_name="b", object_file_name="other.o"
+    )
+    groups = compile_utils._serial_groups([shared_object, bridge, shared_name])
+    assert len(groups) == 1

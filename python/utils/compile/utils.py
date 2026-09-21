@@ -786,6 +786,40 @@ def _compiled_into(func, kernel_dir) -> bool:
     return os.path.abspath(compiled_dir) == os.path.abspath(kernel_dir)
 
 
+def _serial_groups(funcs) -> dict[int, list]:
+    """Partition ``funcs`` so that one group owns every path a kernel writes.
+
+    Kernels in different groups write disjoint paths and so may run at the
+    same time; kernels in one group must run one after another. See
+    :func:`compile_external_kernels` for which paths those are.
+    """
+    parent = list(range(len(funcs)))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def union(a, b):
+        root_a, root_b = find(a), find(b)
+        if root_a != root_b:
+            parent[root_b] = root_a
+
+    owner: dict[tuple[str, str], int] = {}
+    for i, f in enumerate(funcs):
+        for key in (
+            ("object", f.object_file_name),
+            ("source", getattr(f, "_original_name", f._name)),
+        ):
+            union(owner.setdefault(key, i), i)
+
+    groups: dict[int, list] = {}
+    for i, f in enumerate(funcs):
+        groups.setdefault(find(i), []).append(f)
+    return groups
+
+
 def compile_external_kernels(funcs, kernel_dir, target_arch, include_dirs=None):
     """Compile every ExternalFunction in ``funcs`` into ``kernel_dir``.
 
@@ -794,15 +828,24 @@ def compile_external_kernels(funcs, kernel_dir, target_arch, include_dirs=None):
     several ExternalFunctions can share one .cc -- so ``_staged`` makes each
     write atomic rather than ordering the compiles behind it.
 
-    The ``_original_name`` grouping below is still load-bearing, for a case
-    ``_staged`` cannot cover: two ExternalFunctions can share an
-    ``_original_name`` while carrying different ``source_string``s, because
-    ``ExternalFunction.__init__`` auto-suffixes a defaulted ``object_file_name``
-    on collision but never the original name.  Both write ``<_original_name>.cc``
-    and the bytes differ, so an atomic swap is not enough and they have to run
-    one after the other.  Not covered either way: two ``source_file``s with the
-    same basename in different directories land on one path with different bytes
-    but different ``_original_name``s, so nothing orders them.
+    The grouping below orders the pairs an atomic swap cannot cover, where two
+    kernels write one path with bytes that differ:
+
+    * One ``object_file_name``.  Several entry points of one object are
+      several ExternalFunctions, each of which compiles that object and then
+      prefixes its symbols.  Run concurrently, a sibling's write lands after
+      another's rename and drops it, and the object exports one prefixed
+      symbol instead of all of them.
+    * One ``_original_name``, which names the ``<name>.cc`` a ``source_string``
+      is written to.  ``ExternalFunction.__init__`` auto-suffixes a defaulted
+      ``object_file_name`` on collision but never the original name, so the two
+      can differ in source while agreeing on that path.
+
+    The two relations overlap, so the groups are their transitive closure: a
+    kernel sharing an object with one and a source name with another has to
+    follow both.  Not covered either way: two ``source_file``s with the same
+    basename in different directories land on one path with different bytes but
+    agree on neither key, so nothing orders them.
 
     Each compile is single-threaded and peaks near 205 MB of RSS on aie2p (250 MB
     without the intrinsics PCH), so the bound is cores rather than memory on an
@@ -819,9 +862,7 @@ def compile_external_kernels(funcs, kernel_dir, target_arch, include_dirs=None):
             compile_external_kernel(f, kernel_dir, target_arch, include_dirs)
         return
 
-    groups: dict[str, list] = {}
-    for f in pending:
-        groups.setdefault(getattr(f, "_original_name", f._name), []).append(f)
+    groups = _serial_groups(pending)
 
     try:
         jobs = int(os.environ.get("AIE_KERNEL_COMPILE_JOBS", "0"))
