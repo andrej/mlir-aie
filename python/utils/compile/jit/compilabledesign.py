@@ -928,6 +928,22 @@ class CompilableDesign:
 
         return self._generate_mlir(ExternalFunction, full_elf=self.full_elf)
 
+    def inline(self, *, full_elf: bool = False) -> str:
+        """Generate this design's MLIR for a design that builds around it.
+
+        Returns the MLIR text and registers this design's kernels on the caller,
+        so the caller's build compiles them into its own artifacts. Call it from
+        a generator that takes this design as a ``CompileTime`` argument.
+
+        ``full_elf`` defaults to False: a caller that configures each child
+        itself must not also let a child load its own PDI.
+        """
+        from aie.iron.kernel import ExternalFunction
+
+        mlir_text, external_kernels = self._generated_for(full_elf=full_elf)
+        ExternalFunction._instances.update(external_kernels)
+        return mlir_text
+
     def validate_tensor_args(self, tensor_args: list) -> None:
         """Validate that *tensor_args* element counts match the compiled kernel.
 
@@ -1202,6 +1218,10 @@ class CompilableDesign:
         # must begin with a context-local factory cache.
         from aie.iron.kernels._common import _EXTERN_CACHE
 
+        # `inline` generates one design while another generates. Set the outer
+        # registry aside and put it back, so that this run collects its own
+        # kernels and the run around it loses none of its own.
+        outer_kernels = set(ExternalFunction._instances)
         ExternalFunction._instances.clear()
         _EXTERN_CACHE.clear()
 
@@ -1262,6 +1282,7 @@ class CompilableDesign:
 
         external_kernels = list(ExternalFunction._instances)
         ExternalFunction._instances.clear()
+        ExternalFunction._instances.update(outer_kernels)
         return mlir_text, external_kernels
 
     def _generate_mlir(self, ExternalFunction, *, full_elf: bool = False):

@@ -1155,6 +1155,34 @@ def test_generate_mlir_clears_external_function_instances_before_call():
 
     d = CompilableDesign(gen, compile_kwargs={"M": 1})
     d._generate_mlir(ExternalFunction)
+    ExternalFunction._instances.discard(stale)
+
+
+def test_inline_hands_every_childs_kernels_to_the_parent():
+    """A parent that inlines children compiles the kernels of all of them."""
+
+    def child_gen(*, mark: CompileTime[str]):
+        ExternalFunction._instances.add(mark)
+        with mlir_mod_ctx() as ctx:
+            pass
+        return ctx.module
+
+    children = tuple(
+        CompilableDesign(child_gen, compile_kwargs={"mark": mark})
+        for mark in ("first", "second")
+    )
+
+    def parent_gen(*, steps: CompileTime[tuple]):
+        for step in steps:
+            step.inline()
+        with mlir_mod_ctx() as ctx:
+            pass
+        return ctx.module
+
+    parent = CompilableDesign(parent_gen, compile_kwargs={"steps": children})
+    _, kernels = parent._generated_for(full_elf=False)
+
+    assert {"first", "second"} <= set(kernels)
 
 
 def test_generate_mlir_unplaced_style_uses_return_value():
