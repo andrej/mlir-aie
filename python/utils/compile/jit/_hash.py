@@ -29,13 +29,14 @@ Carved out of ``compilabledesign.py`` to keep the main file focused on the
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import logging
 import marshal
 from pathlib import Path
 from types import CodeType
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Iterator, Mapping
 
 from ._introspect import _introspect_generator
 
@@ -75,6 +76,44 @@ def _device_identity_key(device) -> tuple[str, str, str, str]:
         str(getattr(device, "cols", "")),
         str(getattr(device, "rows", "")),
     )
+
+
+def _is_design(value) -> bool:
+    """Return True for a value that carries both halves of a design key.
+
+    Asked of the class, so that reading the answer does not compute a hash.
+    """
+    cls = type(value)
+    return hasattr(cls, "recipe_hash") and hasattr(cls, "artifact_hash")
+
+
+def _parts(value) -> list[tuple[str, Any]] | None:
+    """Return the labelled parts of a container or a dataclass, else ``None``.
+
+    Dict keys sort, so that one insertion order does not give a key another
+    reading. A value of any other kind has no parts a caller may descend into.
+    """
+    if isinstance(value, (list, tuple)):
+        return [(str(index), item) for index, item in enumerate(value)]
+    if isinstance(value, dict):
+        return [(str(key), value[key]) for key in sorted(value, key=str)]
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return [(f.name, getattr(value, f.name)) for f in dataclasses.fields(value)]
+    return None
+
+
+def _designs_in(value) -> Iterator[Any]:
+    """Yield every design a compile-time argument holds.
+
+    A design that takes another design as an argument compiles what the child
+    compiles, so the child's inputs are the parent's inputs. Descent stops at a
+    design: its own key already covers what it holds.
+    """
+    if _is_design(value):
+        yield value
+        return
+    for _, part in _parts(value) or ():
+        yield from _designs_in(part)
 
 
 def _without_location(const):
@@ -134,6 +173,10 @@ def _compute_recipe_hash(
     header trees compile to different objects. Hashed in ORDER, not sorted
     like the flag lists above, because ``-I`` search order decides which
     header wins when two directories provide the same name.
+
+    A kwarg that is itself a design contributes that design's recipe hash, and
+    so does a design nested in a container or a dataclass. The artifact half of
+    such a child goes to the artifact half of the parent.
     """
     h = hashlib.sha256()
 
@@ -164,6 +207,18 @@ def _compute_recipe_hash(
         )
 
     def _kwarg_repr(v):
+        if _is_design(v):
+            # repr of a design carries an address, so a parent keyed on it moves
+            # between processes. The child's own recipe half keeps both halves apart.
+            return ("design:", v.recipe_hash)
+        parts = _parts(v)
+        if parts is not None:
+            # Descend, so that a design nested in a container or a dataclass
+            # reaches the key through the branch above.
+            return (
+                type(v).__name__,
+                {label: _kwarg_repr(part) for label, part in parts},
+            )
         if callable(v) and hasattr(v, "__code__"):
             closure = (
                 tuple(c.cell_contents for c in v.__closure__) if v.__closure__ else None
@@ -214,6 +269,7 @@ def _compute_artifact_hash(
     object_files: list[Path] | tuple[Path, ...],
     fold_ddr_addr_offset: bool,
     has_dispatch_params: bool = False,
+    compile_kwargs: Mapping[str, Any] | None = None,
 ) -> str:
     """Hash of the "artifacts": source/object content + tool mtimes + device.
 
@@ -229,6 +285,9 @@ def _compute_artifact_hash(
     ``has_dispatch_params`` additionally hashes the host C++ compiler used to
     build the dispatch library. Its generated source is covered by aiecc's
     identity above; Python does not run a separate translation pipeline.
+
+    ``compile_kwargs`` contributes the artifact hash of every design the
+    arguments hold, so that editing a child's kernel rebuilds the parent.
     """
     h = hashlib.sha256()
 
@@ -239,6 +298,10 @@ def _compute_artifact_hash(
     for of in sorted(object_files, key=str):
         h.update(str(of).encode())
         h.update(_content_digest(of).encode())
+
+    for name, value in sorted((compile_kwargs or {}).items()):
+        for design in _designs_in(value):
+            h.update(f"{name}={design.artifact_hash}".encode())
 
     h.update(f"fold_ddr_addr_offset={fold_ddr_addr_offset}".encode())
     # Static .mlir is target-agnostic; compiled kernels need a device identifier.
@@ -297,5 +360,6 @@ def _compute_hash(
         object_files,
         fold_ddr_addr_offset,
         has_dispatch_params,
+        compile_kwargs,
     )
     return hashlib.sha256(f"{recipe}|{artifact}".encode()).hexdigest()[:24]

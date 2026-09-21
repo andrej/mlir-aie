@@ -11,6 +11,7 @@ Tests that exercise compile() or end-to-end kernel execution live in
 test/python/npu/test_iron_jit_e2e.py (requires a host runtime backend).
 """
 
+import dataclasses
 import json
 import os
 import subprocess
@@ -818,6 +819,67 @@ def test_hash_is_24_hex_chars():
     hex_str = d._compute_cache_hash()
     assert len(hex_str) == 24
     assert all(c in "0123456789abcdef" for c in hex_str)
+
+
+# ---------------------------------------------------------------------------
+# A design taken as a compile-time argument
+# ---------------------------------------------------------------------------
+
+
+@dataclasses.dataclass
+class _Runlist:
+    steps: dict
+
+
+def _parent_gen():
+    def parent(a: In, c: Out, *, child: CompileTime[object]):
+        pass
+
+    return parent
+
+
+def _child(body="    return 1\n", **kwargs):
+    return CompilableDesign(_design(f"def design(a):\n{body}"), **kwargs)
+
+
+@pytest.mark.parametrize(
+    "wrap",
+    [
+        pytest.param(lambda d: d, id="bare"),
+        pytest.param(lambda d: [d], id="list"),
+        pytest.param(lambda d: {"step": d}, id="dict"),
+        pytest.param(lambda d: _Runlist({"step": d}), id="dataclass"),
+    ],
+)
+def test_hash_reads_a_child_design_through_its_own_key(wrap):
+    """A parent keys on what its child compiles, however the child is wrapped.
+
+    Equal keys for two separately built children also show that the parent
+    reads the child's content and not its address.
+    """
+    gen = _parent_gen()
+
+    def key(body):
+        return _compute_hash(gen, {"child": wrap(_child(body))}, [], [], [], [])
+
+    assert key("    return 1\n") == key("    return 1\n")
+    assert key("    return 1\n") != key("    return 2\n")
+
+
+def test_hash_reads_a_child_designs_source_file(tmp_path):
+    """A child's artifact half reaches the parent's artifact half."""
+    kernel = tmp_path / "kernel.cc"
+    kernel.write_text("void f() {}")
+    gen = _parent_gen()
+
+    def key():
+        return _compute_hash(
+            gen, {"child": _child(source_files=[kernel])}, [], [], [], []
+        )
+
+    before = key()
+    kernel.write_text("void f() { return; }")
+    assert before != key()
 
 
 def test_hash_is_valid_python_hash():

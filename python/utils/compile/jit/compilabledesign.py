@@ -1086,6 +1086,7 @@ class CompilableDesign:
             self.object_files,
             self._resolve_fold_ddr_addr_offset(),
             bool(self.dispatch_params),
+            self.compile_kwargs,
         )
 
     def _cache_root(self) -> Path:
