@@ -33,6 +33,16 @@ class Device(Resolvable):
         self._tm = get_target_model(device)
         self._resolved_tiles: dict[int, LogicalTileOp] = {}
 
+    def __repr__(self) -> str:
+        """Identify the device by target and grid, never by address.
+
+        A device reaches the JIT cache key whenever it is passed as a
+        ``CompileTime[T]`` value, and the key is built from ``str()``. The
+        default repr embeds the object's address, which differs on every run,
+        so the entry a build writes is one no later run can ever address.
+        """
+        return f"{type(self).__name__}({self._device}, {self.cols}x{self.rows})"
+
     @property
     def cols(self) -> int:
         """Number of columns in the device tile array."""
