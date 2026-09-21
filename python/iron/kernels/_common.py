@@ -130,6 +130,22 @@ def _require_fixed_tile_size(
         )
 
 
+def _require_vector_multiple_tile_size(
+    factory_name: str, tile_size: int, vector_width: int = 32
+) -> None:
+    """Raise ValueError when a runtime-sized kernel's loop would overrun its tile.
+
+    The kernels this guards step a whole vector per iteration and stop at the
+    element count they are passed, so a count that is not a whole number of
+    vectors runs one iteration past the end of the tile.
+    """
+    if tile_size % vector_width:
+        raise ValueError(
+            f"{factory_name}() tile_size must be a multiple of {vector_width}, "
+            f"the vector width its loop steps by, got {tile_size}."
+        )
+
+
 def _min_dma_aligned_elems(dtype, align: int = 4) -> int:
     """Return the minimum element count whose byte size is a multiple of *align*.
 

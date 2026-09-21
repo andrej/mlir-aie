@@ -269,7 +269,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         expected_name="softmax_bf16",
         source_kind="string_or_file",
         source_substring="softmax.cc",
-        invalid_kwargs=[(dict(tile_size=2048), "tile_size must be 1024")],
+        invalid_kwargs=[(dict(tile_size=48), "tile_size must be a multiple of 32")],
     ),
     KernelSpec(
         name="gelu",
@@ -337,7 +337,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         expected_name="tanh_bf16",
         source_kind="string_or_file",
         source_substring="tanh.cc",
-        invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
+        invalid_kwargs=[(dict(tile_size=48), "tile_size must be a multiple of 32")],
     ),
     KernelSpec(
         name="sigmoid",
@@ -347,7 +347,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         expected_name="sigmoid_bf16",
         source_kind="string_or_file",
         source_substring="sigmoid.cc",
-        invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
+        invalid_kwargs=[(dict(tile_size=48), "tile_size must be a multiple of 32")],
     ),
     KernelSpec(
         name="leaky_relu",
@@ -357,7 +357,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         expected_name="leaky_relu_bf16",
         source_kind="string_or_file",
         source_substring="leaky_relu.cc",
-        invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
+        invalid_kwargs=[(dict(tile_size=48), "tile_size must be a multiple of 32")],
     ),
     KernelSpec(
         name="exp2f_vec",

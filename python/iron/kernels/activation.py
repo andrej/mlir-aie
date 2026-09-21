@@ -32,6 +32,7 @@ from ._common import (
     _kernel_source,
     _make_extern,
     _require_fixed_tile_size,
+    _require_vector_multiple_tile_size,
 )
 
 _LUT_FIXED_TILE = 1024
@@ -103,7 +104,7 @@ def softmax(tile_size: int = 1024) -> ExternalFunction:
     Returns:
         ExternalFunction configured for the softmax kernel.
     """
-    _require_fixed_tile_size("softmax", tile_size, _LUT_FIXED_TILE)
+    _require_vector_multiple_tile_size("softmax", tile_size)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
         "softmax_bf16",
@@ -212,23 +213,23 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
 
 
 def tanh(tile_size: int = 1024) -> ExternalFunction:
-    """Tanh activation kernel for bf16 tiles (must be 1024).
+    """Tanh activation kernel for bf16 tiles.
 
     The kernel takes the element count at runtime, so the design must pass
     ``tile_size`` as a trailing ``int`` argument (e.g. via
     ``transform_parallel(pass_size_to_kernel=True)``).
     """
-    _require_fixed_tile_size("tanh", tile_size, _LUT_FIXED_TILE)
+    _require_vector_multiple_tile_size("tanh", tile_size)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel("tanh_bf16", "tanh.cc", [tile_ty, tile_ty, np.int32])
 
 
 def sigmoid(tile_size: int = 1024) -> ExternalFunction:
-    """Sigmoid activation kernel for bf16 tiles (must be 1024).
+    """Sigmoid activation kernel for bf16 tiles.
 
     Runtime element count — pass ``tile_size`` as a trailing ``int`` argument.
     """
-    _require_fixed_tile_size("sigmoid", tile_size, _LUT_FIXED_TILE)
+    _require_vector_multiple_tile_size("sigmoid", tile_size)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
         "sigmoid_bf16", "sigmoid.cc", [tile_ty, tile_ty, np.int32]
@@ -236,12 +237,12 @@ def sigmoid(tile_size: int = 1024) -> ExternalFunction:
 
 
 def leaky_relu(tile_size: int = 1024) -> ExternalFunction:
-    """Leaky ReLU activation kernel for bf16 tiles (must be 1024).
+    """Leaky ReLU activation kernel for bf16 tiles.
 
     Takes the element count and the ``alpha`` slope at runtime, so the design
     must pass ``(tile_size, alpha)`` as trailing ``int``/``bfloat16`` arguments.
     """
-    _require_fixed_tile_size("leaky_relu", tile_size, _LUT_FIXED_TILE)
+    _require_vector_multiple_tile_size("leaky_relu", tile_size)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
         "leaky_relu_bf16", "leaky_relu.cc", [tile_ty, tile_ty, np.int32, bfloat16]
