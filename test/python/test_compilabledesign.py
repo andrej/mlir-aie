@@ -1609,6 +1609,7 @@ def test_config_param_names_matches_construction():
         "include_paths",
         "aiecc_flags",
         "object_files",
+        "cache_dir",
         "full_elf",
     }
 
@@ -1739,6 +1740,22 @@ def test_get_dispatch_lib_path_none_for_non_dispatch_design():
     """get_dispatch_lib_path() returns None for a design with no DispatchTime[T] params."""
     d = CompilableDesign(_gemm_gen())
     assert d.get_dispatch_lib_path() is None
+
+
+def test_cache_dir_places_the_entry(tmp_path):
+    """cache_dir addresses the entry, leaving NPU_CACHE_HOME to everyone else."""
+    elsewhere = tmp_path / "elsewhere"
+    design = CompilableDesign(_gemm_gen(), cache_dir=elsewhere)
+    assert design._cache_root() == elsewhere
+    assert CompilableDesign(_gemm_gen())._cache_root() == (
+        compilabledesign_module.NPU_CACHE_HOME
+    )
+
+
+def test_cache_dir_survives_specialize(tmp_path):
+    """A specialised design keeps the root it was given, as every config does."""
+    design = CompilableDesign(_gemm_gen(), cache_dir=tmp_path)
+    assert design.specialize(M=512)._cache_root() == tmp_path
 
 
 @pytest.mark.parametrize("cache_hit", [False, True])

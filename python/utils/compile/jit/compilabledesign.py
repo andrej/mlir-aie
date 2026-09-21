@@ -127,6 +127,10 @@ class CompilableDesign:
         include_paths: Extra ``-I`` paths forwarded to the C++ compiler.
         aiecc_flags: Extra flags forwarded to ``aiecc``.
         object_files: Pre-compiled ``.o`` files to link with.
+        cache_dir: Root the cache entry is addressed under.  Defaults to
+            ``NPU_CACHE_HOME``.  Lets one process place the caches of
+            different designs separately, which the environment variable
+            cannot: it is read once, when ``aie.utils.compile`` is imported.
         full_elf: When ``True``, `compile` emits a single self-contained
             "full" ELF (PDIs + TXN control code) instead of an
             ``xclbin`` + ``insts.bin`` pair.  The ELF is loaded standalone by
@@ -144,11 +148,13 @@ class CompilableDesign:
         include_paths: list[str | Path] | None = None,
         aiecc_flags: list[str] | None = None,
         object_files: list[str | Path] | None = None,
+        cache_dir: str | Path | None = None,
         full_elf: bool = False,
     ):
         self.mlir_generator = mlir_generator
         self.use_cache = use_cache
         self.full_elf = full_elf
+        self.cache_dir = Path(cache_dir) if cache_dir is not None else None
         # Freeze all inputs so callers can't mutate config after construction
         # (which would silently invalidate the cache hash). MappingProxyType +
         # tuples are read-only views; equality with plain dict/list still works.
@@ -442,7 +448,7 @@ class CompilableDesign:
             lock_file_path = kernel_dir / ".lock"
         else:
             cache_hash = self._compute_cache_hash()
-            kernel_dir = NPU_CACHE_HOME / cache_hash
+            kernel_dir = self._cache_root() / cache_hash
             lock_file_path = kernel_dir / ".lock"
             xclbin_path = kernel_dir / "final.xclbin"
             inst_path = None if has_dispatch else kernel_dir / "insts.bin"
@@ -625,7 +631,7 @@ class CompilableDesign:
             kernel_dir = elf_path.parent / f"{elf_path.stem}.prj"
         else:
             cache_hash = self._compute_cache_hash()
-            kernel_dir = NPU_CACHE_HOME / cache_hash
+            kernel_dir = self._cache_root() / cache_hash
             elf_path = kernel_dir / "design.elf"
         lock_file_path = kernel_dir / ".lock"
 
@@ -986,6 +992,7 @@ class CompilableDesign:
             "include_paths": [p.as_posix() for p in self.include_paths],
             "aiecc_flags": self.aiecc_flags,
             "object_files": [of.as_posix() for of in self.object_files],
+            "cache_dir": self.cache_dir.as_posix() if self.cache_dir else None,
             "cache_hash": self._compute_cache_hash(),
         }
         return json.dumps(data)
@@ -1023,6 +1030,7 @@ class CompilableDesign:
             include_paths=data.get("include_paths", []),
             aiecc_flags=data.get("aiecc_flags", []),
             object_files=data.get("object_files", []),
+            cache_dir=data.get("cache_dir"),
         )
 
     # ------------------------------------------------------------------
@@ -1079,6 +1087,10 @@ class CompilableDesign:
             self._resolve_fold_ddr_addr_offset(),
             bool(self.dispatch_params),
         )
+
+    def _cache_root(self) -> Path:
+        """Directory this design's cache entry is addressed under."""
+        return self.cache_dir if self.cache_dir is not None else NPU_CACHE_HOME
 
     def _compute_cache_hash(self) -> str:
         return _compute_hash(
