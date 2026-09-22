@@ -344,3 +344,67 @@ def test_kernels_mm_emulated_bf16_distinct_cache_from_default(npu2_device):
     )
     assert ef_default is not ef_emulated
     assert ef_default.object_file_name != ef_emulated.object_file_name
+
+
+# ---------------------------------------------------------------------------
+# round_conv_even toggle — adds a macro on aie2+bf16 that rounds to nearest
+# even instead of toward negative infinity.
+# ---------------------------------------------------------------------------
+
+
+def test_kernels_mm_round_conv_even_carries_macro(npu1_device):
+    """round_conv_even=True adds the macro on aie2+bf16."""
+    ef = kernels.mm(
+        dim_m=64,
+        dim_k=64,
+        dim_n=32,
+        input_dtype=bfloat16,
+        output_dtype=bfloat16,
+        round_conv_even=True,
+    )
+    assert "-DROUND_CONV_EVEN" in ef._compile_flags
+
+
+def test_kernels_mm_round_conv_even_default_off(npu1_device):
+    ef = kernels.mm(
+        dim_m=64,
+        dim_k=64,
+        dim_n=32,
+        input_dtype=bfloat16,
+        output_dtype=bfloat16,
+    )
+    assert "-DROUND_CONV_EVEN" not in ef._compile_flags
+
+
+@pytest.mark.parametrize(
+    "dtype,fixture", [(np.int16, "npu1_device"), (bfloat16, "npu2_device")]
+)
+def test_kernels_mm_round_conv_even_ignored(dtype, fixture, request):
+    """aie2p rounds this way already, and the macro is bf16-specific."""
+    request.getfixturevalue(fixture)
+    ef = kernels.mm(
+        dim_m=64,
+        dim_k=64,
+        dim_n=32,
+        input_dtype=dtype,
+        output_dtype=dtype,
+        round_conv_even=True,
+    )
+    assert "-DROUND_CONV_EVEN" not in ef._compile_flags
+
+
+def test_kernels_mm_round_conv_even_distinct_cache_from_default(npu1_device):
+    """The toggle changes the .o contents; cache must distinguish the two."""
+    ef_default = kernels.mm(
+        dim_m=64, dim_k=64, dim_n=32, input_dtype=bfloat16, output_dtype=bfloat16
+    )
+    ef_rounded = kernels.mm(
+        dim_m=64,
+        dim_k=64,
+        dim_n=32,
+        input_dtype=bfloat16,
+        output_dtype=bfloat16,
+        round_conv_even=True,
+    )
+    assert ef_default is not ef_rounded
+    assert ef_default.object_file_name != ef_rounded.object_file_name

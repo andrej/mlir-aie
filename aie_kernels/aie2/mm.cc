@@ -839,8 +839,20 @@ matmul_vectorized_4x8x4_bf16_bf16(const bfloat16 *__restrict pA,
   static_assert(k % s == 0);
   static_assert(n % (4 * t) == 0);
 
-  return matmul_vectorized_4x4<bfloat16, bfloat16, (m / r), (k / s), (n / t), r,
-                               s, t, is_b_row_maj, is_c_row_maj>(pA, pB, pC);
+  // The core powers up in rounding_mode::floor, which rounds every bf16 store
+  // toward negative infinity. The bias does not cancel over the K reduction, it
+  // accumulates. ROUND_CONV_EVEN selects round-to-nearest-even for the duration
+  // of the kernel and restores the caller's mode. aie2p/mm.cc does the same for
+  // its bfp16 emulation path.
+#ifdef ROUND_CONV_EVEN
+  aie::rounding_mode saved_rounding =
+      aie::swap_rounding(aie::rounding_mode::conv_even);
+#endif
+  matmul_vectorized_4x4<bfloat16, bfloat16, (m / r), (k / s), (n / t), r, s, t,
+                        is_b_row_maj, is_c_row_maj>(pA, pB, pC);
+#ifdef ROUND_CONV_EVEN
+  aie::set_rounding(saved_rounding);
+#endif
 }
 
 template <unsigned m, unsigned k, unsigned n>
@@ -856,8 +868,16 @@ matmul_vectorized_4x8x4_bf16_f32(const bfloat16 *__restrict pA,
   static_assert(k % s == 0);
   static_assert(n % (4 * t) == 0);
 
-  return matmul_vectorized_4x4<bfloat16, float, (m / r), (k / s), (n / t), r, s,
-                               t, is_b_row_maj, is_c_row_maj>(pA, pB, pC);
+  // See matmul_vectorized_4x8x4_bf16_bf16 above.
+#ifdef ROUND_CONV_EVEN
+  aie::rounding_mode saved_rounding =
+      aie::swap_rounding(aie::rounding_mode::conv_even);
+#endif
+  matmul_vectorized_4x4<bfloat16, float, (m / r), (k / s), (n / t), r, s, t,
+                        is_b_row_maj, is_c_row_maj>(pA, pB, pC);
+#ifdef ROUND_CONV_EVEN
+  aie::set_rounding(saved_rounding);
+#endif
 }
 
 template <unsigned m, unsigned k, unsigned n>

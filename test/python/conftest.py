@@ -12,7 +12,7 @@ own conftest.py).
 
 import pytest
 
-from aie.iron.device import NPU2Col1
+from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
 from aie.iron.kernels import _common as _kernels_common
 from aie.utils.hostruntime import set_current_device
@@ -38,5 +38,13 @@ def npu2_device():
     the test body crashes mid-assertion.
     """
     set_current_device(NPU2Col1())
+    yield
+    set_current_device(None)
+
+
+@pytest.fixture
+def npu1_device():
+    """Set the iron current device to NPU1Col1 for the test, then clear it."""
+    set_current_device(NPU1Col1())
     yield
     set_current_device(None)

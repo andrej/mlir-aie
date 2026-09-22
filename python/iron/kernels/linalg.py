@@ -114,6 +114,7 @@ def mm(
     c_col_maj: bool = False,
     use_chess: bool = False,
     emulate_bf16_mmul_with_bfp16: bool = False,
+    round_conv_even: bool = False,
 ) -> ExternalFunction:
     """Matrix-multiply kernel: C += A * B.
 
@@ -143,6 +144,11 @@ def mm(
             Changes the micro-kernel dims to (8, 8, 8); designs reading
             ``.mac_dims`` will see the new geometry automatically.  Ignored
             for non-bf16 inputs and on AIE2.
+        round_conv_even: AIE2 only, bf16 inputs only.  When ``True`` compile
+            with ``-DROUND_CONV_EVEN`` so the kernel rounds to nearest even
+            rather than toward negative infinity.  The default mode biases
+            every store low and the bias accumulates over the K reduction.
+            AIE2P rounds this way already on its emulation path.
 
     Returns:
         ExternalFunction configured for the matmul kernel.
@@ -178,6 +184,8 @@ def mm(
     )
     if bf16_emulated:
         compile_flags.append("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16")
+    if round_conv_even and arch == "aie2" and input_dtype is bfloat16:
+        compile_flags.append("-DROUND_CONV_EVEN")
     extern = _make_extern(
         f"{prefix}_{suffix}",
         _default_source_path("mm.cc"),
