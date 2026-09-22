@@ -122,8 +122,15 @@ def _maybe_collapse_to_match(arg, expected_ty):
     still surface in MLIR verification.
     """
     if not isinstance(arg, ir.Value):
-        return arg
-    arg_ty = arg.type
+        # A Buffer hands the call its defining operation. Read the value that
+        # operation defines, so a Buffer collapses as an ObjectFifo element does.
+        results = getattr(arg, "results", None)
+        if results is None or len(results) != 1:
+            return arg
+        value = results[0]
+    else:
+        value = arg
+    arg_ty = value.type
     if not (
         isinstance(arg_ty, ir.MemRefType) and isinstance(expected_ty, ir.MemRefType)
     ):
@@ -147,7 +154,7 @@ def _maybe_collapse_to_match(arg, expected_ty):
         return arg
     # All N input dims collapse into the single output dim.
     reassociation = [list(range(arg_mr.rank))]
-    return memref.collapse_shape(exp_mr, arg, reassociation)
+    return memref.collapse_shape(exp_mr, value, reassociation)
 
 
 class BaseKernel(Resolvable):
