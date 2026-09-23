@@ -10,6 +10,8 @@ import logging
 from pathlib import Path
 
 import numpy as np
+from ml_dtypes import bfloat16
+
 from aie.iron.kernel import ExternalFunction
 
 _log = logging.getLogger(__name__)
@@ -82,20 +84,24 @@ _DTYPE_BIT_WIDTHS = {
     np.dtype(np.uint8): 8,
     np.dtype(np.int16): 16,
     np.dtype(np.int32): 32,
+    np.dtype(bfloat16): 16,
 }
 
 
 def _dtype_to_bit_width(dtype, *, factory_name: str) -> int:
-    """Map ``np.uint8 | np.int16 | np.int32`` to 8/16/32.
+    """Map ``np.uint8 | np.int16 | np.int32 | bfloat16`` to 8/16/32.
+
+    A kernel that reads this moves elements without arithmetic, so it needs the
+    width and not the type.
 
     Raises:
-        ValueError: When *dtype* is not one of the three supported types.
+        ValueError: When *dtype* is not one of the four supported types.
     """
     bit_width = _DTYPE_BIT_WIDTHS.get(np.dtype(dtype))
     if bit_width is None:
         raise ValueError(
             f"{factory_name}: unsupported dtype {dtype}. "
-            "Use np.uint8, np.int16, or np.int32."
+            "Use np.uint8, np.int16, np.int32, or bfloat16."
         )
     return bit_width
 

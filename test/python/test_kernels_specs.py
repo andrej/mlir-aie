@@ -81,6 +81,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         expected_name="passThroughLine",
         shape_checks=[
             (dict(tile_size=64, dtype=np.int16), 0, (64,)),
+            (dict(tile_size=64, dtype=bfloat16), 0, (64,)),
         ],
         tile_size_checks=[
             (dict(tile_size=256, dtype=np.uint8), 256),
