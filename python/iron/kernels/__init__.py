@@ -40,6 +40,7 @@ from .activation import (
     tanh,
     tanh_ref,
 )
+from .attention import mha
 from .conv import (
     bn_conv2dk1_i8,
     bn_conv2dk1_input_split_partial_put_ui8,
@@ -140,6 +141,7 @@ __all__ = [
     "mm",
     "mv",
     "mv_sized",
+    "mha",
     "cascade_mm",
     "conv2dk1",
     "conv2dk3",

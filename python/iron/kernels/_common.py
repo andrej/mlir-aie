@@ -202,6 +202,7 @@ def _make_extern(
     compile_flags: list[str] | None = None,
     use_chess: bool = False,
     shared_object_file_name: str | None = None,
+    extra_include_dirs: list[str] | None = None,
 ) -> ExternalFunction:
     """Construct (or reuse) an ExternalFunction with the standard include_dirs.
 
@@ -233,8 +234,16 @@ def _make_extern(
     symbols from the ``.cc``, tripping a duplicate-symbol link error.
     """
     flags_tuple = tuple(compile_flags or [])
+    include_tuple = tuple(extra_include_dirs or [])
     arg_keys = tuple(_arg_type_key(t) for t in arg_types)
-    cache_key = (func_name, str(source_path), arg_keys, flags_tuple, use_chess)
+    cache_key = (
+        func_name,
+        str(source_path),
+        arg_keys,
+        flags_tuple,
+        include_tuple,
+        use_chess,
+    )
     cached = _EXTERN_CACHE.get(cache_key)
     if cached is not None:
         return cached
@@ -295,7 +304,8 @@ def _make_extern(
     # duplicate-symbol link error.  The .o *filename* stays the deterministic
     # suffix form regardless — only the symbol rename is skipped.
     if use_chess:
-        # ``cache_key`` layout: (func_name, source_path, arg_keys, flags, chess).
+        # ``cache_key`` layout: (func_name, source_path, arg_keys, flags,
+        # include_dirs, chess).
         # A prior chess entry with the same func_name but any other field
         # different is a genuine second variant that we cannot disambiguate.
         for other_key in _EXTERN_CACHE:
@@ -321,7 +331,7 @@ def _make_extern(
         object_file_name=object_file_name,
         source_file=str(source_path),
         arg_types=arg_types,
-        include_dirs=_include_dirs(),
+        include_dirs=_include_dirs() + list(include_tuple),
         compile_flags=list(flags_tuple),
         symbol_prefix=symbol_prefix,
         use_chess=use_chess,
