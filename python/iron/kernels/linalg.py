@@ -259,6 +259,45 @@ def mv(
     return extern
 
 
+def mv_sized(
+    dim_k: int = 128,
+    vec_size: int = 64,
+    m_tile: int = 1,
+    m_out: int = 1,
+    use_chess: bool = False,
+) -> ExternalFunction:
+    """Matrix-vector multiply over bf16 rows, row count read at runtime.
+
+    Runtime-count sibling of [`mv`][iron.kernels.linalg.mv]: the design passes
+    ``(m, row_offset, a, b, c)`` and accumulates ``m`` rows of ``a`` into ``c``
+    starting at ``row_offset``. A design that reduces over K in several passes
+    therefore reuses one compiled kernel for every row count it hands over.
+
+    Args:
+        dim_k: Columns of A, and the length of b (``-DDIM_K``).
+        vec_size: Elements the inner loop reduces at a time (``-DVEC_SIZE``).
+        m_tile: Rows of A the design hands over in one call.
+        m_out: Length of the c tile the design accumulates into.
+        use_chess: If ``True`` build the .o with ``xchesscc_wrapper``
+            instead of Peano.
+
+    Returns:
+        ExternalFunction for the bf16 matvec kernel.
+    """
+    a_ty = np.ndarray[(m_tile * dim_k,), np.dtype[bfloat16]]
+    b_ty = np.ndarray[(dim_k,), np.dtype[bfloat16]]
+    c_ty = np.ndarray[(m_out,), np.dtype[bfloat16]]
+    # generic/mv.cc, not the arch copy: only the generic one carries the bf16
+    # entry points, and the arch fallback would compile the i16 kernel instead.
+    return _make_extern(
+        "matvec_vectorized_bf16_bf16",
+        _default_source_path("mv.cc", subdir="generic"),
+        [np.int32, np.int32, a_ty, b_ty, c_ty],
+        compile_flags=[f"-DDIM_K={dim_k}", f"-DVEC_SIZE={vec_size}"],
+        use_chess=use_chess,
+    )
+
+
 def cascade_mm(
     dim_m: int = 64,
     dim_k: int = 64,

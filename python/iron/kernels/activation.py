@@ -151,6 +151,18 @@ def gelu_sized(tile_size: int = 1024) -> ExternalFunction:
     return _create_lut_kernel("gelu_bf16_size", "gelu.cc", [tile_ty, tile_ty, np.int32])
 
 
+def gelu_tile(tile_size: int = 1024) -> ExternalFunction:
+    """GELU (tanh approx) over a bf16 tile in place; design passes ``(size, inout)``.
+
+    A design that ends a reduction with an activation writes over the tile it
+    accumulated into, so this takes one buffer where
+    [`gelu_sized`][iron.kernels.activation.gelu_sized] takes two. Any
+    ``tile_size`` is allowed.
+    """
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _create_lut_kernel("gelu_tile_bf16", "gelu.cc", [np.int32, tile_ty])
+
+
 def swiglu(tile_size: int = 1024) -> ExternalFunction:
     """SwiGLU gated activation kernel for bf16 tiles (must be 1024)."""
     return _bf16_lut_factory(

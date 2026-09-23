@@ -25,6 +25,7 @@ from .activation import (
     gelu,
     gelu_ref,
     gelu_sized,
+    gelu_tile,
     leaky_relu,
     leaky_relu_ref,
     relu_ref,
@@ -70,7 +71,7 @@ from .eltwise import (
     relu_sized,
     scale,
 )
-from .linalg import cascade_mm, mm, mv
+from .linalg import cascade_mm, mm, mv, mv_sized
 from .norm import layer_norm, layer_norm_ref, rms_norm, rms_norm_eps, rms_norm_ref
 from .reduce import compute_max, reduce_add, reduce_max, reduce_min
 from .vision import (
@@ -108,6 +109,7 @@ __all__ = [
     "softmax",
     "gelu",
     "gelu_sized",
+    "gelu_tile",
     "silu",
     "silu_sized",
     "swiglu",
@@ -137,6 +139,7 @@ __all__ = [
     "leaky_relu_ref",
     "mm",
     "mv",
+    "mv_sized",
     "cascade_mm",
     "conv2dk1",
     "conv2dk3",

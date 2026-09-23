@@ -523,6 +523,29 @@ KERNEL_SPECS: list[KernelSpec] = [
         ],
     ),
     KernelSpec(
+        name="mv_sized",
+        factory=kernels.mv_sized,
+        kwargs=dict(),
+        arg_count=5,
+        expected_name="matvec_vectorized_bf16_bf16",
+        shape_checks=[
+            (dict(dim_k=64, m_tile=4, m_out=8), 2, (256,)),
+            (dict(dim_k=64, m_tile=4, m_out=8), 3, (64,)),
+            (dict(dim_k=64, m_tile=4, m_out=8), 4, (8,)),
+        ],
+    ),
+    KernelSpec(
+        name="gelu_tile",
+        factory=kernels.gelu_tile,
+        kwargs=dict(tile_size=64),
+        arg_count=2,
+        expected_name="gelu_tile_bf16",
+        source_kind="string_or_file",
+        shape_checks=[
+            (dict(tile_size=64), 1, (64,)),
+        ],
+    ),
+    KernelSpec(
         name="cascade_mm",
         factory=kernels.cascade_mm,
         kwargs=dict(),
