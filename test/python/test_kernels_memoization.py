@@ -265,6 +265,21 @@ def test_mv_zero_attribute_is_kernel():
     assert ef.zero.object_file is ef.object_file
 
 
+def test_softmax_mask_attribute_is_kernel():
+    """kernels.softmax(...).mask binds mask_bf16 against the same softmax.cc .o."""
+    ef = kernels.softmax(tile_size=1024)
+    assert isinstance(ef.mask, Kernel)
+    assert ef.mask._name == ef.object_file.resolve_symbol("mask_bf16")
+    assert ef.mask.object_file_name == ef.object_file_name
+    assert ef.mask.object_file is ef.object_file
+
+
+def test_softmax_mask_attribute_arg_count():
+    """mask takes the tile it writes over plus two element counts."""
+    ef = kernels.softmax(tile_size=1024)
+    assert len(ef.mask._arg_types) == 3
+
+
 def test_mm_no_longer_carries_only_flags():
     """Sanity: dropping the MATMUL_ONLY/ZERO_ONLY gating means kernels.mm
     no longer adds those flags to its compile_flags."""

@@ -102,15 +102,23 @@ def softmax(tile_size: int = 1024) -> ExternalFunction:
         tile_size: Number of elements per tile.
 
     Returns:
-        ExternalFunction configured for the softmax kernel.
+        ExternalFunction configured for the softmax kernel. Its ``mask``
+        attribute binds ``mask_bf16`` from the same object, which writes -inf
+        over a tile past a runtime element count; a design that softmaxes a
+        padded row calls it first.
     """
     _require_vector_multiple_tile_size("softmax", tile_size)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
-    return _create_lut_kernel(
+    extern = _create_lut_kernel(
         "softmax_bf16",
         "softmax.cc",
         [tile_ty, tile_ty, np.int32],
     )
+    extern.mask = extern.object_file.bind(
+        "mask_bf16",
+        [tile_ty, np.int32, np.int32],
+    )
+    return extern
 
 
 def gelu(tile_size: int = 1024) -> ExternalFunction:
