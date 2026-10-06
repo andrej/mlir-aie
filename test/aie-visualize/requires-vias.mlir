@@ -11,7 +11,7 @@
 
 // CHECK: error: 'aie.flow' op requires vias; run aie-find-flows with emit-vias=true
 
-// TOPOLOGY: graph [layout=neato
+// TOPOLOGY: graph [layout=neato, overlap=false, splines=curved
 // TOPOLOGY: tile_0_2 {{.*}} pos="0.000000e+00,6.000000e+00!"
 // TOPOLOGY: tile_0_3 {{.*}} pos="0.000000e+00,9.000000e+00!"
 // TOPOLOGY: tile_0_2 -> tile_0_3

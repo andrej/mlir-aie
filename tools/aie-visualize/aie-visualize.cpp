@@ -571,8 +571,9 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
 
   const AIE::AIETargetModel &model = device.getTargetModel();
   output << "digraph aie_routes {\n"
-         << "  graph [layout=neato, overlap=true, outputorder=nodesfirst, "
-            "bgcolor=\"white\", pad=\"0.45\"];\n"
+         << "  graph [layout=neato, overlap="
+         << (topologyOnly ? "false, splines=curved" : "true")
+         << ", outputorder=nodesfirst, bgcolor=\"white\", pad=\"0.45\"];\n"
          << "  node [fontname=\"Helvetica\"];\n"
          << "  edge [fontname=\"Helvetica\", fontsize=9, arrowsize=0.65];\n";
   for (int col = 0; col < model.columns(); ++col) {

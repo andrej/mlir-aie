@@ -53,7 +53,7 @@
 // VIAS: p_0_2_1_0_m -> p_0_2_5_0
 // VIAS-NOT: arrowhead=none
 
-// TOPOLOGY: graph [layout=neato
+// TOPOLOGY: graph [layout=neato, overlap=false, splines=curved
 // TOPOLOGY: tile_0_2 {{.*}} pos="0.000000e+00,6.000000e+00!"
 // TOPOLOGY: tile_0_3 {{.*}} pos="0.000000e+00,9.000000e+00!"
 // TOPOLOGY-NOT: p_0_2_5_0
