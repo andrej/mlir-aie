@@ -231,6 +231,8 @@ if config.enable_assertions:
 # via PATHEXT) so the feature gate fires correctly on every OS.
 if shutil.which("aie-lsp-server", path=config.llvm_tools_dir) is not None:
     config.available_features.add("aie-lsp-server")
+if shutil.which("aie-visualize", path=config.aie_tools_dir) is not None:
+    config.available_features.add("aie-visualize")
 
 LitConfigHelper.add_hrxxclbinutil_feature(config)
 

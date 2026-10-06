@@ -111,6 +111,9 @@ set(TEST_DEPENDS
   aie-opt
   aie-translate
 )
+if(AIE_BUILD_VISUALIZE)
+  list(APPEND TEST_DEPENDS aie-visualize)
+endif()
 if(AIE_BUILD_LSP_SERVER)
   list(APPEND TEST_DEPENDS aie-lsp-server)
 endif()

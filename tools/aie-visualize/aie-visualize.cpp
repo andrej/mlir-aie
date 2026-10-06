@@ -6,9 +6,6 @@
 //
 //===---------------------------------------------------------------------===//
 
-// This tool generates a simple visualization of a design, showing the
-// device layout and highlighting which device tiles are being used.
-
 #include "aie/InitialAllDialect.h"
 #include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
 
@@ -26,10 +23,18 @@
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
 
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/ToolOutputFile.h"
 
 #include <iostream>
+#include <map>
+#include <set>
+#include <sstream>
+#include <tuple>
+#include <vector>
 
 using namespace llvm;
 using namespace mlir;
@@ -37,6 +42,21 @@ using namespace xilinx;
 
 static cl::opt<std::string> fileName(cl::Positional, cl::desc("<input mlir>"),
                                      cl::Required);
+static cl::opt<bool> emitDot("emit-dot",
+                             cl::desc("Emit a DOT route visualization"));
+static cl::opt<std::string> outputFilename("o", cl::desc("Output filename"),
+                                           cl::value_desc("filename"),
+                                           cl::init("-"));
+static cl::list<unsigned>
+    highlightedFlows("highlight-flow",
+                     cl::desc("Highlight a flow by its numeric ID"),
+                     cl::CommaSeparated, cl::ZeroOrMore);
+static cl::list<unsigned>
+    onlyFlows("only-flow", cl::desc("Emit only a flow with this numeric ID"),
+              cl::CommaSeparated, cl::ZeroOrMore);
+static cl::opt<bool> showBuffers(
+    "show-buffers",
+    cl::desc("Show tile buffers and their DMA channel connections"));
 
 const std::string bold("\033[0;1m");
 const std::string dim("\033[0;2m");
@@ -49,6 +69,468 @@ const std::string magenta("\033[0;35m");
 const std::string bwhite("\033[0;47m");
 const std::string reset("\033[0m");
 const std::string bgray("\033[48;5;239m");
+
+namespace {
+
+struct PortNode {
+  int col;
+  int row;
+  AIE::WireBundle bundle;
+  int channel;
+
+  auto asTuple() const {
+    return std::make_tuple(col, row, static_cast<int>(bundle), channel);
+  }
+  bool operator<(const PortNode &other) const {
+    return asTuple() < other.asTuple();
+  }
+  bool operator==(const PortNode &other) const {
+    return asTuple() == other.asTuple();
+  }
+};
+
+struct Segment {
+  PortNode source;
+  PortNode dest;
+
+  bool operator<(const Segment &other) const {
+    return std::tie(source, dest) < std::tie(other.source, other.dest);
+  }
+};
+
+struct FlowRoute {
+  unsigned id;
+  std::optional<int> packetID;
+  std::optional<int> packetMask;
+  std::vector<PortNode> points;
+};
+
+struct BufferInfo {
+  AIE::BufferOp op;
+  unsigned id;
+  int col;
+  int row;
+  unsigned tileIndex;
+};
+
+using DMAChannelKey = std::tuple<int, int, AIE::DMAChannelDir, int>;
+using DMAChannelBuffers = std::map<DMAChannelKey, std::vector<AIE::BufferOp>>;
+
+struct BufferSegment {
+  PortNode port;
+  Operation *buffer;
+  bool intoBuffer;
+
+  bool operator<(const BufferSegment &other) const {
+    return std::tie(port, buffer, intoBuffer) <
+           std::tie(other.port, other.buffer, other.intoBuffer);
+  }
+};
+
+static FailureOr<PortNode> getPortNode(mlir::Value tile, AIE::WireBundle bundle,
+                                       int channel, Operation *owner) {
+  auto tileOp = dyn_cast_or_null<AIE::TileLike>(tile.getDefiningOp());
+  if (!tileOp)
+    return owner->emitOpError("route endpoint is not a tile-like operation");
+  std::optional<int> col = tileOp.tryGetCol();
+  std::optional<int> row = tileOp.tryGetRow();
+  if (!col || !row)
+    return owner->emitOpError("route endpoint has unresolved coordinates");
+  return PortNode{*col, *row, bundle, channel};
+}
+
+template <typename FlowTy>
+static LogicalResult appendVias(FlowTy flow, std::vector<PortNode> &points) {
+  if (flow.getVias().empty())
+    return flow.emitOpError(
+        "requires vias; run aie-find-flows with emit-vias=true");
+  ArrayRef<int32_t> ingressBundles =
+      flow.getViaIngressBundlesAttr().asArrayRef();
+  ArrayRef<int32_t> ingressChannels =
+      flow.getViaIngressChannelsAttr().asArrayRef();
+  ArrayRef<int32_t> egressBundles = flow.getViaEgressBundlesAttr().asArrayRef();
+  ArrayRef<int32_t> egressChannels =
+      flow.getViaEgressChannelsAttr().asArrayRef();
+  for (auto [index, tile] : llvm::enumerate(flow.getVias())) {
+    FailureOr<PortNode> ingress =
+        getPortNode(tile, static_cast<AIE::WireBundle>(ingressBundles[index]),
+                    ingressChannels[index], flow);
+    FailureOr<PortNode> egress =
+        getPortNode(tile, static_cast<AIE::WireBundle>(egressBundles[index]),
+                    egressChannels[index], flow);
+    if (failed(ingress) || failed(egress))
+      return failure();
+    points.push_back(*ingress);
+    points.push_back(*egress);
+  }
+  return success();
+}
+
+static FailureOr<std::vector<FlowRoute>> collectRoutes(AIE::DeviceOp device) {
+  std::vector<FlowRoute> routes;
+  for (Operation &operation : *device.getBody()) {
+    if (auto flow = dyn_cast<AIE::FlowOp>(operation)) {
+      FlowRoute route{
+          static_cast<unsigned>(routes.size()), std::nullopt, std::nullopt, {}};
+      FailureOr<PortNode> source =
+          getPortNode(flow.getSource(), flow.getSourceBundle(),
+                      flow.getSourceChannel(), flow);
+      FailureOr<PortNode> dest = getPortNode(
+          flow.getDest(), flow.getDestBundle(), flow.getDestChannel(), flow);
+      if (failed(source) || failed(dest))
+        return failure();
+      route.points.push_back(*source);
+      if (failed(appendVias(flow, route.points)))
+        return failure();
+      route.points.push_back(*dest);
+      routes.push_back(std::move(route));
+      continue;
+    }
+    auto packetFlow = dyn_cast<AIE::PacketFlowOp>(operation);
+    if (!packetFlow)
+      continue;
+    auto sources = packetFlow.getOps<AIE::PacketSourceOp>();
+    auto dests = packetFlow.getOps<AIE::PacketDestOp>();
+    if (!llvm::hasSingleElement(sources) || !llvm::hasSingleElement(dests))
+      return packetFlow.emitOpError(
+          "requires exactly one source and destination per routed section");
+    AIE::PacketSourceOp sourceOp = *sources.begin();
+    AIE::PacketDestOp destOp = *dests.begin();
+    FlowRoute route{static_cast<unsigned>(routes.size()),
+                    packetFlow.IDInt(),
+                    packetFlow.getMask() ? std::optional<int>(static_cast<int>(
+                                               *packetFlow.getMask()))
+                                         : std::nullopt,
+                    {}};
+    FailureOr<PortNode> source =
+        getPortNode(sourceOp.getTile(), sourceOp.getBundle(),
+                    sourceOp.getChannel(), packetFlow);
+    FailureOr<PortNode> dest = getPortNode(destOp.getTile(), destOp.getBundle(),
+                                           destOp.getChannel(), packetFlow);
+    if (failed(source) || failed(dest))
+      return failure();
+    route.points.push_back(*source);
+    if (failed(appendVias(packetFlow, route.points)))
+      return failure();
+    route.points.push_back(*dest);
+    routes.push_back(std::move(route));
+  }
+  return routes;
+}
+
+static FailureOr<std::vector<BufferInfo>> collectBuffers(AIE::DeviceOp device) {
+  std::vector<BufferInfo> buffers;
+  std::map<std::pair<int, int>, unsigned> tileCounts;
+  for (AIE::BufferOp buffer : device.getOps<AIE::BufferOp>()) {
+    AIE::TileOp tile = buffer.getTileOp();
+    if (!tile)
+      return buffer.emitOpError("buffer owner is not a resolved tile");
+    std::pair<int, int> coordinate{tile.colIndex(), tile.rowIndex()};
+    buffers.push_back({buffer, static_cast<unsigned>(buffers.size()),
+                       coordinate.first, coordinate.second,
+                       tileCounts[coordinate]++});
+  }
+  return buffers;
+}
+
+static DMAChannelBuffers collectDMAChannelBuffers(AIE::DeviceOp device) {
+  DMAChannelBuffers channels;
+  for (auto program : device.getOps<AIE::DmaBody>()) {
+    auto tile =
+        dyn_cast_or_null<AIE::TileLike>(program.getTile().getDefiningOp());
+    if (!tile || !tile.tryGetCol() || !tile.tryGetRow())
+      continue;
+    for (Block &block : program.getDmaBody()) {
+      for (AIE::DMAStartOp start : block.getOps<AIE::DMAStartOp>()) {
+        if (start.getEndpoint())
+          continue;
+        DMAChannelKey key{*tile.tryGetCol(), *tile.tryGetRow(),
+                          start.getChannelDir(), start.getChannelIndex()};
+        std::vector<AIE::BufferOp> &buffers = channels[key];
+        SmallVector<Block *> worklist{start.getDest()};
+        llvm::SmallPtrSet<Block *, 8> visited;
+        while (!worklist.empty()) {
+          Block *current = worklist.pop_back_val();
+          if (!current || !visited.insert(current).second)
+            continue;
+          for (AIE::DMABDOp descriptor : current->getOps<AIE::DMABDOp>()) {
+            auto buffer = descriptor.getBuffer().getDefiningOp<AIE::BufferOp>();
+            if (buffer && !llvm::is_contained(buffers, buffer))
+              buffers.push_back(buffer);
+          }
+          Operation *terminator = current->getTerminator();
+          if (isa<AIE::DMAStartOp>(terminator))
+            continue;
+          llvm::append_range(worklist, terminator->getSuccessors());
+        }
+      }
+    }
+  }
+  return channels;
+}
+
+static std::string portNodeID(const PortNode &port) {
+  return "p_" + std::to_string(port.col) + "_" + std::to_string(port.row) +
+         "_" + std::to_string(static_cast<int>(port.bundle)) + "_" +
+         std::to_string(port.channel);
+}
+
+static std::string bufferNodeID(unsigned id) {
+  return "buffer_" + std::to_string(id);
+}
+
+static std::string escapeDotLabel(StringRef value) {
+  std::string escaped;
+  escaped.reserve(value.size());
+  for (char character : value) {
+    if (character == '\\' || character == '\"')
+      escaped.push_back('\\');
+    escaped.push_back(character);
+  }
+  return escaped;
+}
+
+static std::string bufferLabel(AIE::BufferOp buffer, unsigned id) {
+  std::string label;
+  if (auto name = buffer->getAttrOfType<StringAttr>("sym_name"))
+    label = name.getValue().str();
+  else
+    label = "buffer " + std::to_string(id);
+  std::string type;
+  llvm::raw_string_ostream stream(type);
+  stream << buffer.getType();
+  return escapeDotLabel(label) + "\\n" + escapeDotLabel(type);
+}
+
+static std::pair<double, double> portPosition(const PortNode &port) {
+  double x = port.col * 3.0;
+  double y = port.row * 3.0;
+  double channelOffset = (port.channel - 1.5) * 0.18;
+  switch (port.bundle) {
+  case AIE::WireBundle::North:
+    return {x + channelOffset, y + 0.92};
+  case AIE::WireBundle::South:
+    return {x + channelOffset, y - 0.92};
+  case AIE::WireBundle::East:
+    return {x + 0.92, y + channelOffset};
+  case AIE::WireBundle::West:
+    return {x - 0.92, y + channelOffset};
+  case AIE::WireBundle::DMA:
+    return {x - 0.38, y + channelOffset};
+  case AIE::WireBundle::Core:
+    return {x + 0.38, y + channelOffset};
+  default:
+    return {x, y + channelOffset};
+  }
+}
+
+static std::string flowColor(unsigned id) {
+  static constexpr const char *colors[] = {
+      "#d73027", "#4575b4", "#1a9850", "#984ea3", "#ff7f00",
+      "#00a6a6", "#e7298a", "#6a3d9a", "#a6761d", "#1f78b4"};
+  return colors[id % std::size(colors)];
+}
+
+static StringRef shortBundleName(AIE::WireBundle bundle) {
+  switch (bundle) {
+  case AIE::WireBundle::DMA:
+    return "D";
+  case AIE::WireBundle::Core:
+    return "C";
+  case AIE::WireBundle::North:
+    return "N";
+  case AIE::WireBundle::South:
+    return "S";
+  case AIE::WireBundle::East:
+    return "E";
+  case AIE::WireBundle::West:
+    return "W";
+  default:
+    return stringifyWireBundle(bundle);
+  }
+}
+
+static LogicalResult emitRouteDot(AIE::DeviceOp device, raw_ostream &output) {
+  FailureOr<std::vector<FlowRoute>> routes = collectRoutes(device);
+  if (failed(routes))
+    return failure();
+  FailureOr<std::vector<BufferInfo>> buffers = collectBuffers(device);
+  if (failed(buffers))
+    return failure();
+  DMAChannelBuffers channelBuffers = collectDMAChannelBuffers(device);
+
+  std::set<unsigned> highlights(highlightedFlows.begin(),
+                                highlightedFlows.end());
+  std::set<unsigned> only(onlyFlows.begin(), onlyFlows.end());
+  auto validateIDs = [&](const std::set<unsigned> &ids,
+                         StringRef option) -> LogicalResult {
+    for (unsigned id : ids) {
+      if (id >= routes->size()) {
+        device.emitOpError() << option << " references unknown flow " << id
+                             << "; valid IDs are 0 through "
+                             << (routes->empty() ? 0 : routes->size() - 1);
+        return failure();
+      }
+    }
+    return success();
+  };
+  if (failed(validateIDs(highlights, "--highlight-flow")) ||
+      failed(validateIDs(only, "--only-flow")))
+    return failure();
+  auto isVisible = [&](unsigned id) { return only.empty() || only.count(id); };
+  auto isHighlighted = [&](unsigned id) {
+    return highlights.empty() || highlights.count(id);
+  };
+
+  std::set<PortNode> ports;
+  std::map<Segment, std::vector<const FlowRoute *>> segments;
+  std::map<BufferSegment, std::vector<const FlowRoute *>> bufferSegments;
+  std::map<unsigned, Segment> labeledSegments;
+  for (const FlowRoute &route : *routes) {
+    if (!isVisible(route.id))
+      continue;
+    for (const PortNode &port : route.points)
+      ports.insert(port);
+    std::vector<Segment> routeSegments;
+    std::vector<Segment> physicalLinks;
+    for (auto pair : llvm::zip_equal(ArrayRef(route.points).drop_back(),
+                                     ArrayRef(route.points).drop_front())) {
+      const auto &[source, dest] = pair;
+      if (source == dest)
+        continue;
+      Segment segment{source, dest};
+      segments[segment].push_back(&route);
+      routeSegments.push_back(segment);
+      if (source.col != dest.col || source.row != dest.row)
+        physicalLinks.push_back(segment);
+    }
+    ArrayRef<Segment> labelCandidates = physicalLinks.empty()
+                                            ? ArrayRef(routeSegments)
+                                            : ArrayRef(physicalLinks);
+    if (!labelCandidates.empty())
+      labeledSegments[route.id] = labelCandidates[labelCandidates.size() / 2];
+    if (!showBuffers)
+      continue;
+    const PortNode &source = route.points.front();
+    if (source.bundle == AIE::WireBundle::DMA) {
+      DMAChannelKey key{source.col, source.row, AIE::DMAChannelDir::MM2S,
+                        source.channel};
+      for (AIE::BufferOp buffer : channelBuffers[key])
+        bufferSegments[{source, buffer, false}].push_back(&route);
+    }
+    const PortNode &dest = route.points.back();
+    if (dest.bundle == AIE::WireBundle::DMA) {
+      DMAChannelKey key{dest.col, dest.row, AIE::DMAChannelDir::S2MM,
+                        dest.channel};
+      for (AIE::BufferOp buffer : channelBuffers[key])
+        bufferSegments[{dest, buffer, true}].push_back(&route);
+    }
+  }
+
+  const AIE::AIETargetModel &model = device.getTargetModel();
+  output << "digraph aie_routes {\n"
+         << "  graph [layout=neato, overlap=true, outputorder=nodesfirst, "
+            "bgcolor=\"white\", pad=\"0.45\"];\n"
+         << "  node [fontname=\"Helvetica\"];\n"
+         << "  edge [fontname=\"Helvetica\", fontsize=9, arrowsize=0.65];\n";
+  for (int col = 0; col < model.columns(); ++col) {
+    for (int row = 0; row < model.rows(); ++row) {
+      StringRef fill = model.isCoreTile(col, row)      ? "#eef7ee"
+                       : model.isMemTile(col, row)     ? "#fff2df"
+                       : model.isShimNOCTile(col, row) ? "#e8f1fb"
+                                                       : "#f3edf8";
+      output << "  tile_" << col << '_' << row
+             << " [shape=box, fixedsize=true, width=2.15, height=2.15, pos=\""
+             << col * 3.0 << ',' << row * 3.0 << "!\", label=\"(" << col << ','
+             << row << ")\", style=filled, fillcolor=\"" << fill
+             << "\", color=\"#b8b8b8\", fontcolor=\"#555555\"];\n";
+    }
+  }
+  for (const PortNode &port : ports) {
+    auto [x, y] = portPosition(port);
+    output << "  " << portNodeID(port) << " [shape=point, width=0.09, pos=\""
+           << x << ',' << y << "!\", xlabel=\"" << shortBundleName(port.bundle)
+           << port.channel << "\"];\n";
+  }
+  std::map<Operation *, unsigned> bufferIDs;
+  if (showBuffers) {
+    for (const BufferInfo &buffer : *buffers) {
+      bufferIDs[buffer.op] = buffer.id;
+      double x = buffer.col * 3.0;
+      double y = buffer.row * 3.0 + 0.46 - buffer.tileIndex * 0.34;
+      output << "  " << bufferNodeID(buffer.id)
+             << " [shape=box, fixedsize=true, width=1.35, height=0.34, "
+                "pos=\""
+             << x << ',' << y << "!\", label=\""
+             << bufferLabel(buffer.op, buffer.id)
+             << "\", fontsize=8, style=filled, fillcolor=\"#ffffff\", "
+                "color=\"#666666\"];\n";
+    }
+  }
+  auto writeColors = [&](ArrayRef<const FlowRoute *> edgeRoutes) {
+    bool anyHighlighted = false;
+    bool first = true;
+    for (const FlowRoute *route : edgeRoutes) {
+      if (!first)
+        output << ':';
+      if (isHighlighted(route->id)) {
+        output << flowColor(route->id);
+        anyHighlighted = true;
+      } else {
+        output << "#c2c2c2";
+      }
+      first = false;
+    }
+    if (first)
+      output << "#c2c2c2";
+    return anyHighlighted;
+  };
+  for (const auto &[segment, segmentRoutes] : segments) {
+    std::vector<std::string> labels;
+    for (const FlowRoute *route : segmentRoutes) {
+      if (labeledSegments.at(route->id) < segment ||
+          segment < labeledSegments.at(route->id))
+        continue;
+      std::string label = "F" + std::to_string(route->id);
+      if (route->packetID) {
+        label += " pkt=" + std::to_string(*route->packetID);
+        if (route->packetMask)
+          label += "/" + std::to_string(*route->packetMask);
+      }
+      labels.push_back(std::move(label));
+    }
+    output << "  " << portNodeID(segment.source) << " -> "
+           << portNodeID(segment.dest) << " [color=\"";
+    bool anyHighlighted = writeColors(segmentRoutes);
+    output << "\", penwidth=\"" << (anyHighlighted ? "2.4" : "1.2") << '\"';
+    if (!labels.empty()) {
+      output << ", label=\"";
+      for (auto [index, label] : llvm::enumerate(labels)) {
+        if (index)
+          output << "\\n";
+        output << label;
+      }
+      output << '\"';
+    }
+    output << "];\n";
+  }
+  for (const auto &[segment, segmentRoutes] : bufferSegments) {
+    unsigned bufferID = bufferIDs.at(segment.buffer);
+    std::string source =
+        segment.intoBuffer ? portNodeID(segment.port) : bufferNodeID(bufferID);
+    std::string dest =
+        segment.intoBuffer ? bufferNodeID(bufferID) : portNodeID(segment.port);
+    output << "  " << source << " -> " << dest << " [color=\"";
+    bool anyHighlighted = writeColors(segmentRoutes);
+    output << "\", penwidth=\"" << (anyHighlighted ? "2.4" : "1.2")
+           << "\", style=dashed, label=\""
+           << (segment.intoBuffer ? "S2MM" : "MM2S") << "\"];\n";
+  }
+  output << "}\n";
+  return success();
+}
+
+} // namespace
 
 int main(int argc, char *argv[]) {
   cl::ParseCommandLineOptions(argc, argv);
@@ -85,6 +567,19 @@ int main(int argc, char *argv[]) {
   const xilinx::AIE::AIETargetModel &model = deviceOp.getTargetModel();
 
   model.validate();
+
+  if (emitDot) {
+    std::error_code error;
+    ToolOutputFile output(outputFilename, error, sys::fs::OF_Text);
+    if (error) {
+      errs() << error.message() << '\n';
+      return 3;
+    }
+    if (failed(emitRouteDot(deviceOp, output.os())))
+      return 4;
+    output.keep();
+    return 0;
+  }
 
   std::vector<bool> used(model.columns() * model.rows());
   for (int col = 0; col < model.columns(); col++) {
