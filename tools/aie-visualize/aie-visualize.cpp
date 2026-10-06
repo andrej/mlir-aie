@@ -65,7 +65,7 @@ static cl::opt<bool> showBuffers(
     cl::desc("Show tile buffers and their DMA channel connections"));
 static cl::opt<bool> followThroughBuffers(
     "follow-through-buffers",
-    cl::desc("Group incoming and outgoing flows connected through a buffer"));
+    cl::desc("Group flows connected through buffers or shared endpoints"));
 
 const std::string bold("\033[0;1m");
 const std::string dim("\033[0;2m");
@@ -309,9 +309,16 @@ static FlowGroups collectFlowGroups(ArrayRef<FlowRoute> routes,
       parents[secondRoot] = firstRoot;
   };
 
+  using EndpointKey =
+      std::tuple<PortNode, std::optional<int>, std::optional<int>>;
   std::map<Operation *, std::vector<unsigned>> bufferRoutes;
+  std::map<EndpointKey, std::vector<unsigned>> endpointRoutes;
   for (const FlowRoute &route : routes) {
     const PortNode &source = route.points.front();
+    if (source.bundle != AIE::WireBundle::DMA &&
+        source.bundle != AIE::WireBundle::Core)
+      endpointRoutes[{source, route.packetID, route.packetMask}].push_back(
+          route.id);
     if (source.bundle == AIE::WireBundle::DMA) {
       DMAChannelKey key{source.col, source.row, AIE::DMAChannelDir::MM2S,
                         source.channel};
@@ -321,6 +328,10 @@ static FlowGroups collectFlowGroups(ArrayRef<FlowRoute> routes,
           bufferRoutes[buffer].push_back(route.id);
     }
     const PortNode &dest = route.points.back();
+    if (dest.bundle != AIE::WireBundle::DMA &&
+        dest.bundle != AIE::WireBundle::Core)
+      endpointRoutes[{dest, route.packetID, route.packetMask}].push_back(
+          route.id);
     if (dest.bundle == AIE::WireBundle::DMA) {
       DMAChannelKey key{dest.col, dest.row, AIE::DMAChannelDir::S2MM,
                         dest.channel};
@@ -331,6 +342,10 @@ static FlowGroups collectFlowGroups(ArrayRef<FlowRoute> routes,
     }
   }
   for (const auto &[buffer, routes] : bufferRoutes) {
+    for (unsigned route : ArrayRef(routes).drop_front())
+      merge(routes.front(), route);
+  }
+  for (const auto &[endpoint, routes] : endpointRoutes) {
     for (unsigned route : ArrayRef(routes).drop_front())
       merge(routes.front(), route);
   }
