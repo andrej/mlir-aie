@@ -11,9 +11,9 @@
 
 // CHECK: error: 'aie.flow' op requires vias; run aie-find-flows with emit-vias=true
 
-// TOPOLOGY: graph [outputorder=nodesfirst
-// TOPOLOGY: tile_0_2 [shape=box, label="(0,2)"
-// TOPOLOGY: tile_0_3 [shape=box, label="(0,3)"
+// TOPOLOGY: graph [layout=neato
+// TOPOLOGY: tile_0_2 {{.*}} pos="0.000000e+00,6.000000e+00!"
+// TOPOLOGY: tile_0_3 {{.*}} pos="0.000000e+00,9.000000e+00!"
 // TOPOLOGY: tile_0_2 -> tile_0_3
 // TOPOLOGY-NOT: p_0_2_1_0_m
 

@@ -69,13 +69,15 @@ static cl::opt<bool> showPacketIDs(
 static cl::opt<bool>
     showVias("show-vias",
              cl::desc("Show switchbox ports along routed connections"));
-static cl::opt<bool> topologyOnly(
-    "topology-only",
-    cl::desc(
-        "Show endpoint topology without route vias or fixed tile positions"));
-static cl::opt<bool> followThroughBuffers(
-    "follow-through-buffers",
-    cl::desc("Group flows connected through buffers or shared endpoints"));
+static cl::opt<bool>
+    topologyOnly("topology-only",
+                 cl::desc("Show endpoint topology without route vias"));
+static cl::opt<bool> noFollowBuffers(
+    "no-follow-buffers",
+    cl::desc("Do not group flows through buffers or shared endpoints"));
+static cl::opt<std::string>
+    deviceName("device", cl::desc("Select an aie.device by symbol name"),
+               cl::value_desc("symbol"));
 
 const std::string bold("\033[0;1m");
 const std::string dim("\033[0;2m");
@@ -305,7 +307,7 @@ static FlowGroups collectFlowGroups(ArrayRef<FlowRoute> routes,
                                     const DMAChannelBuffers &channelBuffers) {
   FlowGroups groups;
   groups.routeGroups.resize(routes.size());
-  if (!followThroughBuffers) {
+  if (noFollowBuffers) {
     std::iota(groups.routeGroups.begin(), groups.routeGroups.end(), 0);
     groups.count = routes.size();
     return groups;
@@ -507,7 +509,7 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
   std::map<Segment, std::vector<const FlowRoute *>> segments;
   std::map<BufferSegment, std::vector<const FlowRoute *>> bufferSegments;
   std::map<unsigned, Segment> labeledSegments;
-  std::set<Segment> finalSegments;
+  std::set<Segment> arrowSegments;
   for (const FlowRoute &route : *routes) {
     unsigned groupID = groups.routeGroups[route.id];
     if (!isVisible(groupID))
@@ -519,9 +521,13 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
     } else if (showVias) {
       ports.insert(route.points.begin(), route.points.end());
     } else {
-      ports.insert(route.points.front());
-      ports.insert(route.points.back());
-      guidePorts.insert(route.points.begin() + 1, route.points.end() - 1);
+      for (const PortNode &port : route.points) {
+        if (port.bundle == AIE::WireBundle::Core ||
+            port.bundle == AIE::WireBundle::DMA)
+          ports.insert(port);
+        else
+          guidePorts.insert(port);
+      }
     }
     std::vector<Segment> routeSegments;
     std::vector<Segment> physicalLinks;
@@ -541,9 +547,11 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
                                             : ArrayRef(physicalLinks);
     if (!labelCandidates.empty())
       labeledSegments[route.id] = labelCandidates[labelCandidates.size() / 2];
-    if (!routeSegments.empty())
-      finalSegments.insert(routeSegments.back());
-    if (topologyOnly || (!showBuffers && !followThroughBuffers))
+    if (!routeSegments.empty() &&
+        (route.points.back().bundle == AIE::WireBundle::Core ||
+         route.points.back().bundle == AIE::WireBundle::DMA))
+      arrowSegments.insert(routeSegments.back());
+    if (topologyOnly || (!showBuffers && noFollowBuffers))
       continue;
     const PortNode &source = route.points.front();
     if (source.bundle == AIE::WireBundle::DMA) {
@@ -562,10 +570,9 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
   }
 
   const AIE::AIETargetModel &model = device.getTargetModel();
-  output << "digraph aie_routes {\n  graph [";
-  if (!topologyOnly)
-    output << "layout=neato, overlap=true, ";
-  output << "outputorder=nodesfirst, bgcolor=\"white\", pad=\"0.45\"];\n"
+  output << "digraph aie_routes {\n"
+         << "  graph [layout=neato, overlap=true, outputorder=nodesfirst, "
+            "bgcolor=\"white\", pad=\"0.45\"];\n"
          << "  node [fontname=\"Helvetica\"];\n"
          << "  edge [fontname=\"Helvetica\", fontsize=9, arrowsize=0.65];\n";
   for (int col = 0; col < model.columns(); ++col) {
@@ -577,9 +584,8 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
                        : model.isShimNOCTile(col, row) ? "#e8f1fb"
                                                        : "#f3edf8";
       output << "  " << tileNodeID(col, row) << " [shape=box";
-      if (!topologyOnly)
-        output << ", fixedsize=true, width=2.15, height=2.15, pos=\""
-               << col * 3.0 << ',' << row * 3.0 << "!\"";
+      output << ", fixedsize=true, width=2.15, height=2.15, pos=\"" << col * 3.0
+             << ',' << row * 3.0 << "!\"";
       output << ", label=\"(" << col << ',' << row
              << ")\", style=filled, fillcolor=\"" << fill
              << "\", color=\"#b8b8b8\", fontcolor=\"#555555\"];\n";
@@ -694,7 +700,7 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
       }
       output << '>';
     }
-    if (!topologyOnly && !showVias && !finalSegments.count(segment))
+    if (!topologyOnly && !showVias && !arrowSegments.count(segment))
       output << ", arrowhead=none";
     output << "];\n";
   }
@@ -742,11 +748,29 @@ int main(int argc, char *argv[]) {
   if (!owning)
     return 1;
 
-  auto deviceOps = owning->getOps<AIE::DeviceOp>();
-  if (!llvm::hasSingleElement(deviceOps))
+  SmallVector<AIE::DeviceOp> deviceOps(owning->getOps<AIE::DeviceOp>());
+  AIE::DeviceOp deviceOp;
+  if (!deviceName.empty()) {
+    for (AIE::DeviceOp candidate : deviceOps) {
+      if (candidate.getSymName() == deviceName) {
+        deviceOp = candidate;
+        break;
+      }
+    }
+    if (!deviceOp) {
+      errs() << "no aie.device named '" << deviceName << "'\n";
+      return 2;
+    }
+  } else if (deviceOps.size() == 1) {
+    deviceOp = deviceOps.front();
+  } else if (deviceOps.empty()) {
+    errs() << "input contains no aie.device operations\n";
     return 2;
-
-  AIE::DeviceOp deviceOp = *deviceOps.begin();
+  } else {
+    errs() << "input contains multiple aie.device operations; select one with "
+              "--device=<symbol>\n";
+    return 2;
+  }
 
   const xilinx::AIE::AIETargetModel &model = deviceOp.getTargetModel();
 

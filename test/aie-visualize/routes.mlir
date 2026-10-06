@@ -6,16 +6,17 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: aie-visualize
-// RUN: aie-visualize --emit-dot --show-buffers --show-packet-ids %s | FileCheck %s --check-prefix=ALL
-// RUN: aie-visualize --emit-dot %s | FileCheck %s --check-prefix=GUIDED
-// RUN: aie-visualize --emit-dot --show-vias %s | FileCheck %s --check-prefix=VIAS
-// RUN: aie-visualize --emit-dot --topology-only --show-buffers %s | FileCheck %s --check-prefix=TOPOLOGY
-// RUN: aie-visualize --emit-dot --show-buffers %s | FileCheck %s --check-prefix=NO-IDS
-// RUN: aie-visualize --emit-dot %s | FileCheck %s --check-prefix=NO-BUFFER-LINK
-// RUN: aie-visualize --emit-dot --highlight-flow=1 --show-packet-ids %s | FileCheck %s --check-prefix=HIGHLIGHT
-// RUN: aie-visualize --emit-dot --only-flow=1 --show-packet-ids %s | FileCheck %s --check-prefix=ONLY
-// RUN: not aie-visualize --emit-dot --only-flow=9 %s 2>&1 | FileCheck %s --check-prefix=BAD-ID
-// RUN: rm -rf %t && aie-visualize --emit-dot-per-flow=%t --show-buffers --show-packet-ids %s
+// RUN: aie-visualize --emit-dot --no-follow-buffers --show-buffers --show-packet-ids %s | FileCheck %s --check-prefix=ALL
+// RUN: aie-visualize --emit-dot --no-follow-buffers %s | FileCheck %s --check-prefix=GUIDED
+// RUN: aie-visualize --emit-dot --no-follow-buffers --show-vias %s | FileCheck %s --check-prefix=VIAS
+// RUN: aie-visualize --emit-dot --no-follow-buffers --topology-only --show-buffers %s | FileCheck %s --check-prefix=TOPOLOGY
+// RUN: aie-visualize --emit-dot --no-follow-buffers --topology-only --device=main %s | FileCheck %s --check-prefix=TOPOLOGY
+// RUN: aie-visualize --emit-dot --no-follow-buffers --show-buffers %s | FileCheck %s --check-prefix=NO-IDS
+// RUN: aie-visualize --emit-dot --no-follow-buffers %s | FileCheck %s --check-prefix=NO-BUFFER-LINK
+// RUN: aie-visualize --emit-dot --no-follow-buffers --highlight-flow=1 --show-packet-ids %s | FileCheck %s --check-prefix=HIGHLIGHT
+// RUN: aie-visualize --emit-dot --no-follow-buffers --only-flow=1 --show-packet-ids %s | FileCheck %s --check-prefix=ONLY
+// RUN: not aie-visualize --emit-dot --no-follow-buffers --only-flow=9 %s 2>&1 | FileCheck %s --check-prefix=BAD-ID
+// RUN: rm -rf %t && aie-visualize --emit-dot-per-flow=%t --no-follow-buffers --show-buffers --show-packet-ids %s
 // RUN: FileCheck %s --check-prefix=FLOW0 < %t/flow-0.dot
 // RUN: FileCheck %s --check-prefix=FLOW2 < %t/flow-2.dot
 // RUN: ls %t/flow-*.dot | count 5
@@ -52,9 +53,9 @@
 // VIAS: p_0_2_1_0_m -> p_0_2_5_0
 // VIAS-NOT: arrowhead=none
 
-// TOPOLOGY: graph [outputorder=nodesfirst
-// TOPOLOGY-NOT: layout=neato
-// TOPOLOGY-NOT: pos=
+// TOPOLOGY: graph [layout=neato
+// TOPOLOGY: tile_0_2 {{.*}} pos="0.000000e+00,6.000000e+00!"
+// TOPOLOGY: tile_0_3 {{.*}} pos="0.000000e+00,9.000000e+00!"
 // TOPOLOGY-NOT: p_0_2_5_0
 // TOPOLOGY-NOT: buffer_0
 // TOPOLOGY: tile_0_2 -> tile_0_3

@@ -6,16 +6,16 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: aie-visualize
-// RUN: aie-visualize --emit-dot --follow-through-buffers --show-buffers --show-packet-ids %s | FileCheck %s --check-prefix=ALL
-// RUN: aie-visualize --emit-dot --follow-through-buffers --only-flow=0 --show-buffers --show-packet-ids %s | FileCheck %s --check-prefix=GROUP
-// RUN: aie-visualize --emit-dot --follow-through-buffers --only-flow=0 %s | FileCheck %s --check-prefix=HIDDEN
-// RUN: rm -rf %t && aie-visualize --emit-dot-per-flow=%t --follow-through-buffers --show-buffers --show-packet-ids %s
+// RUN: aie-visualize --emit-dot --show-buffers --show-packet-ids %s | FileCheck %s --check-prefix=ALL
+// RUN: aie-visualize --emit-dot --only-flow=0 --show-buffers --show-packet-ids %s | FileCheck %s --check-prefix=GROUP
+// RUN: aie-visualize --emit-dot --only-flow=0 %s | FileCheck %s --check-prefix=HIDDEN
+// RUN: rm -rf %t && aie-visualize --emit-dot-per-flow=%t --show-buffers --show-packet-ids %s
 // RUN: ls %t/flow-*.dot | count 4
 // RUN: FileCheck %s --check-prefix=GROUP < %t/flow-0.dot
 // RUN: FileCheck %s --check-prefix=OTHER < %t/flow-1.dot
 // RUN: FileCheck %s --check-prefix=FANOUT < %t/flow-2.dot
 // RUN: FileCheck %s --check-prefix=JOIN < %t/flow-3.dot
-// RUN: rm -rf %t && aie-visualize --emit-dot-per-flow=%t %s
+// RUN: rm -rf %t && aie-visualize --emit-dot-per-flow=%t --no-follow-buffers %s
 // RUN: ls %t/flow-*.dot | count 9
 
 // ALL: p_0_2_1_0_m -> p_0_2_5_0 [color="#d73027"

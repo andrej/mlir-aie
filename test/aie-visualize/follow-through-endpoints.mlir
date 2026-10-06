@@ -6,11 +6,11 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: aie-visualize
-// RUN: rm -rf %t && aie-visualize --emit-dot-per-flow=%t --follow-through-buffers --show-packet-ids %s
+// RUN: rm -rf %t && aie-visualize --emit-dot-per-flow=%t --show-packet-ids %s
 // RUN: ls %t/flow-*.dot | count 2
 // RUN: FileCheck %s --check-prefix=FANOUT < %t/flow-0.dot
 // RUN: FileCheck %s --check-prefix=OTHER < %t/flow-1.dot
-// RUN: rm -rf %t && aie-visualize --emit-dot-per-flow=%t %s
+// RUN: rm -rf %t && aie-visualize --emit-dot-per-flow=%t --no-follow-buffers %s
 // RUN: ls %t/flow-*.dot | count 4
 
 // FANOUT: p_0_2_1_0_m -> p_0_2_5_5
