@@ -6,9 +6,10 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: aie-visualize
-// RUN: aie-visualize --emit-dot --follow-through-buffers --show-buffers %s | FileCheck %s --check-prefix=ALL
-// RUN: aie-visualize --emit-dot --follow-through-buffers --only-flow=0 --show-buffers %s | FileCheck %s --check-prefix=GROUP
-// RUN: rm -rf %t && aie-visualize --emit-dot-per-flow=%t --follow-through-buffers --show-buffers %s
+// RUN: aie-visualize --emit-dot --follow-through-buffers --show-buffers --show-packet-ids %s | FileCheck %s --check-prefix=ALL
+// RUN: aie-visualize --emit-dot --follow-through-buffers --only-flow=0 --show-buffers --show-packet-ids %s | FileCheck %s --check-prefix=GROUP
+// RUN: aie-visualize --emit-dot --follow-through-buffers --only-flow=0 %s | FileCheck %s --check-prefix=HIDDEN
+// RUN: rm -rf %t && aie-visualize --emit-dot-per-flow=%t --follow-through-buffers --show-buffers --show-packet-ids %s
 // RUN: ls %t/flow-*.dot | count 4
 // RUN: FileCheck %s --check-prefix=GROUP < %t/flow-0.dot
 // RUN: FileCheck %s --check-prefix=OTHER < %t/flow-1.dot
@@ -18,13 +19,13 @@
 // RUN: ls %t/flow-*.dot | count 9
 
 // ALL: p_0_2_1_0_m -> p_0_2_5_0 [color="#d73027"
-// ALL: p_0_2_5_0 -> p_0_3_3_0 {{.*}} label="F0"
+// ALL: p_0_2_5_0 -> p_0_3_3_0 {{.*}} label=<<FONT COLOR="#d73027">F0</FONT>>
 // ALL: p_0_3_1_0_m -> p_0_3_5_1 [color="#d73027"
 // ALL: p_0_3_1_3_m -> p_0_3_3_3 [color="#d73027"
-// ALL: p_0_3_5_1 -> p_0_4_3_1 {{.*}} label="F0"
+// ALL: p_0_3_5_1 -> p_0_4_3_1 {{.*}} label=<<FONT COLOR="#d73027">F0</FONT>>
 // ALL: p_0_3_5_2 -> p_0_3_1_2_s [color="#d73027"
 // ALL: p_0_4_0_1 -> p_0_4_3_0 [color="#4575b4"
-// ALL: p_0_4_3_0 -> p_0_3_5_0 {{.*}} label="F1"
+// ALL: p_0_4_3_0 -> p_0_3_5_0 {{.*}} label=<<FONT COLOR="#4575b4">F1</FONT>>
 
 // GROUP: p_0_3_1_0_s {{.*}} xlabel="S2MM0"
 // GROUP: p_0_3_1_0_m {{.*}} xlabel="MM2S0"
@@ -42,9 +43,16 @@
 // GROUP-NOT: MM2S
 // GROUP-NOT: p_0_4_0_1
 
+// HIDDEN: buffer_0 [shape=point, width=0, height=0, pos={{.*}} label=""];
+// HIDDEN-NOT: label="bridge"
+// HIDDEN: p_0_3_1_0_s -> buffer_0 {{.*}}style=dashed];
+// HIDDEN: buffer_0 -> p_0_3_1_0_m {{.*}}style=dashed];
+// HIDDEN: p_0_3_1_2_s -> buffer_0 {{.*}}style=dashed];
+// HIDDEN: buffer_0 -> p_0_3_1_3_m {{.*}}style=dashed];
+
 // OTHER-NOT: label="bridge"
 // OTHER: p_0_4_0_1 -> p_0_4_3_0
-// OTHER: p_0_4_3_0 -> p_0_3_5_0 {{.*}} label="F1"
+// OTHER: p_0_4_3_0 -> p_0_3_5_0 {{.*}} label=<<FONT COLOR="#4575b4">F1</FONT>>
 
 // FANOUT: label="fanout"
 // FANOUT: buffer_1 -> p_0_2_1_2_m {{.*}}style=dashed];

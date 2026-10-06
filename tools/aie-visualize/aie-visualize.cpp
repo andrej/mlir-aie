@@ -63,6 +63,9 @@ static cl::list<unsigned>
 static cl::opt<bool> showBuffers(
     "show-buffers",
     cl::desc("Show tile buffers and their DMA channel connections"));
+static cl::opt<bool> showPacketIDs(
+    "show-packet-ids",
+    cl::desc("Show flow IDs and packet IDs on routed connections"));
 static cl::opt<bool> followThroughBuffers(
     "follow-through-buffers",
     cl::desc("Group flows connected through buffers or shared endpoints"));
@@ -515,7 +518,7 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
                                             : ArrayRef(physicalLinks);
     if (!labelCandidates.empty())
       labeledSegments[route.id] = labelCandidates[labelCandidates.size() / 2];
-    if (!showBuffers)
+    if (!showBuffers && !followThroughBuffers)
       continue;
     const PortNode &source = route.points.front();
     if (source.bundle == AIE::WireBundle::DMA) {
@@ -559,10 +562,10 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
            << "\"];\n";
   }
   std::map<Operation *, unsigned> bufferIDs;
+  std::set<Operation *> visibleBuffers;
+  for (const auto &[segment, segmentRoutes] : bufferSegments)
+    visibleBuffers.insert(segment.buffer);
   if (showBuffers) {
-    std::set<Operation *> visibleBuffers;
-    for (const auto &[segment, segmentRoutes] : bufferSegments)
-      visibleBuffers.insert(segment.buffer);
     std::map<std::pair<int, int>, unsigned> visibleTileCounts;
     for (const BufferInfo &buffer : *buffers) {
       if (!only.empty() && !visibleBuffers.count(buffer.op))
@@ -584,6 +587,16 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
              << bufferLabel(buffer.op, buffer.id)
              << "\", fontsize=8, style=filled, fillcolor=\"#ffffff\", "
                 "color=\"#666666\"];\n";
+    }
+  } else {
+    for (const BufferInfo &buffer : *buffers) {
+      if (!visibleBuffers.count(buffer.op))
+        continue;
+      bufferIDs[buffer.op] = buffer.id;
+      double y = buffer.row * 3.0 + 0.46 - buffer.tileIndex * 0.34;
+      output << "  " << bufferNodeID(buffer.id)
+             << " [shape=point, width=0, height=0, pos=\"" << buffer.col * 3.0
+             << ',' << y << "!\", label=\"\"];\n";
     }
   }
   auto writeColors = [&](ArrayRef<const FlowRoute *> edgeRoutes) {
@@ -608,32 +621,37 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
       output << "#c2c2c2";
     return anyHighlighted;
   };
+  auto writeLabel = [&](const FlowRoute &route) {
+    unsigned groupID = groups.routeGroups[route.id];
+    std::string color = isHighlighted(groupID) ? flowColor(groupID) : "#c2c2c2";
+    output << "<FONT COLOR=\"" << color << "\">F" << groupID;
+    if (route.packetID) {
+      output << " pkt=" << *route.packetID;
+      if (route.packetMask)
+        output << '/' << *route.packetMask;
+    }
+    output << "</FONT>";
+  };
   for (const auto &[segment, segmentRoutes] : segments) {
-    std::vector<std::string> labels;
+    std::vector<const FlowRoute *> labels;
     for (const FlowRoute *route : segmentRoutes) {
       if (labeledSegments.at(route->id) < segment ||
           segment < labeledSegments.at(route->id))
         continue;
-      std::string label = "F" + std::to_string(groups.routeGroups[route->id]);
-      if (route->packetID) {
-        label += " pkt=" + std::to_string(*route->packetID);
-        if (route->packetMask)
-          label += "/" + std::to_string(*route->packetMask);
-      }
-      labels.push_back(std::move(label));
+      labels.push_back(route);
     }
     output << "  " << portNodeID(segment.source) << " -> "
            << portNodeID(segment.dest) << " [color=\"";
     bool anyHighlighted = writeColors(segmentRoutes);
     output << "\", penwidth=\"" << (anyHighlighted ? "2.4" : "1.2") << '\"';
-    if (!labels.empty()) {
-      output << ", label=\"";
-      for (auto [index, label] : llvm::enumerate(labels)) {
+    if (showPacketIDs && !labels.empty()) {
+      output << ", label=<";
+      for (auto [index, route] : llvm::enumerate(labels)) {
         if (index)
-          output << "\\n";
-        output << label;
+          output << "<BR/>";
+        writeLabel(*route);
       }
-      output << '\"';
+      output << '>';
     }
     output << "];\n";
   }

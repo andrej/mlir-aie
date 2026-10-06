@@ -6,11 +6,13 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: aie-visualize
-// RUN: aie-visualize --emit-dot --show-buffers %s | FileCheck %s --check-prefix=ALL
-// RUN: aie-visualize --emit-dot --highlight-flow=1 %s | FileCheck %s --check-prefix=HIGHLIGHT
-// RUN: aie-visualize --emit-dot --only-flow=1 %s | FileCheck %s --check-prefix=ONLY
+// RUN: aie-visualize --emit-dot --show-buffers --show-packet-ids %s | FileCheck %s --check-prefix=ALL
+// RUN: aie-visualize --emit-dot --show-buffers %s | FileCheck %s --check-prefix=NO-IDS
+// RUN: aie-visualize --emit-dot %s | FileCheck %s --check-prefix=NO-BUFFER-LINK
+// RUN: aie-visualize --emit-dot --highlight-flow=1 --show-packet-ids %s | FileCheck %s --check-prefix=HIGHLIGHT
+// RUN: aie-visualize --emit-dot --only-flow=1 --show-packet-ids %s | FileCheck %s --check-prefix=ONLY
 // RUN: not aie-visualize --emit-dot --only-flow=9 %s 2>&1 | FileCheck %s --check-prefix=BAD-ID
-// RUN: rm -rf %t && aie-visualize --emit-dot-per-flow=%t --show-buffers %s
+// RUN: rm -rf %t && aie-visualize --emit-dot-per-flow=%t --show-buffers --show-packet-ids %s
 // RUN: FileCheck %s --check-prefix=FLOW0 < %t/flow-0.dot
 // RUN: FileCheck %s --check-prefix=FLOW2 < %t/flow-2.dot
 // RUN: ls %t/flow-*.dot | count 5
@@ -23,10 +25,10 @@
 // ALL: buffer_1 {{.*}} label="dest"
 // ALL-NOT: memref
 // ALL: p_0_2_5_0 -> p_0_3_3_0 [color="#d73027:#4575b4"
-// ALL-SAME: label="F0 pkt=3/31\nF1 pkt=4/31"
-// ALL: p_0_3_0_0 -> p_0_3_0_1 {{.*}} label="F3 pkt=6/31"
+// ALL-SAME: label=<<FONT COLOR="#d73027">F0 pkt=3/31</FONT><BR/><FONT COLOR="#4575b4">F1 pkt=4/31</FONT>>
+// ALL: p_0_3_0_0 -> p_0_3_0_1 {{.*}} label=<<FONT COLOR="#984ea3">F3 pkt=6/31</FONT>>
 // ALL-DAG: p_0_4_0_1 -> p_0_4_3_2
-// ALL-DAG: p_0_4_3_2 -> p_0_3_5_2 {{.*}} label="F4"
+// ALL-DAG: p_0_4_3_2 -> p_0_3_5_2 {{.*}} label=<<FONT COLOR="#ff7f00">F4</FONT>>
 // ALL-DAG: p_0_3_5_2 -> p_0_3_0_0
 // ALL-NOT: p_0_2_0_0
 // ALL: buffer_0 -> p_0_2_1_0_m {{.*}}style=dashed];
@@ -34,7 +36,15 @@
 // ALL-NOT: MM2S
 // ALL-NOT: S2MM
 
+// NO-IDS: p_0_2_5_0 -> p_0_3_3_0
+// NO-IDS-NOT: pkt=
+// NO-IDS-NOT: label=<
+
+// NO-BUFFER-LINK: p_0_2_5_0 -> p_0_3_3_0
+// NO-BUFFER-LINK-NOT: buffer_0
+
 // HIGHLIGHT: p_0_2_1_0_m -> p_0_2_5_0 [color="#c2c2c2:#4575b4", penwidth="2.4"
+// HIGHLIGHT: p_0_2_5_0 -> p_0_3_3_0 {{.*}} label=<<FONT COLOR="#c2c2c2">F0 pkt=3/31</FONT><BR/><FONT COLOR="#4575b4">F1 pkt=4/31</FONT>>
 // HIGHLIGHT: p_0_4_1_0_m -> p_0_4_3_1 [color="#c2c2c2", penwidth="1.2"
 
 // ONLY-NOT: F0 pkt=3
