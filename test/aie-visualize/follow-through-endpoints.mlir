@@ -13,7 +13,7 @@
 // RUN: rm -rf %t && aie-visualize --emit-dot-per-flow=%t %s
 // RUN: ls %t/flow-*.dot | count 4
 
-// FANOUT: p_0_2_1_0 -> p_0_2_5_5
+// FANOUT: p_0_2_1_0_m -> p_0_2_5_5
 // FANOUT: p_0_2_5_5 -> p_0_3_3_5 {{.*}} label="F0"
 // FANOUT: p_0_3_3_5 -> p_0_3_4_2
 // FANOUT: p_0_3_3_5 -> p_0_3_5_1

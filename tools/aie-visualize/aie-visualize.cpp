@@ -86,9 +86,11 @@ struct PortNode {
   int row;
   AIE::WireBundle bundle;
   int channel;
+  std::optional<AIE::DMAChannelDir> dmaDirection;
 
   auto asTuple() const {
-    return std::make_tuple(col, row, static_cast<int>(bundle), channel);
+    return std::make_tuple(col, row, static_cast<int>(bundle), channel,
+                           dmaDirection);
   }
   bool operator<(const PortNode &other) const {
     return asTuple() < other.asTuple();
@@ -141,8 +143,10 @@ struct BufferSegment {
   }
 };
 
-static FailureOr<PortNode> getPortNode(mlir::Value tile, AIE::WireBundle bundle,
-                                       int channel, Operation *owner) {
+static FailureOr<PortNode>
+getPortNode(mlir::Value tile, AIE::WireBundle bundle, int channel,
+            Operation *owner,
+            std::optional<AIE::DMAChannelDir> dmaDirection = std::nullopt) {
   auto tileOp = dyn_cast_or_null<AIE::TileLike>(tile.getDefiningOp());
   if (!tileOp)
     return owner->emitOpError("route endpoint is not a tile-like operation");
@@ -150,7 +154,9 @@ static FailureOr<PortNode> getPortNode(mlir::Value tile, AIE::WireBundle bundle,
   std::optional<int> row = tileOp.tryGetRow();
   if (!col || !row)
     return owner->emitOpError("route endpoint has unresolved coordinates");
-  return PortNode{*col, *row, bundle, channel};
+  if (bundle != AIE::WireBundle::DMA)
+    dmaDirection = std::nullopt;
+  return PortNode{*col, *row, bundle, channel, dmaDirection};
 }
 
 template <typename FlowTy>
@@ -168,10 +174,10 @@ static LogicalResult appendVias(FlowTy flow, std::vector<PortNode> &points) {
   for (auto [index, tile] : llvm::enumerate(flow.getVias())) {
     FailureOr<PortNode> ingress =
         getPortNode(tile, static_cast<AIE::WireBundle>(ingressBundles[index]),
-                    ingressChannels[index], flow);
+                    ingressChannels[index], flow, AIE::DMAChannelDir::MM2S);
     FailureOr<PortNode> egress =
         getPortNode(tile, static_cast<AIE::WireBundle>(egressBundles[index]),
-                    egressChannels[index], flow);
+                    egressChannels[index], flow, AIE::DMAChannelDir::S2MM);
     if (failed(ingress) || failed(egress))
       return failure();
     points.push_back(*ingress);
@@ -188,9 +194,10 @@ static FailureOr<std::vector<FlowRoute>> collectRoutes(AIE::DeviceOp device) {
           static_cast<unsigned>(routes.size()), std::nullopt, std::nullopt, {}};
       FailureOr<PortNode> source =
           getPortNode(flow.getSource(), flow.getSourceBundle(),
-                      flow.getSourceChannel(), flow);
-      FailureOr<PortNode> dest = getPortNode(
-          flow.getDest(), flow.getDestBundle(), flow.getDestChannel(), flow);
+                      flow.getSourceChannel(), flow, AIE::DMAChannelDir::MM2S);
+      FailureOr<PortNode> dest =
+          getPortNode(flow.getDest(), flow.getDestBundle(),
+                      flow.getDestChannel(), flow, AIE::DMAChannelDir::S2MM);
       if (failed(source) || failed(dest))
         return failure();
       route.points.push_back(*source);
@@ -216,11 +223,12 @@ static FailureOr<std::vector<FlowRoute>> collectRoutes(AIE::DeviceOp device) {
                                                *packetFlow.getMask()))
                                          : std::nullopt,
                     {}};
-    FailureOr<PortNode> source =
-        getPortNode(sourceOp.getTile(), sourceOp.getBundle(),
-                    sourceOp.getChannel(), packetFlow);
-    FailureOr<PortNode> dest = getPortNode(destOp.getTile(), destOp.getBundle(),
-                                           destOp.getChannel(), packetFlow);
+    FailureOr<PortNode> source = getPortNode(
+        sourceOp.getTile(), sourceOp.getBundle(), sourceOp.getChannel(),
+        packetFlow, AIE::DMAChannelDir::MM2S);
+    FailureOr<PortNode> dest =
+        getPortNode(destOp.getTile(), destOp.getBundle(), destOp.getChannel(),
+                    packetFlow, AIE::DMAChannelDir::S2MM);
     if (failed(source) || failed(dest))
       return failure();
     route.points.push_back(*source);
@@ -361,9 +369,13 @@ static FlowGroups collectFlowGroups(ArrayRef<FlowRoute> routes,
 }
 
 static std::string portNodeID(const PortNode &port) {
-  return "p_" + std::to_string(port.col) + "_" + std::to_string(port.row) +
-         "_" + std::to_string(static_cast<int>(port.bundle)) + "_" +
-         std::to_string(port.channel);
+  std::string id = "p_" + std::to_string(port.col) + "_" +
+                   std::to_string(port.row) + "_" +
+                   std::to_string(static_cast<int>(port.bundle)) + "_" +
+                   std::to_string(port.channel);
+  if (port.dmaDirection)
+    id += *port.dmaDirection == AIE::DMAChannelDir::MM2S ? "_m" : "_s";
+  return id;
 }
 
 static std::string bufferNodeID(unsigned id) {
@@ -401,7 +413,8 @@ static std::pair<double, double> portPosition(const PortNode &port) {
   case AIE::WireBundle::West:
     return {x - 0.92, y + channelOffset};
   case AIE::WireBundle::DMA:
-    return {x - 0.38, y + channelOffset};
+    return {x + (port.dmaDirection == AIE::DMAChannelDir::S2MM ? -0.22 : -0.54),
+            y + channelOffset};
   case AIE::WireBundle::Core:
     return {x + 0.38, y + channelOffset};
   default:
@@ -416,22 +429,24 @@ static std::string flowColor(unsigned id) {
   return colors[id % std::size(colors)];
 }
 
-static StringRef shortBundleName(AIE::WireBundle bundle) {
-  switch (bundle) {
+static std::string shortPortName(const PortNode &port) {
+  switch (port.bundle) {
   case AIE::WireBundle::DMA:
-    return "D";
+    return (port.dmaDirection == AIE::DMAChannelDir::S2MM ? "S2MM" : "MM2S") +
+           std::to_string(port.channel);
   case AIE::WireBundle::Core:
-    return "C";
+    return "C" + std::to_string(port.channel);
   case AIE::WireBundle::North:
-    return "N";
+    return "N" + std::to_string(port.channel);
   case AIE::WireBundle::South:
-    return "S";
+    return "S" + std::to_string(port.channel);
   case AIE::WireBundle::East:
-    return "E";
+    return "E" + std::to_string(port.channel);
   case AIE::WireBundle::West:
-    return "W";
+    return "W" + std::to_string(port.channel);
   default:
-    return stringifyWireBundle(bundle);
+    return stringifyWireBundle(port.bundle).str() +
+           std::to_string(port.channel);
   }
 }
 
@@ -540,8 +555,8 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
   for (const PortNode &port : ports) {
     auto [x, y] = portPosition(port);
     output << "  " << portNodeID(port) << " [shape=point, width=0.09, pos=\""
-           << x << ',' << y << "!\", xlabel=\"" << shortBundleName(port.bundle)
-           << port.channel << "\"];\n";
+           << x << ',' << y << "!\", xlabel=\"" << shortPortName(port)
+           << "\"];\n";
   }
   std::map<Operation *, unsigned> bufferIDs;
   if (showBuffers) {

@@ -17,25 +17,27 @@
 // RUN: rm -rf %t && aie-visualize --emit-dot-per-flow=%t %s
 // RUN: ls %t/flow-*.dot | count 9
 
-// ALL: p_0_2_1_0 -> p_0_2_5_0 [color="#d73027"
+// ALL: p_0_2_1_0_m -> p_0_2_5_0 [color="#d73027"
 // ALL: p_0_2_5_0 -> p_0_3_3_0 {{.*}} label="F0"
-// ALL: p_0_3_1_1 -> p_0_3_5_1 [color="#d73027"
-// ALL: p_0_3_1_3 -> p_0_3_3_3 [color="#d73027"
+// ALL: p_0_3_1_0_m -> p_0_3_5_1 [color="#d73027"
+// ALL: p_0_3_1_3_m -> p_0_3_3_3 [color="#d73027"
 // ALL: p_0_3_5_1 -> p_0_4_3_1 {{.*}} label="F0"
-// ALL: p_0_3_5_2 -> p_0_3_1_2 [color="#d73027"
+// ALL: p_0_3_5_2 -> p_0_3_1_2_s [color="#d73027"
 // ALL: p_0_4_0_1 -> p_0_4_3_0 [color="#4575b4"
 // ALL: p_0_4_3_0 -> p_0_3_5_0 {{.*}} label="F1"
 
+// GROUP: p_0_3_1_0_s {{.*}} xlabel="S2MM0"
+// GROUP: p_0_3_1_0_m {{.*}} xlabel="MM2S0"
 // GROUP: label="bridge"
 // GROUP-NOT: memref
-// GROUP: p_0_2_1_0 -> p_0_2_5_0
-// GROUP: p_0_3_1_1 -> p_0_3_5_1
-// GROUP: p_0_3_1_3 -> p_0_3_3_3
-// GROUP: p_0_3_5_2 -> p_0_3_1_2
-// GROUP: p_0_3_1_0 -> buffer_0 {{.*}}style=dashed];
-// GROUP: buffer_0 -> p_0_3_1_1 {{.*}}style=dashed];
-// GROUP: p_0_3_1_2 -> buffer_0 {{.*}}style=dashed];
-// GROUP: buffer_0 -> p_0_3_1_3 {{.*}}style=dashed];
+// GROUP: p_0_2_1_0_m -> p_0_2_5_0
+// GROUP: p_0_3_1_0_m -> p_0_3_5_1
+// GROUP: p_0_3_1_3_m -> p_0_3_3_3
+// GROUP: p_0_3_5_2 -> p_0_3_1_2_s
+// GROUP: p_0_3_1_0_s -> buffer_0 {{.*}}style=dashed];
+// GROUP: buffer_0 -> p_0_3_1_0_m {{.*}}style=dashed];
+// GROUP: p_0_3_1_2_s -> buffer_0 {{.*}}style=dashed];
+// GROUP: buffer_0 -> p_0_3_1_3_m {{.*}}style=dashed];
 // GROUP-NOT: S2MM
 // GROUP-NOT: MM2S
 // GROUP-NOT: p_0_4_0_1
@@ -45,12 +47,12 @@
 // OTHER: p_0_4_3_0 -> p_0_3_5_0 {{.*}} label="F1"
 
 // FANOUT: label="fanout"
-// FANOUT: buffer_1 -> p_0_2_1_2 {{.*}}style=dashed];
-// FANOUT: buffer_1 -> p_0_2_1_3 {{.*}}style=dashed];
+// FANOUT: buffer_1 -> p_0_2_1_2_m {{.*}}style=dashed];
+// FANOUT: buffer_1 -> p_0_2_1_3_m {{.*}}style=dashed];
 
 // JOIN: label="join"
-// JOIN: p_0_4_1_2 -> buffer_2 {{.*}}style=dashed];
-// JOIN: p_0_4_1_3 -> buffer_2 {{.*}}style=dashed];
+// JOIN: p_0_4_1_2_s -> buffer_2 {{.*}}style=dashed];
+// JOIN: p_0_4_1_3_s -> buffer_2 {{.*}}style=dashed];
 
 module {
   aie.device(npu1_1col) {
@@ -82,15 +84,15 @@ module {
       aie.dma_bd(%bridge : memref<16xi32> offset = 0 len = 16)
       aie.next_bd ^s2mm0
     ^s2mm2_start:
-      %1 = aie.dma_start(S2MM, 2, ^s2mm2, ^mm2s1_start)
+      %1 = aie.dma_start(S2MM, 2, ^s2mm2, ^mm2s0_start)
     ^s2mm2:
       aie.dma_bd(%bridge : memref<16xi32> offset = 0 len = 16)
       aie.next_bd ^s2mm2
-    ^mm2s1_start:
-      %2 = aie.dma_start(MM2S, 1, ^mm2s1, ^mm2s3_start)
-    ^mm2s1:
+    ^mm2s0_start:
+      %2 = aie.dma_start(MM2S, 0, ^mm2s0, ^mm2s3_start)
+    ^mm2s0:
       aie.dma_bd(%bridge : memref<16xi32> offset = 0 len = 16)
-      aie.next_bd ^mm2s1
+      aie.next_bd ^mm2s0
     ^mm2s3_start:
       %3 = aie.dma_start(MM2S, 3, ^mm2s3, ^end)
     ^mm2s3:
@@ -117,8 +119,8 @@ module {
     aie.flow(%t02, DMA : 0, %t03, DMA : 0)
       via (%t02 : DMA : 0 -> North : 0,
            %t03 : South : 0 -> DMA : 0)
-    aie.flow(%t03, DMA : 1, %t04, DMA : 0)
-      via (%t03 : DMA : 1 -> North : 1,
+    aie.flow(%t03, DMA : 0, %t04, DMA : 0)
+      via (%t03 : DMA : 0 -> North : 1,
            %t04 : South : 1 -> DMA : 0)
     aie.flow(%t04, Core : 0, %t03, DMA : 2)
       via (%t04 : Core : 0 -> South : 2,

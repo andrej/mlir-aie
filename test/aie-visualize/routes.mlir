@@ -29,13 +29,13 @@
 // ALL-DAG: p_0_4_3_2 -> p_0_3_5_2 {{.*}} label="F4"
 // ALL-DAG: p_0_3_5_2 -> p_0_3_0_0
 // ALL-NOT: p_0_2_0_0
-// ALL: buffer_0 -> p_0_2_1_0 {{.*}}style=dashed];
-// ALL: p_0_3_1_0 -> buffer_1 {{.*}}style=dashed];
+// ALL: buffer_0 -> p_0_2_1_0_m {{.*}}style=dashed];
+// ALL: p_0_3_1_0_s -> buffer_1 {{.*}}style=dashed];
 // ALL-NOT: MM2S
 // ALL-NOT: S2MM
 
-// HIGHLIGHT: p_0_2_1_0 -> p_0_2_5_0 [color="#c2c2c2:#4575b4", penwidth="2.4"
-// HIGHLIGHT: p_0_4_1_0 -> p_0_4_3_1 [color="#c2c2c2", penwidth="1.2"
+// HIGHLIGHT: p_0_2_1_0_m -> p_0_2_5_0 [color="#c2c2c2:#4575b4", penwidth="2.4"
+// HIGHLIGHT: p_0_4_1_0_m -> p_0_4_3_1 [color="#c2c2c2", penwidth="1.2"
 
 // ONLY-NOT: F0 pkt=3
 // ONLY: F1 pkt=4/31
