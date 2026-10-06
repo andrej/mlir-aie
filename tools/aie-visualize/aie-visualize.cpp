@@ -32,6 +32,7 @@
 
 #include <iostream>
 #include <map>
+#include <numeric>
 #include <set>
 #include <sstream>
 #include <tuple>
@@ -46,9 +47,9 @@ static cl::opt<std::string> fileName(cl::Positional, cl::desc("<input mlir>"),
 static cl::opt<bool> emitDot("emit-dot",
                              cl::desc("Emit a DOT route visualization"));
 static cl::opt<std::string> emitDotPerFlow(
-  "emit-dot-per-flow",
-  cl::desc("Emit one DOT file per flow into the given directory"),
-  cl::value_desc("directory"));
+    "emit-dot-per-flow",
+    cl::desc("Emit one DOT file per flow into the given directory"),
+    cl::value_desc("directory"));
 static cl::opt<std::string> outputFilename("o", cl::desc("Output filename"),
                                            cl::value_desc("filename"),
                                            cl::init("-"));
@@ -62,6 +63,9 @@ static cl::list<unsigned>
 static cl::opt<bool> showBuffers(
     "show-buffers",
     cl::desc("Show tile buffers and their DMA channel connections"));
+static cl::opt<bool> followThroughBuffers(
+    "follow-through-buffers",
+    cl::desc("Group incoming and outgoing flows connected through a buffer"));
 
 const std::string bold("\033[0;1m");
 const std::string dim("\033[0;2m");
@@ -120,6 +124,11 @@ struct BufferInfo {
 
 using DMAChannelKey = std::tuple<int, int, AIE::DMAChannelDir, int>;
 using DMAChannelBuffers = std::map<DMAChannelKey, std::vector<AIE::BufferOp>>;
+
+struct FlowGroups {
+  std::vector<unsigned> routeGroups;
+  unsigned count;
+};
 
 struct BufferSegment {
   PortNode port;
@@ -274,6 +283,73 @@ static DMAChannelBuffers collectDMAChannelBuffers(AIE::DeviceOp device) {
   return channels;
 }
 
+static FlowGroups collectFlowGroups(ArrayRef<FlowRoute> routes,
+                                    const DMAChannelBuffers &channelBuffers) {
+  FlowGroups groups;
+  groups.routeGroups.resize(routes.size());
+  if (!followThroughBuffers) {
+    std::iota(groups.routeGroups.begin(), groups.routeGroups.end(), 0);
+    groups.count = routes.size();
+    return groups;
+  }
+
+  std::vector<unsigned> parents(routes.size());
+  std::iota(parents.begin(), parents.end(), 0);
+  auto findRoot = [&](unsigned route) {
+    while (parents[route] != route) {
+      parents[route] = parents[parents[route]];
+      route = parents[route];
+    }
+    return route;
+  };
+  auto merge = [&](unsigned first, unsigned second) {
+    unsigned firstRoot = findRoot(first);
+    unsigned secondRoot = findRoot(second);
+    if (firstRoot != secondRoot)
+      parents[secondRoot] = firstRoot;
+  };
+
+  std::map<Operation *, std::vector<unsigned>> incomingRoutes;
+  std::map<Operation *, std::vector<unsigned>> outgoingRoutes;
+  for (const FlowRoute &route : routes) {
+    const PortNode &source = route.points.front();
+    if (source.bundle == AIE::WireBundle::DMA) {
+      DMAChannelKey key{source.col, source.row, AIE::DMAChannelDir::MM2S,
+                        source.channel};
+      auto channels = channelBuffers.find(key);
+      if (channels != channelBuffers.end())
+        for (AIE::BufferOp buffer : channels->second)
+          outgoingRoutes[buffer].push_back(route.id);
+    }
+    const PortNode &dest = route.points.back();
+    if (dest.bundle == AIE::WireBundle::DMA) {
+      DMAChannelKey key{dest.col, dest.row, AIE::DMAChannelDir::S2MM,
+                        dest.channel};
+      auto channels = channelBuffers.find(key);
+      if (channels != channelBuffers.end())
+        for (AIE::BufferOp buffer : channels->second)
+          incomingRoutes[buffer].push_back(route.id);
+    }
+  }
+  for (const auto &[buffer, incoming] : incomingRoutes) {
+    auto outgoing = outgoingRoutes.find(buffer);
+    if (outgoing == outgoingRoutes.end())
+      continue;
+    for (unsigned incomingRoute : incoming)
+      for (unsigned outgoingRoute : outgoing->second)
+        merge(incomingRoute, outgoingRoute);
+  }
+
+  std::map<unsigned, unsigned> groupIDs;
+  for (const FlowRoute &route : routes) {
+    unsigned root = findRoot(route.id);
+    auto [group, inserted] = groupIDs.try_emplace(root, groupIDs.size());
+    groups.routeGroups[route.id] = group->second;
+  }
+  groups.count = groupIDs.size();
+  return groups;
+}
+
 static std::string portNodeID(const PortNode &port) {
   return "p_" + std::to_string(port.col) + "_" + std::to_string(port.row) +
          "_" + std::to_string(static_cast<int>(port.bundle)) + "_" +
@@ -365,6 +441,7 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
   if (failed(buffers))
     return failure();
   DMAChannelBuffers channelBuffers = collectDMAChannelBuffers(device);
+  FlowGroups groups = collectFlowGroups(*routes, channelBuffers);
 
   std::set<unsigned> highlights(highlightedFlows.begin(),
                                 highlightedFlows.end());
@@ -374,10 +451,10 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
   auto validateIDs = [&](const std::set<unsigned> &ids,
                          StringRef option) -> LogicalResult {
     for (unsigned id : ids) {
-      if (id >= routes->size()) {
+      if (id >= groups.count) {
         device.emitOpError() << option << " references unknown flow " << id
                              << "; valid IDs are 0 through "
-                             << (routes->empty() ? 0 : routes->size() - 1);
+                             << (groups.count == 0 ? 0 : groups.count - 1);
         return failure();
       }
     }
@@ -396,7 +473,8 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
   std::map<BufferSegment, std::vector<const FlowRoute *>> bufferSegments;
   std::map<unsigned, Segment> labeledSegments;
   for (const FlowRoute &route : *routes) {
-    if (!isVisible(route.id))
+    unsigned groupID = groups.routeGroups[route.id];
+    if (!isVisible(groupID))
       continue;
     for (const PortNode &port : route.points)
       ports.insert(port);
@@ -475,12 +553,13 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
       unsigned tileIndex = only.empty()
                                ? buffer.tileIndex
                                : visibleTileCounts[{buffer.col, buffer.row}]++;
-            double y = buffer.row * 3.0 + (only.empty() ? 0.46 : 0.5) -
-             tileIndex * (only.empty() ? 0.34 : 0.48);
+      double y = buffer.row * 3.0 + (only.empty() ? 0.46 : 0.5) -
+                 tileIndex * (only.empty() ? 0.34 : 0.48);
       output << "  " << bufferNodeID(buffer.id)
-              << " [shape=box, fixedsize=true, width="
-              << (only.empty() ? "1.35" : "1.7") << ", height="
-              << (only.empty() ? "0.34" : "0.42") << ", "
+             << " [shape=box, fixedsize=true, width="
+             << (only.empty() ? "1.35" : "1.7")
+             << ", height=" << (only.empty() ? "0.34" : "0.42")
+             << ", "
                 "pos=\""
              << x << ',' << y << "!\", label=\""
              << bufferLabel(buffer.op, buffer.id)
@@ -491,11 +570,15 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
   auto writeColors = [&](ArrayRef<const FlowRoute *> edgeRoutes) {
     bool anyHighlighted = false;
     bool first = true;
+    std::set<unsigned> writtenGroups;
     for (const FlowRoute *route : edgeRoutes) {
+      unsigned groupID = groups.routeGroups[route->id];
+      if (!writtenGroups.insert(groupID).second)
+        continue;
       if (!first)
         output << ':';
-      if (isHighlighted(route->id)) {
-        output << flowColor(route->id);
+      if (isHighlighted(groupID)) {
+        output << flowColor(groupID);
         anyHighlighted = true;
       } else {
         output << "#c2c2c2";
@@ -512,7 +595,7 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
       if (labeledSegments.at(route->id) < segment ||
           segment < labeledSegments.at(route->id))
         continue;
-      std::string label = "F" + std::to_string(route->id);
+      std::string label = "F" + std::to_string(groups.routeGroups[route->id]);
       if (route->packetID) {
         label += " pkt=" + std::to_string(*route->packetID);
         if (route->packetMask)
@@ -617,20 +700,22 @@ int main(int argc, char *argv[]) {
     FailureOr<std::vector<FlowRoute>> routes = collectRoutes(deviceOp);
     if (failed(routes))
       return 4;
+    DMAChannelBuffers channelBuffers = collectDMAChannelBuffers(deviceOp);
+    FlowGroups groups = collectFlowGroups(*routes, channelBuffers);
     std::error_code error = sys::fs::create_directories(emitDotPerFlow);
     if (error) {
       errs() << error.message() << '\n';
       return 3;
     }
-    for (const FlowRoute &route : *routes) {
+    for (unsigned groupID = 0; groupID < groups.count; ++groupID) {
       SmallString<256> path(emitDotPerFlow);
-      sys::path::append(path, "flow-" + std::to_string(route.id) + ".dot");
+      sys::path::append(path, "flow-" + std::to_string(groupID) + ".dot");
       ToolOutputFile output(path, error, sys::fs::OF_Text);
       if (error) {
         errs() << error.message() << '\n';
         return 3;
       }
-      if (failed(emitRouteDot(deviceOp, output.os(), route.id)))
+      if (failed(emitRouteDot(deviceOp, output.os(), groupID)))
         return 4;
       output.keep();
     }
