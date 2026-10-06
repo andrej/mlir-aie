@@ -26,6 +26,7 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 
@@ -44,6 +45,10 @@ static cl::opt<std::string> fileName(cl::Positional, cl::desc("<input mlir>"),
                                      cl::Required);
 static cl::opt<bool> emitDot("emit-dot",
                              cl::desc("Emit a DOT route visualization"));
+static cl::opt<std::string> emitDotPerFlow(
+  "emit-dot-per-flow",
+  cl::desc("Emit one DOT file per flow into the given directory"),
+  cl::value_desc("directory"));
 static cl::opt<std::string> outputFilename("o", cl::desc("Output filename"),
                                            cl::value_desc("filename"),
                                            cl::init("-"));
@@ -350,7 +355,9 @@ static StringRef shortBundleName(AIE::WireBundle bundle) {
   }
 }
 
-static LogicalResult emitRouteDot(AIE::DeviceOp device, raw_ostream &output) {
+static LogicalResult
+emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
+             std::optional<unsigned> selectedFlow = std::nullopt) {
   FailureOr<std::vector<FlowRoute>> routes = collectRoutes(device);
   if (failed(routes))
     return failure();
@@ -362,6 +369,8 @@ static LogicalResult emitRouteDot(AIE::DeviceOp device, raw_ostream &output) {
   std::set<unsigned> highlights(highlightedFlows.begin(),
                                 highlightedFlows.end());
   std::set<unsigned> only(onlyFlows.begin(), onlyFlows.end());
+  if (selectedFlow)
+    only = {*selectedFlow};
   auto validateIDs = [&](const std::set<unsigned> &ids,
                          StringRef option) -> LogicalResult {
     for (unsigned id : ids) {
@@ -454,12 +463,24 @@ static LogicalResult emitRouteDot(AIE::DeviceOp device, raw_ostream &output) {
   }
   std::map<Operation *, unsigned> bufferIDs;
   if (showBuffers) {
+    std::set<Operation *> visibleBuffers;
+    for (const auto &[segment, segmentRoutes] : bufferSegments)
+      visibleBuffers.insert(segment.buffer);
+    std::map<std::pair<int, int>, unsigned> visibleTileCounts;
     for (const BufferInfo &buffer : *buffers) {
+      if (!only.empty() && !visibleBuffers.count(buffer.op))
+        continue;
       bufferIDs[buffer.op] = buffer.id;
       double x = buffer.col * 3.0;
-      double y = buffer.row * 3.0 + 0.46 - buffer.tileIndex * 0.34;
+      unsigned tileIndex = only.empty()
+                               ? buffer.tileIndex
+                               : visibleTileCounts[{buffer.col, buffer.row}]++;
+            double y = buffer.row * 3.0 + (only.empty() ? 0.46 : 0.5) -
+             tileIndex * (only.empty() ? 0.34 : 0.48);
       output << "  " << bufferNodeID(buffer.id)
-             << " [shape=box, fixedsize=true, width=1.35, height=0.34, "
+              << " [shape=box, fixedsize=true, width="
+              << (only.empty() ? "1.35" : "1.7") << ", height="
+              << (only.empty() ? "0.34" : "0.42") << ", "
                 "pos=\""
              << x << ',' << y << "!\", label=\""
              << bufferLabel(buffer.op, buffer.id)
@@ -568,6 +589,11 @@ int main(int argc, char *argv[]) {
 
   model.validate();
 
+  if (emitDot && !emitDotPerFlow.empty()) {
+    errs() << "--emit-dot and --emit-dot-per-flow are mutually exclusive\n";
+    return 3;
+  }
+
   if (emitDot) {
     std::error_code error;
     ToolOutputFile output(outputFilename, error, sys::fs::OF_Text);
@@ -578,6 +604,36 @@ int main(int argc, char *argv[]) {
     if (failed(emitRouteDot(deviceOp, output.os())))
       return 4;
     output.keep();
+    return 0;
+  }
+
+  if (!emitDotPerFlow.empty()) {
+    if (!onlyFlows.empty() || !highlightedFlows.empty() ||
+        outputFilename.getNumOccurrences()) {
+      errs() << "--emit-dot-per-flow cannot be combined with --only-flow, "
+                "--highlight-flow, or -o\n";
+      return 3;
+    }
+    FailureOr<std::vector<FlowRoute>> routes = collectRoutes(deviceOp);
+    if (failed(routes))
+      return 4;
+    std::error_code error = sys::fs::create_directories(emitDotPerFlow);
+    if (error) {
+      errs() << error.message() << '\n';
+      return 3;
+    }
+    for (const FlowRoute &route : *routes) {
+      SmallString<256> path(emitDotPerFlow);
+      sys::path::append(path, "flow-" + std::to_string(route.id) + ".dot");
+      ToolOutputFile output(path, error, sys::fs::OF_Text);
+      if (error) {
+        errs() << error.message() << '\n';
+        return 3;
+      }
+      if (failed(emitRouteDot(deviceOp, output.os(), route.id)))
+        return 4;
+      output.keep();
+    }
     return 0;
   }
 

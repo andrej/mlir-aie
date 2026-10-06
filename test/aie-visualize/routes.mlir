@@ -10,6 +10,11 @@
 // RUN: aie-visualize --emit-dot --highlight-flow=1 %s | FileCheck %s --check-prefix=HIGHLIGHT
 // RUN: aie-visualize --emit-dot --only-flow=1 %s | FileCheck %s --check-prefix=ONLY
 // RUN: not aie-visualize --emit-dot --only-flow=9 %s 2>&1 | FileCheck %s --check-prefix=BAD-ID
+// RUN: rm -rf %t && aie-visualize --emit-dot-per-flow=%t --show-buffers %s
+// RUN: FileCheck %s --check-prefix=FLOW0 < %t/flow-0.dot
+// RUN: FileCheck %s --check-prefix=FLOW2 < %t/flow-2.dot
+// RUN: ls %t/flow-*.dot | count 5
+// RUN: not aie-visualize --emit-dot --emit-dot-per-flow=%t %s 2>&1 | FileCheck %s --check-prefix=BAD-MODE
 
 // ALL: digraph aie_routes
 // ALL: tile_0_2 {{.*}} pos="0.000000e+00,6.000000e+00!"
@@ -34,6 +39,18 @@
 // ONLY-NOT: F2 pkt=5
 
 // BAD-ID: --only-flow references unknown flow 9; valid IDs are 0 through 4
+// BAD-MODE: --emit-dot and --emit-dot-per-flow are mutually exclusive
+
+// FLOW0: buffer_0 {{.*}} label="source\nmemref<16xi32>"
+// FLOW0: buffer_1 {{.*}} label="dest\nmemref<16xi32>"
+// FLOW0-NOT: label="other\nmemref<16xi32>"
+// FLOW0: F0 pkt=3/31
+// FLOW0-NOT: F1 pkt=4/31
+
+// FLOW2-NOT: label="source\nmemref<16xi32>"
+// FLOW2: buffer_2 {{.*}} label="other\nmemref<16xi32>"
+// FLOW2: F2 pkt=5/31
+// FLOW2-NOT: F3 pkt=6/31
 
 module {
   aie.device(npu1_1col) {
