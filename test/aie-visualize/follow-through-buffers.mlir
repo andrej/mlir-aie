@@ -17,6 +17,7 @@
 // RUN: FileCheck %s --check-prefix=JOIN < %t/flow-3.dot
 // RUN: rm -rf %t && aie-visualize --emit-dot-per-flow=%t --no-follow-buffers %s
 // RUN: ls %t/flow-*.dot | count 9
+// RUN: aie-visualize --emit-dot --topology-only %s | FileCheck %s --check-prefix=TOPOLOGY
 
 // ALL: p_0_2_1_0_m -> p_0_2_5_0 [color="#d73027"
 // ALL: p_0_2_5_0 -> p_0_3_3_0 {{.*}} label=<<FONT COLOR="#d73027">F0</FONT>>
@@ -27,8 +28,8 @@
 // ALL: p_0_4_0_1 -> p_0_4_3_0 [color="#4575b4"
 // ALL: p_0_4_3_0 -> p_0_3_5_0 {{.*}} label=<<FONT COLOR="#4575b4">F1</FONT>>
 
-// GROUP: p_0_3_1_0_s {{.*}} xlabel="S2MM0"
-// GROUP: p_0_3_1_0_m {{.*}} xlabel="MM2S0"
+// GROUP: p_0_3_1_0_s [shape=box, fixedsize=true,{{.*}} label="S2MM0"
+// GROUP: p_0_3_1_0_m [shape=box, fixedsize=true,{{.*}} label="MM2S0"
 // GROUP: label="bridge"
 // GROUP-NOT: memref
 // GROUP: p_0_2_1_0_m -> p_0_2_5_0
@@ -43,7 +44,7 @@
 // GROUP-NOT: MM2S
 // GROUP-NOT: p_0_4_0_1
 
-// HIDDEN: buffer_0 [shape=point, width=0, height=0, pos={{.*}} label=""];
+// HIDDEN: buffer_0 [shape=diamond, fixedsize=true, width=0.12, height=0.12, pos={{.*}} label=""{{.*}}];
 // HIDDEN-NOT: label="bridge"
 // HIDDEN: p_0_3_1_0_s -> buffer_0 {{.*}}style=dashed];
 // HIDDEN: buffer_0 -> p_0_3_1_0_m {{.*}}style=dashed];
@@ -61,6 +62,18 @@
 // JOIN: label="join"
 // JOIN: p_0_4_1_2_s -> buffer_2 {{.*}}style=dashed];
 // JOIN: p_0_4_1_3_s -> buffer_2 {{.*}}style=dashed];
+
+// TOPOLOGY: topology_group_2 [shape=point
+// TOPOLOGY-DAG: tile_0_2 -> topology_group_2 {{.*}}arrowhead=none
+// TOPOLOGY-DAG: topology_group_2 -> tile_0_3
+// TOPOLOGY-DAG: topology_group_2 -> tile_0_4
+// TOPOLOGY: topology_group_3 [shape=point
+// TOPOLOGY-DAG: tile_0_2 -> topology_group_3 {{.*}}arrowhead=none
+// TOPOLOGY-DAG: tile_0_3 -> topology_group_3 {{.*}}arrowhead=none
+// TOPOLOGY-DAG: topology_group_3 -> tile_0_4
+// TOPOLOGY-NOT: tile_0_2 -> tile_0_2
+// TOPOLOGY-NOT: tile_0_3 -> tile_0_3
+// TOPOLOGY-NOT: tile_0_4 -> tile_0_4
 
 module {
   aie.device(npu1_1col) {

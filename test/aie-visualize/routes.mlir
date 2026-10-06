@@ -41,7 +41,7 @@
 // ALL-NOT: S2MM
 
 // GUIDED: graph [layout=neato
-// GUIDED: p_0_2_1_0_m [shape=point, width=0.09, {{.*}} xlabel="MM2S0"];
+// GUIDED: p_0_2_1_0_m [shape=box, fixedsize=true,{{.*}} label="MM2S0"
 // GUIDED: p_0_2_5_0 [shape=point, width=0, height=0, {{.*}} label=""];
 // GUIDED: p_0_2_1_0_m -> p_0_2_5_0 {{.*}} arrowhead=none];
 // GUIDED: p_0_2_5_0 -> p_0_3_3_0 {{.*}} arrowhead=none];

@@ -429,8 +429,8 @@ static std::pair<double, double> portPosition(const PortNode &port) {
   case AIE::WireBundle::West:
     return {x - 0.92, y + channelOffset};
   case AIE::WireBundle::DMA:
-    return {x + (port.dmaDirection == AIE::DMAChannelDir::S2MM ? -0.22 : -0.54),
-            y + channelOffset};
+    return {x + (port.dmaDirection == AIE::DMAChannelDir::S2MM ? 0.72 : -0.72),
+            y + (port.channel - 2.5) * 0.26};
   case AIE::WireBundle::Core:
     return {x + 0.38, y + channelOffset};
   default:
@@ -594,9 +594,16 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
   if (!topologyOnly) {
     for (const PortNode &port : ports) {
       auto [x, y] = portPosition(port);
-      output << "  " << portNodeID(port) << " [shape=point, width=0.09, pos=\""
-             << x << ',' << y << "!\", xlabel=\"" << shortPortName(port)
-             << "\"];\n";
+      output << "  " << portNodeID(port);
+      if (port.bundle == AIE::WireBundle::DMA) {
+        output << " [shape=box, fixedsize=true, width=0.52, height=0.18, pos=\""
+               << x << ',' << y << "!\", label=\"" << shortPortName(port)
+               << "\", fontsize=7, style=filled, fillcolor=\"#ffffff\", "
+                  "color=\"#777777\"];\n";
+      } else {
+        output << " [shape=point, width=0.09, pos=\"" << x << ',' << y
+               << "!\", xlabel=\"" << shortPortName(port) << "\"];\n";
+      }
     }
     for (const PortNode &port : guidePorts) {
       if (ports.count(port))
@@ -639,8 +646,11 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
       bufferIDs[buffer.op] = buffer.id;
       double y = buffer.row * 3.0 + 0.46 - buffer.tileIndex * 0.34;
       output << "  " << bufferNodeID(buffer.id)
-             << " [shape=point, width=0, height=0, pos=\"" << buffer.col * 3.0
-             << ',' << y << "!\", label=\"\"];\n";
+             << " [shape=diamond, fixedsize=true, width=0.12, height=0.12, "
+                "pos=\""
+             << buffer.col * 3.0 << ',' << y
+             << "!\", label=\"\", style=filled, fillcolor=\"#ffffff\", "
+                "color=\"#777777\"];\n";
     }
   }
   auto writeColors = [&](ArrayRef<const FlowRoute *> edgeRoutes) {
@@ -676,6 +686,121 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
     }
     output << "</FONT>";
   };
+  if (topologyOnly) {
+    std::vector<std::vector<const FlowRoute *>> groupRoutes(groups.count);
+    for (const FlowRoute &route : *routes) {
+      unsigned groupID = groups.routeGroups[route.id];
+      if (isVisible(groupID))
+        groupRoutes[groupID].push_back(&route);
+    }
+    for (auto [groupID, routeGroup] : llvm::enumerate(groupRoutes)) {
+      if (routeGroup.empty())
+        continue;
+      std::set<PortNode> sourcePorts;
+      std::set<PortNode> destPorts;
+      std::map<Operation *, std::pair<bool, bool>> bufferDirections;
+      for (const FlowRoute *route : routeGroup) {
+        const PortNode &source = route->points.front();
+        const PortNode &dest = route->points.back();
+        sourcePorts.insert(source);
+        destPorts.insert(dest);
+        if (source.bundle == AIE::WireBundle::DMA) {
+          DMAChannelKey key{source.col, source.row, AIE::DMAChannelDir::MM2S,
+                            source.channel};
+          for (AIE::BufferOp buffer : channelBuffers[key])
+            bufferDirections[buffer].second = true;
+        }
+        if (dest.bundle == AIE::WireBundle::DMA) {
+          DMAChannelKey key{dest.col, dest.row, AIE::DMAChannelDir::S2MM,
+                            dest.channel};
+          for (AIE::BufferOp buffer : channelBuffers[key])
+            bufferDirections[buffer].first = true;
+        }
+      }
+      auto isBufferInternal = [&](const PortNode &port,
+                                  AIE::DMAChannelDir direction) {
+        if (port.bundle != AIE::WireBundle::DMA)
+          return false;
+        DMAChannelKey key{port.col, port.row, direction, port.channel};
+        for (AIE::BufferOp buffer : channelBuffers[key]) {
+          auto [hasIncoming, hasOutgoing] = bufferDirections[buffer];
+          if (hasIncoming && hasOutgoing)
+            return true;
+        }
+        return false;
+      };
+      std::set<std::pair<int, int>> sourceTiles;
+      std::set<std::pair<int, int>> destTiles;
+      for (const FlowRoute *route : routeGroup) {
+        const PortNode &source = route->points.front();
+        const PortNode &dest = route->points.back();
+        if (!destPorts.count(source) &&
+            !isBufferInternal(source, AIE::DMAChannelDir::MM2S))
+          sourceTiles.insert({source.col, source.row});
+        if (!sourcePorts.count(dest) &&
+            !isBufferInternal(dest, AIE::DMAChannelDir::S2MM))
+          destTiles.insert({dest.col, dest.row});
+      }
+      if (sourceTiles.empty())
+        for (const FlowRoute *route : routeGroup)
+          sourceTiles.insert(
+              {route->points.front().col, route->points.front().row});
+      if (destTiles.empty())
+        for (const FlowRoute *route : routeGroup)
+          destTiles.insert(
+              {route->points.back().col, route->points.back().row});
+
+      auto writeTopologyEdge = [&](StringRef source, StringRef dest, bool arrow,
+                                   bool label) {
+        output << "  " << source << " -> " << dest << " [color=\"";
+        bool anyHighlighted = writeColors(routeGroup);
+        output << "\", penwidth=\"" << (anyHighlighted ? "2.4" : "1.2") << '\"';
+        if (!arrow)
+          output << ", arrowhead=none";
+        if (showPacketIDs && label) {
+          output << ", label=<";
+          for (auto [index, route] : llvm::enumerate(routeGroup)) {
+            if (index)
+              output << "<BR/>";
+            writeLabel(*route);
+          }
+          output << '>';
+        }
+        output << "];\n";
+      };
+      if (sourceTiles.size() == 1 && destTiles.size() == 1) {
+        auto [sourceCol, sourceRow] = *sourceTiles.begin();
+        auto [destCol, destRow] = *destTiles.begin();
+        writeTopologyEdge(tileNodeID(sourceCol, sourceRow),
+                          tileNodeID(destCol, destRow), true, true);
+        continue;
+      }
+      std::string junction = "topology_group_" + std::to_string(groupID);
+      std::set<std::pair<int, int>> endpointTiles(sourceTiles);
+      endpointTiles.insert(destTiles.begin(), destTiles.end());
+      double junctionX = 0;
+      double junctionY = 0;
+      for (auto [col, row] : endpointTiles) {
+        junctionX += col * 3.0;
+        junctionY += row * 3.0;
+      }
+      junctionX /= endpointTiles.size();
+      junctionY /= endpointTiles.size();
+      double junctionOffset = (static_cast<int>(groupID % 5) - 2) * 0.12;
+      output << "  " << junction << " [shape=point, width=0.1, pos=\""
+             << junctionX + junctionOffset << ',' << junctionY - junctionOffset
+             << "!\", color=\"" << flowColor(groupID) << "\"];\n";
+      for (auto [col, row] : sourceTiles)
+        writeTopologyEdge(tileNodeID(col, row), junction, false, false);
+      bool firstDest = true;
+      for (auto [col, row] : destTiles) {
+        writeTopologyEdge(junction, tileNodeID(col, row), true, firstDest);
+        firstDest = false;
+      }
+    }
+    output << "}\n";
+    return success();
+  }
   for (const auto &[segment, segmentRoutes] : segments) {
     std::vector<const FlowRoute *> labels;
     for (const FlowRoute *route : segmentRoutes) {
