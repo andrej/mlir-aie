@@ -7,8 +7,15 @@
 
 // REQUIRES: aie-visualize
 // RUN: not aie-visualize --emit-dot %s 2>&1 | FileCheck %s
+// RUN: aie-visualize --emit-dot --topology-only %s | FileCheck %s --check-prefix=TOPOLOGY
 
 // CHECK: error: 'aie.flow' op requires vias; run aie-find-flows with emit-vias=true
+
+// TOPOLOGY: graph [outputorder=nodesfirst
+// TOPOLOGY: tile_0_2 [shape=box, label="(0,2)"
+// TOPOLOGY: tile_0_3 [shape=box, label="(0,3)"
+// TOPOLOGY: tile_0_2 -> tile_0_3
+// TOPOLOGY-NOT: p_0_2_1_0_m
 
 module {
   aie.device(npu1_1col) {

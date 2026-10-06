@@ -7,6 +7,9 @@
 
 // REQUIRES: aie-visualize
 // RUN: aie-visualize --emit-dot --show-buffers --show-packet-ids %s | FileCheck %s --check-prefix=ALL
+// RUN: aie-visualize --emit-dot %s | FileCheck %s --check-prefix=GUIDED
+// RUN: aie-visualize --emit-dot --show-vias %s | FileCheck %s --check-prefix=VIAS
+// RUN: aie-visualize --emit-dot --topology-only --show-buffers %s | FileCheck %s --check-prefix=TOPOLOGY
 // RUN: aie-visualize --emit-dot --show-buffers %s | FileCheck %s --check-prefix=NO-IDS
 // RUN: aie-visualize --emit-dot %s | FileCheck %s --check-prefix=NO-BUFFER-LINK
 // RUN: aie-visualize --emit-dot --highlight-flow=1 --show-packet-ids %s | FileCheck %s --check-prefix=HIGHLIGHT
@@ -35,6 +38,27 @@
 // ALL: p_0_3_1_0_s -> buffer_1 {{.*}}style=dashed];
 // ALL-NOT: MM2S
 // ALL-NOT: S2MM
+
+// GUIDED: graph [layout=neato
+// GUIDED: p_0_2_1_0_m [shape=point, width=0.09, {{.*}} xlabel="MM2S0"];
+// GUIDED: p_0_2_5_0 [shape=point, width=0, height=0, {{.*}} label=""];
+// GUIDED: p_0_2_1_0_m -> p_0_2_5_0 {{.*}} arrowhead=none];
+// GUIDED: p_0_2_5_0 -> p_0_3_3_0 {{.*}} arrowhead=none];
+// GUIDED: p_0_3_3_0 -> p_0_3_1_0_s
+// GUIDED-NOT: p_0_3_3_0 {{.*}} xlabel=
+
+// VIAS: p_0_2_5_0 [shape=point, width=0.09, {{.*}} xlabel="N0"];
+// VIAS: p_0_3_3_0 [shape=point, width=0.09, {{.*}} xlabel="S0"];
+// VIAS: p_0_2_1_0_m -> p_0_2_5_0
+// VIAS-NOT: arrowhead=none
+
+// TOPOLOGY: graph [outputorder=nodesfirst
+// TOPOLOGY-NOT: layout=neato
+// TOPOLOGY-NOT: pos=
+// TOPOLOGY-NOT: p_0_2_5_0
+// TOPOLOGY-NOT: buffer_0
+// TOPOLOGY: tile_0_2 -> tile_0_3
+// TOPOLOGY: tile_0_4 -> tile_0_3
 
 // NO-IDS: p_0_2_5_0 -> p_0_3_3_0
 // NO-IDS-NOT: pkt=

@@ -66,6 +66,13 @@ static cl::opt<bool> showBuffers(
 static cl::opt<bool> showPacketIDs(
     "show-packet-ids",
     cl::desc("Show flow IDs and packet IDs on routed connections"));
+static cl::opt<bool>
+    showVias("show-vias",
+             cl::desc("Show switchbox ports along routed connections"));
+static cl::opt<bool> topologyOnly(
+    "topology-only",
+    cl::desc(
+        "Show endpoint topology without route vias or fixed tile positions"));
 static cl::opt<bool> followThroughBuffers(
     "follow-through-buffers",
     cl::desc("Group flows connected through buffers or shared endpoints"));
@@ -204,7 +211,7 @@ static FailureOr<std::vector<FlowRoute>> collectRoutes(AIE::DeviceOp device) {
       if (failed(source) || failed(dest))
         return failure();
       route.points.push_back(*source);
-      if (failed(appendVias(flow, route.points)))
+      if (!topologyOnly && failed(appendVias(flow, route.points)))
         return failure();
       route.points.push_back(*dest);
       routes.push_back(std::move(route));
@@ -235,7 +242,7 @@ static FailureOr<std::vector<FlowRoute>> collectRoutes(AIE::DeviceOp device) {
     if (failed(source) || failed(dest))
       return failure();
     route.points.push_back(*source);
-    if (failed(appendVias(packetFlow, route.points)))
+    if (!topologyOnly && failed(appendVias(packetFlow, route.points)))
       return failure();
     route.points.push_back(*dest);
     routes.push_back(std::move(route));
@@ -385,6 +392,10 @@ static std::string bufferNodeID(unsigned id) {
   return "buffer_" + std::to_string(id);
 }
 
+static std::string tileNodeID(int col, int row) {
+  return "tile_" + std::to_string(col) + "_" + std::to_string(row);
+}
+
 static std::string escapeDotLabel(StringRef value) {
   std::string escaped;
   escaped.reserve(value.size());
@@ -491,15 +502,27 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
   };
 
   std::set<PortNode> ports;
+  std::set<PortNode> guidePorts;
+  std::set<std::pair<int, int>> topologyTiles;
   std::map<Segment, std::vector<const FlowRoute *>> segments;
   std::map<BufferSegment, std::vector<const FlowRoute *>> bufferSegments;
   std::map<unsigned, Segment> labeledSegments;
+  std::set<Segment> finalSegments;
   for (const FlowRoute &route : *routes) {
     unsigned groupID = groups.routeGroups[route.id];
     if (!isVisible(groupID))
       continue;
-    for (const PortNode &port : route.points)
-      ports.insert(port);
+    if (topologyOnly) {
+      topologyTiles.insert(
+          {route.points.front().col, route.points.front().row});
+      topologyTiles.insert({route.points.back().col, route.points.back().row});
+    } else if (showVias) {
+      ports.insert(route.points.begin(), route.points.end());
+    } else {
+      ports.insert(route.points.front());
+      ports.insert(route.points.back());
+      guidePorts.insert(route.points.begin() + 1, route.points.end() - 1);
+    }
     std::vector<Segment> routeSegments;
     std::vector<Segment> physicalLinks;
     for (auto pair : llvm::zip_equal(ArrayRef(route.points).drop_back(),
@@ -518,7 +541,9 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
                                             : ArrayRef(physicalLinks);
     if (!labelCandidates.empty())
       labeledSegments[route.id] = labelCandidates[labelCandidates.size() / 2];
-    if (!showBuffers && !followThroughBuffers)
+    if (!routeSegments.empty())
+      finalSegments.insert(routeSegments.back());
+    if (topologyOnly || (!showBuffers && !followThroughBuffers))
       continue;
     const PortNode &source = route.points.front();
     if (source.bundle == AIE::WireBundle::DMA) {
@@ -537,35 +562,50 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
   }
 
   const AIE::AIETargetModel &model = device.getTargetModel();
-  output << "digraph aie_routes {\n"
-         << "  graph [layout=neato, overlap=true, outputorder=nodesfirst, "
-            "bgcolor=\"white\", pad=\"0.45\"];\n"
+  output << "digraph aie_routes {\n  graph [";
+  if (!topologyOnly)
+    output << "layout=neato, overlap=true, ";
+  output << "outputorder=nodesfirst, bgcolor=\"white\", pad=\"0.45\"];\n"
          << "  node [fontname=\"Helvetica\"];\n"
          << "  edge [fontname=\"Helvetica\", fontsize=9, arrowsize=0.65];\n";
   for (int col = 0; col < model.columns(); ++col) {
     for (int row = 0; row < model.rows(); ++row) {
+      if (topologyOnly && !topologyTiles.count({col, row}))
+        continue;
       StringRef fill = model.isCoreTile(col, row)      ? "#eef7ee"
                        : model.isMemTile(col, row)     ? "#fff2df"
                        : model.isShimNOCTile(col, row) ? "#e8f1fb"
                                                        : "#f3edf8";
-      output << "  tile_" << col << '_' << row
-             << " [shape=box, fixedsize=true, width=2.15, height=2.15, pos=\""
-             << col * 3.0 << ',' << row * 3.0 << "!\", label=\"(" << col << ','
-             << row << ")\", style=filled, fillcolor=\"" << fill
+      output << "  " << tileNodeID(col, row) << " [shape=box";
+      if (!topologyOnly)
+        output << ", fixedsize=true, width=2.15, height=2.15, pos=\""
+               << col * 3.0 << ',' << row * 3.0 << "!\"";
+      output << ", label=\"(" << col << ',' << row
+             << ")\", style=filled, fillcolor=\"" << fill
              << "\", color=\"#b8b8b8\", fontcolor=\"#555555\"];\n";
     }
   }
-  for (const PortNode &port : ports) {
-    auto [x, y] = portPosition(port);
-    output << "  " << portNodeID(port) << " [shape=point, width=0.09, pos=\""
-           << x << ',' << y << "!\", xlabel=\"" << shortPortName(port)
-           << "\"];\n";
+  if (!topologyOnly) {
+    for (const PortNode &port : ports) {
+      auto [x, y] = portPosition(port);
+      output << "  " << portNodeID(port) << " [shape=point, width=0.09, pos=\""
+             << x << ',' << y << "!\", xlabel=\"" << shortPortName(port)
+             << "\"];\n";
+    }
+    for (const PortNode &port : guidePorts) {
+      if (ports.count(port))
+        continue;
+      auto [x, y] = portPosition(port);
+      output << "  " << portNodeID(port)
+             << " [shape=point, width=0, height=0, pos=\"" << x << ',' << y
+             << "!\", label=\"\"];\n";
+    }
   }
   std::map<Operation *, unsigned> bufferIDs;
   std::set<Operation *> visibleBuffers;
   for (const auto &[segment, segmentRoutes] : bufferSegments)
     visibleBuffers.insert(segment.buffer);
-  if (showBuffers) {
+  if (showBuffers && !topologyOnly) {
     std::map<std::pair<int, int>, unsigned> visibleTileCounts;
     for (const BufferInfo &buffer : *buffers) {
       if (!only.empty() && !visibleBuffers.count(buffer.op))
@@ -580,15 +620,13 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
       output << "  " << bufferNodeID(buffer.id)
              << " [shape=box, fixedsize=true, width="
              << (only.empty() ? "1.35" : "1.7")
-             << ", height=" << (only.empty() ? "0.34" : "0.42")
-             << ", "
-                "pos=\""
-             << x << ',' << y << "!\", label=\""
-             << bufferLabel(buffer.op, buffer.id)
+             << ", height=" << (only.empty() ? "0.34" : "0.42") << ", pos=\""
+             << x << ',' << y << "!\"";
+      output << ", label=\"" << bufferLabel(buffer.op, buffer.id)
              << "\", fontsize=8, style=filled, fillcolor=\"#ffffff\", "
                 "color=\"#666666\"];\n";
     }
-  } else {
+  } else if (!topologyOnly) {
     for (const BufferInfo &buffer : *buffers) {
       if (!visibleBuffers.count(buffer.op))
         continue;
@@ -640,8 +678,11 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
         continue;
       labels.push_back(route);
     }
-    output << "  " << portNodeID(segment.source) << " -> "
-           << portNodeID(segment.dest) << " [color=\"";
+    auto nodeID = [&](const PortNode &port) {
+      return topologyOnly ? tileNodeID(port.col, port.row) : portNodeID(port);
+    };
+    output << "  " << nodeID(segment.source) << " -> " << nodeID(segment.dest)
+           << " [color=\"";
     bool anyHighlighted = writeColors(segmentRoutes);
     output << "\", penwidth=\"" << (anyHighlighted ? "2.4" : "1.2") << '\"';
     if (showPacketIDs && !labels.empty()) {
@@ -653,14 +694,17 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
       }
       output << '>';
     }
+    if (!topologyOnly && !showVias && !finalSegments.count(segment))
+      output << ", arrowhead=none";
     output << "];\n";
   }
   for (const auto &[segment, segmentRoutes] : bufferSegments) {
     unsigned bufferID = bufferIDs.at(segment.buffer);
-    std::string source =
-        segment.intoBuffer ? portNodeID(segment.port) : bufferNodeID(bufferID);
-    std::string dest =
-        segment.intoBuffer ? bufferNodeID(bufferID) : portNodeID(segment.port);
+    std::string portID = topologyOnly
+                             ? tileNodeID(segment.port.col, segment.port.row)
+                             : portNodeID(segment.port);
+    std::string source = segment.intoBuffer ? portID : bufferNodeID(bufferID);
+    std::string dest = segment.intoBuffer ? bufferNodeID(bufferID) : portID;
     output << "  " << source << " -> " << dest << " [color=\"";
     bool anyHighlighted = writeColors(segmentRoutes);
     output << "\", penwidth=\"" << (anyHighlighted ? "2.4" : "1.2")
