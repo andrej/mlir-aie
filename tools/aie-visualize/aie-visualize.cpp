@@ -309,8 +309,7 @@ static FlowGroups collectFlowGroups(ArrayRef<FlowRoute> routes,
       parents[secondRoot] = firstRoot;
   };
 
-  std::map<Operation *, std::vector<unsigned>> incomingRoutes;
-  std::map<Operation *, std::vector<unsigned>> outgoingRoutes;
+  std::map<Operation *, std::vector<unsigned>> bufferRoutes;
   for (const FlowRoute &route : routes) {
     const PortNode &source = route.points.front();
     if (source.bundle == AIE::WireBundle::DMA) {
@@ -319,7 +318,7 @@ static FlowGroups collectFlowGroups(ArrayRef<FlowRoute> routes,
       auto channels = channelBuffers.find(key);
       if (channels != channelBuffers.end())
         for (AIE::BufferOp buffer : channels->second)
-          outgoingRoutes[buffer].push_back(route.id);
+          bufferRoutes[buffer].push_back(route.id);
     }
     const PortNode &dest = route.points.back();
     if (dest.bundle == AIE::WireBundle::DMA) {
@@ -328,16 +327,12 @@ static FlowGroups collectFlowGroups(ArrayRef<FlowRoute> routes,
       auto channels = channelBuffers.find(key);
       if (channels != channelBuffers.end())
         for (AIE::BufferOp buffer : channels->second)
-          incomingRoutes[buffer].push_back(route.id);
+          bufferRoutes[buffer].push_back(route.id);
     }
   }
-  for (const auto &[buffer, incoming] : incomingRoutes) {
-    auto outgoing = outgoingRoutes.find(buffer);
-    if (outgoing == outgoingRoutes.end())
-      continue;
-    for (unsigned incomingRoute : incoming)
-      for (unsigned outgoingRoute : outgoing->second)
-        merge(incomingRoute, outgoingRoute);
+  for (const auto &[buffer, routes] : bufferRoutes) {
+    for (unsigned route : ArrayRef(routes).drop_front())
+      merge(routes.front(), route);
   }
 
   std::map<unsigned, unsigned> groupIDs;
@@ -372,15 +367,9 @@ static std::string escapeDotLabel(StringRef value) {
 }
 
 static std::string bufferLabel(AIE::BufferOp buffer, unsigned id) {
-  std::string label;
   if (auto name = buffer->getAttrOfType<StringAttr>("sym_name"))
-    label = name.getValue().str();
-  else
-    label = "buffer " + std::to_string(id);
-  std::string type;
-  llvm::raw_string_ostream stream(type);
-  stream << buffer.getType();
-  return escapeDotLabel(label) + "\\n" + escapeDotLabel(type);
+    return escapeDotLabel(name.getValue());
+  return "buffer " + std::to_string(id);
 }
 
 static std::pair<double, double> portPosition(const PortNode &port) {
@@ -627,8 +616,7 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
     output << "  " << source << " -> " << dest << " [color=\"";
     bool anyHighlighted = writeColors(segmentRoutes);
     output << "\", penwidth=\"" << (anyHighlighted ? "2.4" : "1.2")
-           << "\", style=dashed, label=\""
-           << (segment.intoBuffer ? "S2MM" : "MM2S") << "\"];\n";
+           << "\", style=dashed];\n";
   }
   output << "}\n";
   return success();

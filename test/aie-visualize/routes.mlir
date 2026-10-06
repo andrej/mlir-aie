@@ -19,8 +19,9 @@
 // ALL: digraph aie_routes
 // ALL: tile_0_2 {{.*}} pos="0.000000e+00,6.000000e+00!"
 // ALL: tile_0_3 {{.*}} pos="0.000000e+00,9.000000e+00!"
-// ALL: buffer_0 {{.*}} label="source\nmemref<16xi32>"
-// ALL: buffer_1 {{.*}} label="dest\nmemref<16xi32>"
+// ALL: buffer_0 {{.*}} label="source"
+// ALL: buffer_1 {{.*}} label="dest"
+// ALL-NOT: memref
 // ALL: p_0_2_5_0 -> p_0_3_3_0 [color="#d73027:#4575b4"
 // ALL-SAME: label="F0 pkt=3/31\nF1 pkt=4/31"
 // ALL: p_0_3_0_0 -> p_0_3_0_1 {{.*}} label="F3 pkt=6/31"
@@ -28,8 +29,10 @@
 // ALL-DAG: p_0_4_3_2 -> p_0_3_5_2 {{.*}} label="F4"
 // ALL-DAG: p_0_3_5_2 -> p_0_3_0_0
 // ALL-NOT: p_0_2_0_0
-// ALL: buffer_0 -> p_0_2_1_0 {{.*}} label="MM2S"
-// ALL: p_0_3_1_0 -> buffer_1 {{.*}} label="S2MM"
+// ALL: buffer_0 -> p_0_2_1_0 {{.*}}style=dashed];
+// ALL: p_0_3_1_0 -> buffer_1 {{.*}}style=dashed];
+// ALL-NOT: MM2S
+// ALL-NOT: S2MM
 
 // HIGHLIGHT: p_0_2_1_0 -> p_0_2_5_0 [color="#c2c2c2:#4575b4", penwidth="2.4"
 // HIGHLIGHT: p_0_4_1_0 -> p_0_4_3_1 [color="#c2c2c2", penwidth="1.2"
@@ -41,14 +44,14 @@
 // BAD-ID: --only-flow references unknown flow 9; valid IDs are 0 through 4
 // BAD-MODE: --emit-dot and --emit-dot-per-flow are mutually exclusive
 
-// FLOW0: buffer_0 {{.*}} label="source\nmemref<16xi32>"
-// FLOW0: buffer_1 {{.*}} label="dest\nmemref<16xi32>"
-// FLOW0-NOT: label="other\nmemref<16xi32>"
+// FLOW0: buffer_0 {{.*}} label="source"
+// FLOW0: buffer_1 {{.*}} label="dest"
+// FLOW0-NOT: label="other"
 // FLOW0: F0 pkt=3/31
 // FLOW0-NOT: F1 pkt=4/31
 
-// FLOW2-NOT: label="source\nmemref<16xi32>"
-// FLOW2: buffer_2 {{.*}} label="other\nmemref<16xi32>"
+// FLOW2-NOT: label="source"
+// FLOW2: buffer_2 {{.*}} label="other"
 // FLOW2: F2 pkt=5/31
 // FLOW2-NOT: F3 pkt=6/31
 
