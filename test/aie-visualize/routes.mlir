@@ -30,8 +30,8 @@
 // ALL-NOT: memref
 // ALL: p_0_2_5_0 -> p_0_3_3_0 [color="#d73027:#4575b4"
 // ALL-SAME: label=<<FONT COLOR="#d73027">F0 pkt=3/31</FONT><BR/><FONT COLOR="#4575b4">F1 pkt=4/31</FONT>>
-// ALL: p_0_3_0_0 -> p_0_3_0_1 {{.*}} label=<<FONT COLOR="#984ea3">F3 pkt=6/31</FONT>>
-// ALL-DAG: p_0_4_0_1 -> p_0_4_3_2
+// ALL: p_0_3_1_0_m -> p_0_3_1_1_s {{.*}} label=<<FONT COLOR="#984ea3">F3 pkt=6/31</FONT>>
+// ALL-DAG: p_0_4_0_0 -> p_0_4_3_2
 // ALL-DAG: p_0_4_3_2 -> p_0_3_5_2 {{.*}} label=<<FONT COLOR="#ff7f00">F4</FONT>>
 // ALL-DAG: p_0_3_5_2 -> p_0_3_0_0
 // ALL-NOT: p_0_2_0_0
@@ -141,17 +141,17 @@ module {
     } via (%t04 : DMA : 0 -> South : 1,
            %t03 : North : 1 -> DMA : 1)
     aie.packet_flow(6, mask = 31) {
-      aie.packet_source<%t03, Core : 0>
-      aie.packet_dest<%t03, Core : 1>
-    } via (%t03 : Core : 0 -> Core : 1)
+      aie.packet_source<%t03, DMA : 0>
+      aie.packet_dest<%t03, DMA : 1>
+    } via (%t03 : DMA : 0 -> DMA : 1)
 
     // This materialized connection differs from the pinned flow below. The
     // visualizer must use the flow's vias as its only route description.
     aie.switchbox(%t02) {
       aie.connect<Core : 0, DMA : 0>
     }
-    aie.flow(%t04, Core : 1, %t03, Core : 0)
-      via (%t04 : Core : 1 -> South : 2,
+    aie.flow(%t04, Core : 0, %t03, Core : 0)
+      via (%t04 : Core : 0 -> South : 2,
            %t03 : North : 2 -> Core : 0)
   }
 }

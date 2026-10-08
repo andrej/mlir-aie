@@ -19,7 +19,7 @@
 // FANOUT: p_0_3_3_5 -> p_0_3_5_1
 // FANOUT-NOT: p_0_4_0_1
 
-// OTHER: p_0_4_0_1 -> p_0_4_3_0
+// OTHER: p_0_4_0_0 -> p_0_4_3_0
 // OTHER: p_0_4_3_0 -> p_0_3_5_0 {{.*}} label=<<FONT COLOR="#4575b4">F1</FONT>>
 
 module {
@@ -33,11 +33,11 @@ module {
     aie.flow(%t03, South : 5, %t04, DMA : 0)
       via (%t03 : South : 5 -> North : 1,
            %t04 : South : 1 -> DMA : 0)
-    aie.flow(%t03, South : 5, %t03, Core : 2)
+    aie.flow(%t03, South : 5, %t03, Core : 0)
       via (%t03 : South : 5 -> West : 2,
-           %t03 : West : 2 -> Core : 2)
-    aie.flow(%t04, Core : 1, %t03, Core : 1)
-      via (%t04 : Core : 1 -> South : 0,
-           %t03 : North : 0 -> Core : 1)
+           %t03 : West : 2 -> Core : 0)
+    aie.flow(%t04, Core : 0, %t03, DMA : 1)
+      via (%t04 : Core : 0 -> South : 0,
+           %t03 : North : 0 -> DMA : 1)
   }
 }
