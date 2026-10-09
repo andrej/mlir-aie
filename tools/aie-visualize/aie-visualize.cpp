@@ -63,6 +63,9 @@ static cl::list<unsigned>
 static cl::opt<bool> showBuffers(
     "show-buffers",
     cl::desc("Show tile buffers and their DMA channel connections"));
+static cl::opt<bool>
+    showCalls("show-calls",
+              cl::desc("Show external kernel calls and direct buffer uses"));
 static cl::opt<bool> showPacketIDs(
     "show-packet-ids",
     cl::desc("Show flow IDs and packet IDs on routed connections"));
@@ -78,6 +81,13 @@ static cl::opt<bool> noFollowBuffers(
 static cl::opt<std::string>
     deviceName("device", cl::desc("Select an aie.device by symbol name"),
                cl::value_desc("symbol"));
+static cl::opt<std::string>
+    runtimeSequenceName("runtime-sequence",
+                        cl::desc("Select an aie.runtime_sequence by symbol"),
+                        cl::value_desc("symbol"));
+static cl::opt<bool>
+    skipRuntime("skip-runtime",
+                cl::desc("Do not annotate DMA endpoints from runtime setup"));
 
 const std::string bold("\033[0;1m");
 const std::string dim("\033[0;2m");
@@ -138,6 +148,16 @@ struct BufferInfo {
 
 using DMAChannelKey = std::tuple<int, int, AIE::DMAChannelDir, int>;
 using DMAChannelBuffers = std::map<DMAChannelKey, std::vector<AIE::BufferOp>>;
+using DMAEndpointLabels = std::map<DMAChannelKey, std::set<std::string>>;
+
+struct CallInfo {
+  unsigned id;
+  int col;
+  int row;
+  unsigned tileIndex;
+  std::string callee;
+  std::vector<AIE::BufferOp> buffers;
+};
 
 struct FlowGroups {
   std::vector<unsigned> routeGroups;
@@ -303,6 +323,112 @@ static DMAChannelBuffers collectDMAChannelBuffers(AIE::DeviceOp device) {
   return channels;
 }
 
+static std::vector<DMAChannelKey> getAllocationChannel(AIE::DeviceOp device,
+                                                       SymbolRefAttr symbol) {
+  Operation *definition =
+      SymbolTable::lookupSymbolIn(device, symbol.getRootReference());
+  if (auto allocation =
+          dyn_cast_or_null<AIE::ShimDMAAllocationOp>(definition)) {
+    AIE::TileOp tile = allocation.getTileOp();
+    if (!tile)
+      return {};
+    return {{tile.colIndex(), tile.rowIndex(), allocation.getChannelDir(),
+             allocation.getChannelIndex()}};
+  }
+  auto endpoint = dyn_cast_or_null<AIE::RouteEndpointOp>(definition);
+  if (!endpoint || endpoint.getBundle() != AIE::WireBundle::DMA ||
+      !endpoint.getChannelIndex())
+    return {};
+  auto tile =
+      dyn_cast_or_null<AIE::TileLike>(endpoint.getTile().getDefiningOp());
+  if (!tile || !tile.tryGetCol() || !tile.tryGetRow())
+    return {};
+  return {{*tile.tryGetCol(), *tile.tryGetRow(), AIE::DMAChannelDir::MM2S,
+           *endpoint.getChannelIndex()},
+          {*tile.tryGetCol(), *tile.tryGetRow(), AIE::DMAChannelDir::S2MM,
+           *endpoint.getChannelIndex()}};
+}
+
+static std::optional<std::string>
+getRuntimeArgumentName(AIE::RuntimeSequenceOp sequence, mlir::Value value) {
+  auto argument = llvm::dyn_cast<mlir::BlockArgument>(value);
+  if (!argument || argument.getOwner()->getParentOp() != sequence)
+    return std::nullopt;
+  unsigned index = argument.getArgNumber();
+  if (auto names = sequence->getAttrOfType<ArrayAttr>("runtime_arg_names")) {
+    if (index < names.size())
+      return cast<StringAttr>(names[index]).getValue().str();
+  }
+  return "arg" + std::to_string(index);
+}
+
+static void addRuntimeLabel(DMAEndpointLabels &labels,
+                            const DMAChannelKey &channel,
+                            AIE::RuntimeSequenceOp sequence,
+                            mlir::Value value) {
+  if (std::optional<std::string> name = getRuntimeArgumentName(sequence, value))
+    labels[channel].insert(*name);
+}
+
+static DMAEndpointLabels
+collectDMAEndpointLabels(AIE::DeviceOp device,
+                         AIE::RuntimeSequenceOp sequence) {
+  DMAEndpointLabels labels;
+  if (!sequence)
+    return labels;
+  sequence.walk([&](AIEX::DMAConfigureTaskOp task) {
+    AIE::TileOp tile = task.getTileOp();
+    if (!tile)
+      return;
+    DMAChannelKey channel{tile.colIndex(), tile.rowIndex(), task.getDirection(),
+                          static_cast<int>(task.getChannel())};
+    task.getBody().walk([&](AIE::DMABDOp descriptor) {
+      addRuntimeLabel(labels, channel, sequence, descriptor.getBuffer());
+    });
+  });
+  sequence.walk([&](AIEX::DMAConfigureTaskForOp task) {
+    std::vector<DMAChannelKey> channels =
+        getAllocationChannel(device, task.getAlloc());
+    task.getBody().walk([&](AIE::DMABDOp descriptor) {
+      for (const DMAChannelKey &channel : channels)
+        addRuntimeLabel(labels, channel, sequence, descriptor.getBuffer());
+    });
+  });
+  sequence.walk([&](AIEX::NpuDmaMemcpyNdOp memcpy) {
+    for (const DMAChannelKey &channel :
+         getAllocationChannel(device, memcpy.getMetadata()))
+      addRuntimeLabel(labels, channel, sequence, memcpy.getMemref());
+  });
+  return labels;
+}
+
+static std::vector<CallInfo> collectCalls(AIE::DeviceOp device) {
+  std::vector<CallInfo> calls;
+  std::map<std::pair<int, int>, unsigned> tileCounts;
+  for (AIE::CoreOp core : device.getOps<AIE::CoreOp>()) {
+    AIE::TileOp tile = core.getTileOp();
+    if (!tile)
+      continue;
+    core.walk([&](func::CallOp call) {
+      auto callee = SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
+          call, call.getCalleeAttr());
+      if (!callee || !callee.isExternal())
+        return;
+      std::vector<AIE::BufferOp> directBuffers;
+      for (mlir::Value operand : call.getOperands()) {
+        auto buffer = operand.getDefiningOp<AIE::BufferOp>();
+        if (buffer && !llvm::is_contained(directBuffers, buffer))
+          directBuffers.push_back(buffer);
+      }
+      std::pair<int, int> coordinate{tile.colIndex(), tile.rowIndex()};
+      calls.push_back({static_cast<unsigned>(calls.size()), coordinate.first,
+                       coordinate.second, tileCounts[coordinate]++,
+                       call.getCallee().str(), std::move(directBuffers)});
+    });
+  }
+  return calls;
+}
+
 static FlowGroups collectFlowGroups(ArrayRef<FlowRoute> routes,
                                     const DMAChannelBuffers &channelBuffers) {
   FlowGroups groups;
@@ -394,6 +520,10 @@ static std::string bufferNodeID(unsigned id) {
   return "buffer_" + std::to_string(id);
 }
 
+static std::string callNodeID(unsigned id) {
+  return "call_" + std::to_string(id);
+}
+
 static std::string tileNodeID(int col, int row) {
   return "tile_" + std::to_string(col) + "_" + std::to_string(row);
 }
@@ -468,6 +598,7 @@ static std::string shortPortName(const PortNode &port) {
 
 static LogicalResult
 emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
+             AIE::RuntimeSequenceOp runtimeSequence,
              std::optional<unsigned> selectedFlow = std::nullopt) {
   FailureOr<std::vector<FlowRoute>> routes = collectRoutes(device);
   if (failed(routes))
@@ -476,6 +607,10 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
   if (failed(buffers))
     return failure();
   DMAChannelBuffers channelBuffers = collectDMAChannelBuffers(device);
+  DMAEndpointLabels endpointLabels =
+      collectDMAEndpointLabels(device, runtimeSequence);
+  std::vector<CallInfo> calls =
+      showCalls ? collectCalls(device) : std::vector<CallInfo>{};
   FlowGroups groups = collectFlowGroups(*routes, channelBuffers);
 
   std::set<unsigned> highlights(highlightedFlows.begin(),
@@ -597,9 +732,17 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
       auto [x, y] = portPosition(port);
       output << "  " << portNodeID(port);
       if (port.bundle == AIE::WireBundle::DMA) {
-        output << " [shape=box, fixedsize=true, width=0.52, height=0.18, pos=\""
-               << x << ',' << y << "!\", label=\"" << shortPortName(port)
-               << "\", fontsize=7, style=filled, fillcolor=\"#ffffff\", "
+        AIE::DMAChannelDir direction =
+            port.dmaDirection.value_or(AIE::DMAChannelDir::MM2S);
+        DMAChannelKey key{port.col, port.row, direction, port.channel};
+        const std::set<std::string> &labels = endpointLabels[key];
+        double height = 0.18 + labels.size() * 0.12;
+        output << " [shape=box, fixedsize=true, width=0.82, height=" << height
+               << ", pos=\"" << x << ',' << y << "!\", label=\""
+               << shortPortName(port);
+        for (const std::string &label : labels)
+          output << "\\n%" << escapeDotLabel(label);
+        output << "\", fontsize=7, style=filled, fillcolor=\"#ffffff\", "
                   "color=\"#777777\"];\n";
       } else {
         output << " [shape=point, width=0.09, pos=\"" << x << ',' << y
@@ -619,6 +762,9 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
   std::set<Operation *> visibleBuffers;
   for (const auto &[segment, segmentRoutes] : bufferSegments)
     visibleBuffers.insert(segment.buffer);
+  for (const CallInfo &call : calls)
+    for (AIE::BufferOp buffer : call.buffers)
+      visibleBuffers.insert(buffer);
   if (showBuffers && !topologyOnly) {
     std::map<std::pair<int, int>, unsigned> visibleTileCounts;
     for (const BufferInfo &buffer : *buffers) {
@@ -652,6 +798,24 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
              << buffer.col * 3.0 << ',' << y
              << "!\", label=\"\", style=filled, fillcolor=\"#ffffff\", "
                 "color=\"#777777\"];\n";
+    }
+  }
+  if (!topologyOnly) {
+    for (const CallInfo &call : calls) {
+      double x = call.col * 3.0 + 0.35;
+      double y = call.row * 3.0 - 0.48 - call.tileIndex * 0.38;
+      output << "  " << callNodeID(call.id)
+             << " [shape=box, fixedsize=true, width=1.45, height=0.3, pos=\""
+             << x << ',' << y << "!\", label=\"" << escapeDotLabel(call.callee)
+             << "\", fontsize=8, style=filled, fillcolor=\"#f7f7f7\", "
+                "color=\"#555555\"];\n";
+      for (AIE::BufferOp buffer : call.buffers) {
+        auto bufferID = bufferIDs.find(buffer);
+        if (bufferID != bufferIDs.end())
+          output << "  " << bufferNodeID(bufferID->second) << " -> "
+                 << callNodeID(call.id)
+                 << " [color=\"#666666\", arrowsize=0.55];\n";
+      }
     }
   }
   auto writeColors = [&](ArrayRef<const FlowRoute *> edgeRoutes) {
@@ -907,6 +1071,31 @@ int main(int argc, char *argv[]) {
     return 3;
   }
 
+  if (skipRuntime && !runtimeSequenceName.empty()) {
+    errs() << "--skip-runtime and --runtime-sequence are mutually exclusive\n";
+    return 3;
+  }
+  AIE::RuntimeSequenceOp runtimeSequence;
+  if (!skipRuntime) {
+    SmallVector<AIE::RuntimeSequenceOp> sequences(
+        deviceOp.getOps<AIE::RuntimeSequenceOp>());
+    if (!runtimeSequenceName.empty()) {
+      for (AIE::RuntimeSequenceOp candidate : sequences) {
+        if (candidate.getSymName() == runtimeSequenceName) {
+          runtimeSequence = candidate;
+          break;
+        }
+      }
+      if (!runtimeSequence) {
+        errs() << "no aie.runtime_sequence named '" << runtimeSequenceName
+               << "' in selected device\n";
+        return 3;
+      }
+    } else if (sequences.size() == 1) {
+      runtimeSequence = sequences.front();
+    }
+  }
+
   if (emitDot) {
     std::error_code error;
     ToolOutputFile output(outputFilename, error, sys::fs::OF_Text);
@@ -914,7 +1103,7 @@ int main(int argc, char *argv[]) {
       errs() << error.message() << '\n';
       return 3;
     }
-    if (failed(emitRouteDot(deviceOp, output.os())))
+    if (failed(emitRouteDot(deviceOp, output.os(), runtimeSequence)))
       return 4;
     output.keep();
     return 0;
@@ -945,7 +1134,7 @@ int main(int argc, char *argv[]) {
         errs() << error.message() << '\n';
         return 3;
       }
-      if (failed(emitRouteDot(deviceOp, output.os(), groupID)))
+      if (failed(emitRouteDot(deviceOp, output.os(), runtimeSequence, groupID)))
         return 4;
       output.keep();
     }

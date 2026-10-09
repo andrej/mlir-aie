@@ -5289,6 +5289,7 @@ ParseResult RuntimeSequenceOp::parse(OpAsmParser &parser,
       nameAttr, mlir::SymbolTable::getSymbolAttrName(), result.attributes);
 
   SmallVector<OpAsmParser::Argument> entryArgs;
+  SmallVector<Attribute> entryArgNames;
 
   // Entry arguments,  e.g. (%addr: memref<1xi32>)
   ParseResult argParseResult = parser.parseCommaSeparatedList(
@@ -5297,6 +5298,8 @@ ParseResult RuntimeSequenceOp::parse(OpAsmParser &parser,
         if (parser.parseArgument(argument, true, true)) {
           return failure();
         }
+        entryArgNames.push_back(parser.getBuilder().getStringAttr(
+            argument.ssaName.name.drop_front()));
         entryArgs.push_back(argument);
         return success();
       });
@@ -5315,6 +5318,9 @@ ParseResult RuntimeSequenceOp::parse(OpAsmParser &parser,
   if (bodyParseResult) {
     return bodyParseResult;
   }
+
+  result.addAttribute("runtime_arg_names",
+                      parser.getBuilder().getArrayAttr(entryArgNames));
 
   return success();
 }
@@ -5342,7 +5348,8 @@ void RuntimeSequenceOp::print(OpAsmPrinter &printer) {
 
   printer.printOptionalAttrDictWithKeyword(
       (*this)->getAttrs(),
-      /*elidedAttrs=*/{mlir::SymbolTable::getSymbolAttrName()});
+      /*elidedAttrs=*/{mlir::SymbolTable::getSymbolAttrName(),
+                       "runtime_arg_names"});
 
   printer << ' ';
   printer.printRegion(body, false, true);
