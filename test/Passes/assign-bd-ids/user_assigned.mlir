@@ -130,7 +130,9 @@ module {
 // CHECK-LABEL: aie.device(xcve2302) {
 // CHECK:  %[[VAL_0:.*]] = aie.tile(2, 1)
 // CHECK:  aie.buffer @in(%[[VAL_0]]) {address = 8192 : i32} : memref<16xi32>
+// CHECK:  %[[VAL_1:.*]] = aie.get_buffer @in : memref<16xi32>
 // CHECK:  aie.buffer @out(%[[VAL_0]]) {address = 1824 : i32} : memref<16xi32>
+// CHECK:  %[[VAL_2:.*]] = aie.get_buffer @out : memref<16xi32>
 // CHECK:  aie.dma_bd(%[[VAL_1]] : memref<16xi32> offset = {{.*}} len = {{.*}}) {bd_id = 0 : i32, next_bd_id = 0 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_1]] : memref<16xi32> offset = {{.*}} len = {{.*}}) {bd_id = 24 : i32, next_bd_id = 24 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_2]] : memref<16xi32> offset = {{.*}} len = {{.*}}) {bd_id = 25 : i32, next_bd_id = 25 : i32}

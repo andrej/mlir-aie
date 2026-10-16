@@ -78,6 +78,8 @@
 // CHECK:           ^bb8:  // pred: ^bb5
 // CHECK:             aie.end
 // CHECK:           }
+// CHECK:           %[[VAL_2:.*]] = aie.get_buffer @objfifo_cons_buff_0 : memref<16xi32>
+// CHECK:           %[[VAL_3:.*]] = aie.get_buffer @objfifo_cons_buff_1 : memref<16xi32>
 // CHECK:           %[[VAL_27:.*]] = aie.mem(%[[VAL_1]]) {
 // CHECK:             %[[VAL_28:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2

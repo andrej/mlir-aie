@@ -173,7 +173,7 @@ module @compute_tiles_exhausted {
     %c2 = aie.logical_tile<CoreTile>(?, ?)
     %c3 = aie.logical_tile<CoreTile>(?, ?)
     %c4 = aie.logical_tile<CoreTile>(?, ?)
-    // CHECK: error: 'aie.buffer' op in Column 1 and Row 3 is accessed from an unreachable tile in Column 0 and Row 5
+    // CHECK: error: no available compute tiles for placement
     %c5 = aie.logical_tile<CoreTile>(?, ?)
 
     aie.core(%c1) { aie.end }
@@ -371,7 +371,7 @@ module @buffer_adjacency_star_oversubscribed {
     %c1 = aie.logical_tile<CoreTile>(?, ?)
     %c2 = aie.logical_tile<CoreTile>(?, ?)
     %c3 = aie.logical_tile<CoreTile>(?, ?)
-    // CHECK: error: no available compute tiles for placement
+    // CHECK: error: 'aie.buffer' op in Column 1 and Row 3 is accessed from an unreachable tile in Column 0 and Row 5
     %c4 = aie.logical_tile<CoreTile>(?, ?)
     aie.core(%c1) {
       %i = arith.constant 0 : index

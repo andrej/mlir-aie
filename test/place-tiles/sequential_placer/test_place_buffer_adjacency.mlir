@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --split-input-file --aie-place-tiles %s | FileCheck %s
+// RUN: aie-opt --split-input-file --verify-diagnostics --aie-place-tiles %s | FileCheck %s
 
 // CHECK-LABEL: @adjacency_both_pinned_compatible
 module @adjacency_both_pinned_compatible {
@@ -54,11 +54,13 @@ module @adjacency_self_reference_no_constraint {
 module @adjacency_through_view_op {
   aie.device(npu1) {
     %owner = aie.logical_tile<CoreTile>(2, 3)
+    // expected-error@+1 {{'aie.buffer' op in Column 2 and Row 3 is accessed from an unreachable tile in Column 0 and Row 2}}
     aie.buffer @buf(%owner) : memref<16xi32>
     %buf = aie.get_buffer @buf : memref<16xi32>
     aie.core(%owner) { aie.end }
     %consumer = aie.logical_tile<CoreTile>(?, ?)
     aie.core(%consumer) {
+      // expected-note@+1 {{user}}
       %sub = memref.subview %buf[0][8][1] : memref<16xi32> to memref<8xi32, strided<[1]>>
       %i = arith.constant 0 : index
       %v = memref.load %sub[%i] : memref<8xi32, strided<[1]>>
@@ -75,12 +77,14 @@ module @adjacency_through_view_op {
 module @adjacency_npu2_target_model {
   aie.device(npu2) {
     %owner = aie.logical_tile<CoreTile>(2, 3)
+    // expected-error@+1 {{'aie.buffer' op in Column 2 and Row 3 is accessed from an unreachable tile in Column 0 and Row 2}}
     aie.buffer @buf(%owner) : memref<16xi32>
     %buf = aie.get_buffer @buf : memref<16xi32>
     aie.core(%owner) { aie.end }
     %consumer = aie.logical_tile<CoreTile>(?, ?)
     aie.core(%consumer) {
       %i = arith.constant 0 : index
+      // expected-note@+1 {{user}}
       %v = memref.load %buf[%i] : memref<16xi32>
       aie.end
     }

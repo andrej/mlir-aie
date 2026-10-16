@@ -22,17 +22,15 @@
 // CHECK-DAG:           aie.lock @ext_of_lock_0(%[[VAL_1]]) {init = 0 : i32}
 // CHECK-DAG:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_0]], DMA : 0)
 // CHECK-DAG:           aie.external_buffer @ext_buffer_in : memref<64xi32>
-// CHECK-DAG:           %[[VAL_9:.*]] = aie.get_external_buffer @ext_buffer_in : memref<64xi32>
-// CHECK-DAG:           %[[VAL_2:.*]] = aie.get_buffer @ext_of_cons_buff_0 : memref<16xi32>
-// CHECK-DAG:           %[[VAL_3:.*]] = aie.get_buffer @ext_of_cons_buff_1 : memref<16xi32>
-// CHECK-DAG:           %[[VAL_4:.*]] = aie.get_buffer @ext_of_cons_buff_2 : memref<16xi32>
-// CHECK:           func.call @some_work(%[[VAL_2]], %[[VAL_3]]) : (memref<16xi32>, memref<16xi32>) -> ()
 // CHECK:             aie.use_lock(@ext_of_cons_lock_0, Acquire, %{{.*}})
 // CHECK:             aie.use_lock(@ext_of_cons_lock_1, Acquire, %{{.*}})
-// CHECK:             func.call @some_work(%[[VAL_2]], %[[VAL_3]]) : (memref<16xi32>, memref<16xi32>) -> ()
+// CHECK:             %[[CORE_0:.*]] = aie.get_buffer @ext_of_cons_buff_0 : memref<16xi32>
+// CHECK:             %[[CORE_1:.*]] = aie.get_buffer @ext_of_cons_buff_1 : memref<16xi32>
+// CHECK:             func.call @some_work(%[[CORE_0]], %[[CORE_1]]) : (memref<16xi32>, memref<16xi32>) -> ()
 // CHECK:             aie.use_lock(@ext_of_cons_lock_0, Release, %{{.*}})
 // CHECK:             aie.end
 // CHECK-DAG:           aie.shim_dma_allocation @ext_of_shim_alloc(%[[VAL_1]], MM2S, 0)
+// CHECK:           %[[VAL_9:.*]] = aie.get_external_buffer @ext_buffer_in : memref<64xi32>
 // CHECK:           %[[VAL_16:.*]] = aie.shim_dma(%[[VAL_1]]) {
 // CHECK:             %[[VAL_17:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb1
@@ -43,6 +41,9 @@
 // CHECK:           ^bb2:  // pred: ^bb0
 // CHECK:             aie.end
 // CHECK:           }
+// CHECK:           %[[VAL_2:.*]] = aie.get_buffer @ext_of_cons_buff_0 : memref<16xi32>
+// CHECK:           %[[VAL_3:.*]] = aie.get_buffer @ext_of_cons_buff_1 : memref<16xi32>
+// CHECK:           %[[VAL_4:.*]] = aie.get_buffer @ext_of_cons_buff_2 : memref<16xi32>
 // CHECK:           %[[VAL_18:.*]] = aie.mem(%[[VAL_0]]) {
 // CHECK:             %[[VAL_19:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb3
