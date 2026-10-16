@@ -10,7 +10,8 @@
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %b = aie.buffer(%t) : memref<8xi32>
+    aie.buffer @b(%t) : memref<8xi32>
+    %b = aie.get_buffer @b : memref<8xi32>
     aie.mem(%t) {
       // expected-error @+1 {{repeat_count 256 is out of range [0, 255]}}
       aie.dma_start(S2MM, 0, ^bd0, ^end, repeat_count = 256)
@@ -28,7 +29,8 @@ module {
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %b = aie.buffer(%t) : memref<8xi32>
+    aie.buffer @b(%t) : memref<8xi32>
+    %b = aie.get_buffer @b : memref<8xi32>
     aie.mem(%t) {
       // maximum repeat_count => ok
       aie.dma_start(S2MM, 0, ^bd0, ^end, repeat_count = 255)
@@ -46,7 +48,8 @@ module {
 module {
   aie.device(xcvc1902) {
     %t = aie.tile(3, 3)
-    %b = aie.buffer(%t) : memref<8xi32>
+    aie.buffer @b(%t) : memref<8xi32>
+    %b = aie.get_buffer @b : memref<8xi32>
     aie.mem(%t) {
       // expected-error @+1 {{repeat_count is not supported on this target}}
       aie.dma_start(S2MM, 0, ^bd0, ^end, repeat_count = 1)

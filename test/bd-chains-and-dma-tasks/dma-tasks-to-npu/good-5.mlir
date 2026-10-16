@@ -15,10 +15,12 @@ module {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_1 = aie.tile(0, 1)
     %tile_0_2 = aie.tile(0, 2)
-    // CHECK: %{{.*}} = aie.buffer(%{{.*}}tile_0_1) {address = [[ADDR1:[0-9]+]] {{.*}}}
-    %buf0 = aie.buffer(%tile_0_1) : memref<32xi8>
-    // CHECK: %{{.*}} = aie.buffer(%{{.*}}tile_0_1) {address = [[ADDR2:[0-9]+]] {{.*}}}
-    %buf1 = aie.buffer(%tile_0_1) : memref<32xi8>
+    // CHECK: aie.buffer @buf0(%{{.*}}tile_0_1) {address = [[ADDR1:[0-9]+]] {{.*}}}
+    aie.buffer @buf0(%tile_0_1) : memref<32xi8>
+    %buf0 = aie.get_buffer @buf0 : memref<32xi8>
+    // CHECK: aie.buffer @buf1(%{{.*}}tile_0_1) {address = [[ADDR2:[0-9]+]] {{.*}}}
+    aie.buffer @buf1(%tile_0_1) : memref<32xi8>
+    %buf1 = aie.get_buffer @buf1 : memref<32xi8>
 
     aie.runtime_sequence(%arg0: memref<32xi8>) {
       %t1 = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {

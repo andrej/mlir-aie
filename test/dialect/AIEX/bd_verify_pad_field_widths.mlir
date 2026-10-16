@@ -20,7 +20,8 @@
 module {
   aie.device(npu2) {
     %tile_0_1 = aie.tile(0, 1)
-    %buf = aie.buffer(%tile_0_1) { address = 0x0 : i32 } : memref<128xi32>
+    aie.buffer @buf(%tile_0_1) { address = 0x0 : i32 } : memref<128xi32>
+    %buf = aie.get_buffer @buf : memref<128xi32>
     aie.runtime_sequence(%arg0: memref<128xi32>) {
       %t1 = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
         // expected-error@+1 {{D0 pad_before/pad_after exceeds the [0:63] range.}}
@@ -38,7 +39,8 @@ module {
 module {
   aie.device(npu2) {
     %tile_0_1 = aie.tile(0, 1)
-    %buf = aie.buffer(%tile_0_1) { address = 0x0 : i32 } : memref<128xi32>
+    aie.buffer @buf(%tile_0_1) { address = 0x0 : i32 } : memref<128xi32>
+    %buf = aie.get_buffer @buf : memref<128xi32>
     aie.runtime_sequence(%arg0: memref<128xi32>) {
       %t1 = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
         aie.dma_bd(%buf : memref<128xi32> offset = 0 len = 4 sizes = [4] strides = [1] pad [<const_pad_before = 63, const_pad_after = 0>]) {bd_id = 0 : i32}

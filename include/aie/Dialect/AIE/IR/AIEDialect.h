@@ -122,28 +122,6 @@ uint32_t getShimBurstLengthBytes(const AIE::AIETargetModel &tm,
 uint32_t getShimBurstLengthEncoding(const AIE::AIETargetModel &tm,
                                     uint32_t burstLength);
 
-// Looks up a name, falling back to a scan for the `sym_name` attribute.
-// `aie.buffer`, `aie.external_buffer`, `aie.lock` and `aie.dma` are referred to
-// by name but define an SSA value, so they cannot be `Symbol` ops and
-// `mlir::SymbolTable` does not find them.
-mlir::Operation *lookupNamedOpIn(mlir::Operation *symbolTableOp,
-                                 mlir::StringAttr name);
-mlir::Operation *lookupNamedOpIn(mlir::Operation *symbolTableOp,
-                                 llvm::StringRef name);
-// Looks in the symbol table nearest to (or at) `from`.
-mlir::Operation *lookupNamedOp(mlir::Operation *from, mlir::StringAttr name);
-mlir::Operation *lookupNamedOp(mlir::Operation *from, llvm::StringRef name);
-
-template <typename OpTy, typename NameT>
-OpTy lookupNamedOpIn(mlir::Operation *symbolTableOp, NameT name) {
-  return llvm::dyn_cast_if_present<OpTy>(lookupNamedOpIn(symbolTableOp, name));
-}
-
-template <typename OpTy, typename NameT>
-OpTy lookupNamedOp(mlir::Operation *from, NameT name) {
-  return llvm::dyn_cast_if_present<OpTy>(lookupNamedOp(from, name));
-}
-
 // Generate a symbol name guaranteed to be unique within the symbol table of
 // `symbolTableOp`. Names are formed as "<prefix><n>" for increasing n; the
 // counter is advanced past the chosen value so repeated calls with the same

@@ -101,7 +101,8 @@ module @rearm_name_collision {
   aie.device(npu2) {
     %t02 = aie.tile(0, 2)
     %t04 = aie.tile(0, 4)
-    %junk = aie.lock(%t02, 5) {init = 0 : i32, sym_name = "of_rearm"}
+    aie.lock @of_rearm(%t02, 5) {init = 0 : i32 }
+    %junk = aie.get_lock @of_rearm
     aie.objectfifo @of (%t02, {%t04}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
     aie.runtime_sequence() {
       aiex.dma_channel_reset_for(@of)

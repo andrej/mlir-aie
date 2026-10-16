@@ -30,7 +30,8 @@ module {
   aie.device(npu1_1col) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_1 = aie.tile(0, 1)
-    %buf = aie.buffer(%tile_0_1) {address = 0 : i32, sym_name = "buf"} : memref<256xi32>
+    aie.buffer @buf(%tile_0_1) {address = 0 : i32 } : memref<256xi32>
+    %buf = aie.get_buffer @buf : memref<256xi32>
 
     aie.runtime_sequence @shim(%arg0: memref<256xi32>) {
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {

@@ -43,7 +43,8 @@
 module {
   aie.device(npu2) {
     %tile = aie.tile(0, 2)
-    %buf = aie.buffer(%tile) {sym_name = "buf"} : memref<32xi32>
+    aie.buffer @buf(%tile)  : memref<32xi32>
+    %buf = aie.get_buffer @buf : memref<32xi32>
     %core = aie.core(%tile) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index

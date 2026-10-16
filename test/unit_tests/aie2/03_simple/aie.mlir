@@ -18,16 +18,21 @@ module @test04_shared_memory {
     %tile13 = aie.tile(1, 3)
     %tile14 = aie.tile(1, 4)
 
-    %buf13_0 = aie.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
-    %buf13_1 = aie.buffer(%tile13) { sym_name = "b" } : memref<256xi32>
-    %buf14_0 = aie.buffer(%tile14) { sym_name = "c" } : memref<256xi32>
+    aie.buffer @a(%tile13)  : memref<256xi32>
+    %buf13_0 = aie.get_buffer @a : memref<256xi32>
+    aie.buffer @b(%tile13)  : memref<256xi32>
+    %buf13_1 = aie.get_buffer @b : memref<256xi32>
+    aie.buffer @c(%tile14)  : memref<256xi32>
+    %buf14_0 = aie.get_buffer @c : memref<256xi32>
 
-    %lock13_3 = aie.lock(%tile13, 3) { sym_name = "input_lock" } // input buffer lock
-    %lock13_5 = aie.lock(%tile13, 5) { sym_name = "output_lock" } // output buffer lock
+    aie.lock @input_lock(%tile13, 3)  // input buffer lock
+    %lock13_3 = aie.get_lock @input_lock
+    aie.lock @output_lock(%tile13, 5)  // output buffer lock
+    %lock13_5 = aie.get_lock @output_lock
 
     %core13 = aie.core(%tile13) {
       %c1_ul0 = arith.constant 1 : i32
-      aie.use_lock(%lock13_3, AcquireGreaterEqual, %c1_ul0)
+      aie.use_lock(@input_lock, AcquireGreaterEqual, %c1_ul0)
       %idx1 = arith.constant 3 : index
       %val1 = memref.load %buf13_0[%idx1] : memref<256xi32>
       %2    = arith.addi %val1, %val1 : i32
@@ -37,7 +42,7 @@ module @test04_shared_memory {
       %idx2 = arith.constant 5 : index
       memref.store %5, %buf13_1[%idx2] : memref<256xi32>
       %c1_ul1 = arith.constant 1 : i32
-      aie.use_lock(%lock13_5, Release, %c1_ul1)
+      aie.use_lock(@output_lock, Release, %c1_ul1)
       aie.end
     }
   }

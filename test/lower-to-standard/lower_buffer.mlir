@@ -29,7 +29,8 @@
 module @codegen1 {
  aie.device(xcvc1902) {
   %t33 = aie.tile(3, 3)
-  %a = aie.buffer(%t33) { sym_name = "a" } : memref<4xi32>
+  aie.buffer @a(%t33)  : memref<4xi32>
+  %a = aie.get_buffer @a : memref<4xi32>
   %core33 = aie.core(%t33) {
     %0 = arith.constant 0 : index
     %377 = arith.constant 377 : i32

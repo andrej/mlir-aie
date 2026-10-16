@@ -30,7 +30,8 @@
 module {
   aie.device(npu2) {
     %tile_0_1 = aie.tile(0, 1)
-    %buf = aie.buffer(%tile_0_1) : memref<4096xi32>
+    aie.buffer @buf(%tile_0_1) : memref<4096xi32>
+    %buf = aie.get_buffer @buf : memref<4096xi32>
 
     aie.runtime_sequence(%len: i32) {
       // MM2S channel 0 is even, so the BD id must be below 24

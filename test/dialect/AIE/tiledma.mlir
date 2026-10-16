@@ -14,7 +14,8 @@
 
 aie.device(xcvc1902) {
   %t1 = aie.tile(1, 1)
-  %buf = aie.buffer(%t1) : memref<256xi32>
+  aie.buffer @buf(%t1) : memref<256xi32>
+  %buf = aie.get_buffer @buf : memref<256xi32>
   %mem = aie.mem(%t1) {
     aie.dma_start("MM2S", 0, ^bd0, ^dma1)
     ^dma1:

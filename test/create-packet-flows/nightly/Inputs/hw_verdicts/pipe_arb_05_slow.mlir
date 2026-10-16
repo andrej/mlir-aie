@@ -11,19 +11,32 @@ module {
     aie.packet_flow(0) { aie.packet_source<%t0_0, DMA : 0> aie.packet_dest<%t0_4, DMA : 0> }
     aie.packet_flow(1) { aie.packet_source<%t0_4, DMA : 0> aie.packet_dest<%t0_5, DMA : 0> }
     aie.packet_flow(2) { aie.packet_source<%t0_5, DMA : 0> aie.packet_dest<%t1_0, DMA : 0> }
-    %i04_0 = aie.buffer(%t0_4) {sym_name = "i04_0"} : memref<256xi32>
-    %i04_0_p = aie.lock(%t0_4, 0) {init = 1 : i32, sym_name = "i04_0_p"}
-    %i04_0_c = aie.lock(%t0_4, 1) {init = 0 : i32, sym_name = "i04_0_c"}
-    %o04 = aie.buffer(%t0_4) {sym_name = "o04"} : memref<256xi32>
-    %o04_p = aie.lock(%t0_4, 2) {init = 1 : i32, sym_name = "o04_p"}
-    %o04_c = aie.lock(%t0_4, 3) {init = 0 : i32, sym_name = "o04_c"}
-    %i05_0 = aie.buffer(%t0_5) {sym_name = "i05_0"} : memref<256xi32>
-    %i05_0_p = aie.lock(%t0_5, 0) {init = 1 : i32, sym_name = "i05_0_p"}
-    %i05_0_c = aie.lock(%t0_5, 1) {init = 0 : i32, sym_name = "i05_0_c"}
-    %o05 = aie.buffer(%t0_5) {sym_name = "o05"} : memref<256xi32>
-    %o05_p = aie.lock(%t0_5, 2) {init = 1 : i32, sym_name = "o05_p"}
-    %o05_c = aie.lock(%t0_5, 3) {init = 0 : i32, sym_name = "o05_c"}
-    %spin_t0_5 = aie.lock(%t0_5, 4) {init = 1 : i32, sym_name = "spin_t0_5"}
+    aie.buffer @i04_0(%t0_4)  : memref<256xi32>
+    %i04_0 = aie.get_buffer @i04_0 : memref<256xi32>
+    aie.lock @i04_0_p(%t0_4, 0) {init = 1 : i32 }
+    %i04_0_p = aie.get_lock @i04_0_p
+    aie.lock @i04_0_c(%t0_4, 1) {init = 0 : i32 }
+    %i04_0_c = aie.get_lock @i04_0_c
+    aie.buffer @o04(%t0_4)  : memref<256xi32>
+    %o04 = aie.get_buffer @o04 : memref<256xi32>
+    aie.lock @o04_p(%t0_4, 2) {init = 1 : i32 }
+    %o04_p = aie.get_lock @o04_p
+    aie.lock @o04_c(%t0_4, 3) {init = 0 : i32 }
+    %o04_c = aie.get_lock @o04_c
+    aie.buffer @i05_0(%t0_5)  : memref<256xi32>
+    %i05_0 = aie.get_buffer @i05_0 : memref<256xi32>
+    aie.lock @i05_0_p(%t0_5, 0) {init = 1 : i32 }
+    %i05_0_p = aie.get_lock @i05_0_p
+    aie.lock @i05_0_c(%t0_5, 1) {init = 0 : i32 }
+    %i05_0_c = aie.get_lock @i05_0_c
+    aie.buffer @o05(%t0_5)  : memref<256xi32>
+    %o05 = aie.get_buffer @o05 : memref<256xi32>
+    aie.lock @o05_p(%t0_5, 2) {init = 1 : i32 }
+    %o05_p = aie.get_lock @o05_p
+    aie.lock @o05_c(%t0_5, 3) {init = 0 : i32 }
+    %o05_c = aie.get_lock @o05_c
+    aie.lock @spin_t0_5(%t0_5, 4) {init = 1 : i32 }
+    %spin_t0_5 = aie.get_lock @spin_t0_5
     %core_t0_4 = aie.core(%t0_4) {
       %one = arith.constant 1 : i32
       %c0 = arith.constant 0 : index
@@ -32,8 +45,8 @@ module {
       %cb = arith.constant 256 : index
       %k = arith.constant 1 : i32
       scf.for %it = %c0 to %cn step %c1 {
-        aie.use_lock(%i04_0_c, AcquireGreaterEqual, %one)
-        aie.use_lock(%o04_p, AcquireGreaterEqual, %one)
+        aie.use_lock(@i04_0_c, AcquireGreaterEqual, %one)
+        aie.use_lock(@o04_p, AcquireGreaterEqual, %one)
         scf.for %i = %c0 to %cb step %c1 {
           %a0 = arith.addi %i, %c0 : index
           %x0 = memref.load %i04_0[%a0] : memref<256xi32>
@@ -41,8 +54,8 @@ module {
           %ao = arith.addi %i, %c0 : index
           memref.store %s0, %o04[%ao] : memref<256xi32>
         }
-        aie.use_lock(%i04_0_p, Release, %one)
-        aie.use_lock(%o04_c, Release, %one)
+        aie.use_lock(@i04_0_p, Release, %one)
+        aie.use_lock(@o04_c, Release, %one)
       }
       aie.end
     }
@@ -54,8 +67,8 @@ module {
       %cb = arith.constant 256 : index
       %k = arith.constant 2 : i32
       scf.for %it = %c0 to %cn step %c1 {
-        aie.use_lock(%i05_0_c, AcquireGreaterEqual, %one)
-        aie.use_lock(%o05_p, AcquireGreaterEqual, %one)
+        aie.use_lock(@i05_0_c, AcquireGreaterEqual, %one)
+        aie.use_lock(@o05_p, AcquireGreaterEqual, %one)
         scf.for %i = %c0 to %cb step %c1 {
           %a0 = arith.addi %i, %c0 : index
           %x0 = memref.load %i05_0[%a0] : memref<256xi32>
@@ -65,11 +78,11 @@ module {
         }
         %cspin = arith.constant 2000 : index
         scf.for %sp = %c0 to %cspin step %c1 {
-          aie.use_lock(%spin_t0_5, AcquireGreaterEqual, %one)
-          aie.use_lock(%spin_t0_5, Release, %one)
+          aie.use_lock(@spin_t0_5, AcquireGreaterEqual, %one)
+          aie.use_lock(@spin_t0_5, Release, %one)
         }
-        aie.use_lock(%i05_0_p, Release, %one)
-        aie.use_lock(%o05_c, Release, %one)
+        aie.use_lock(@i05_0_p, Release, %one)
+        aie.use_lock(@o05_c, Release, %one)
       }
       aie.end
     }
@@ -77,16 +90,16 @@ module {
       %one = arith.constant 1 : i32
       %d0 = aie.dma_start(S2MM, 0, ^c0b0, ^s1)
       ^c0b0:
-        aie.use_lock(%i04_0_p, AcquireGreaterEqual, %one)
+        aie.use_lock(@i04_0_p, AcquireGreaterEqual, %one)
         aie.dma_bd(%i04_0 : memref<256xi32> offset = 0 len = 256)
-        aie.use_lock(%i04_0_c, Release, %one)
+        aie.use_lock(@i04_0_c, Release, %one)
         aie.next_bd ^c0b0
       ^s1:
       %d1 = aie.dma_start(MM2S, 0, ^c1b0, ^end)
       ^c1b0:
-        aie.use_lock(%o04_c, AcquireGreaterEqual, %one)
+        aie.use_lock(@o04_c, AcquireGreaterEqual, %one)
         aie.dma_bd(%o04 : memref<256xi32> offset = 0 len = 256) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
-        aie.use_lock(%o04_p, Release, %one)
+        aie.use_lock(@o04_p, Release, %one)
         aie.next_bd ^c1b0
       ^end:
         aie.end
@@ -95,16 +108,16 @@ module {
       %one = arith.constant 1 : i32
       %d0 = aie.dma_start(S2MM, 0, ^c0b0, ^s1)
       ^c0b0:
-        aie.use_lock(%i05_0_p, AcquireGreaterEqual, %one)
+        aie.use_lock(@i05_0_p, AcquireGreaterEqual, %one)
         aie.dma_bd(%i05_0 : memref<256xi32> offset = 0 len = 256)
-        aie.use_lock(%i05_0_c, Release, %one)
+        aie.use_lock(@i05_0_c, Release, %one)
         aie.next_bd ^c0b0
       ^s1:
       %d1 = aie.dma_start(MM2S, 0, ^c1b0, ^end)
       ^c1b0:
-        aie.use_lock(%o05_c, AcquireGreaterEqual, %one)
+        aie.use_lock(@o05_c, AcquireGreaterEqual, %one)
         aie.dma_bd(%o05 : memref<256xi32> offset = 0 len = 256) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
-        aie.use_lock(%o05_p, Release, %one)
+        aie.use_lock(@o05_p, Release, %one)
         aie.next_bd ^c1b0
       ^end:
         aie.end

@@ -22,9 +22,12 @@
 module {
   aie.device(npu2) {
     %tile = aie.tile(0, 2)
-    %ab = aie.buffer(%tile) {sym_name = "ab", mem_bank = 1 : i32} : memref<512xi16>
-    %cd = aie.buffer(%tile) {sym_name = "cd", mem_bank = 1 : i32} : memref<512xi16>
-    %out = aie.buffer(%tile) {sym_name = "out"} : memref<64xi8>
+    aie.buffer @ab(%tile) { mem_bank = 1 : i32} : memref<512xi16>
+    %ab = aie.get_buffer @ab : memref<512xi16>
+    aie.buffer @cd(%tile) { mem_bank = 1 : i32} : memref<512xi16>
+    %cd = aie.get_buffer @cd : memref<512xi16>
+    aie.buffer @out(%tile)  : memref<64xi8>
+    %out = aie.get_buffer @out : memref<64xi8>
     func.func private @classify(memref<512xi16>, memref<512xi16>, memref<64xi8>) attributes {link_with = "lut_banks_parameters.o"}
     %core = aie.core(%tile) {
       func.call @classify(%ab, %cd, %out) : (memref<512xi16>, memref<512xi16>, memref<64xi8>) -> ()

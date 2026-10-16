@@ -107,12 +107,10 @@ static LogicalResult expandDmaChannelResetForOps(DeviceOp device) {
       endpoints.push_back(ep);
     }
 
-    // Guard the lock operands (the verifier already requires them to be
-    // aie.lock, but stay defensive so a malformed binding cannot make the
-    // set_lock builder cast a non-lock operand and abort).
+    // Guard the lock operands before the set_lock builder casts them.
     for (Value lock : binding.getLocks())
-      if (!lock.getDefiningOp<AIE::LockOp>()) {
-        op.emitOpError("re-arm binding lock operand is not an aie.lock");
+      if (!lock.getDefiningOp<AIE::GetLockOp>()) {
+        op.emitOpError("re-arm binding lock operand is not an aie.get_lock");
         return WalkResult::interrupt();
       }
 

@@ -16,7 +16,8 @@ module @reserved_by_flow_and_task {
     %shim = aie.tile(0, 0)
     %mem = aie.tile(0, 1)
     %core = aie.tile(0, 2)
-    %ring = aie.buffer(%mem) {sym_name = "ring"} : memref<64xi32>
+    aie.buffer @ring(%mem)  : memref<64xi32>
+    %ring = aie.get_buffer @ring : memref<64xi32>
     // S2MM 0 and MM2S 0 through circuit flows, MM2S 1 through a packet flow.
     aie.flow(%shim, DMA : 0, %mem, DMA : 0)
     aie.flow(%mem, DMA : 0, %core, DMA : 0)
@@ -69,7 +70,8 @@ module @pinned_on_task {
   // expected-remark @+1 {{could not find a spill-aware allocation}}
   aie.device(npu2) {
     %mem = aie.tile(0, 1)
-    %ring = aie.buffer(%mem) {sym_name = "ring"} : memref<64xi32>
+    aie.buffer @ring(%mem)  : memref<64xi32>
+    %ring = aie.get_buffer @ring : memref<64xi32>
     aie.objectfifo.pool @p(%mem) {depth = 1 : i32} : memref<16xi32> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
     }

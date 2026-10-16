@@ -86,10 +86,6 @@ assert _cext.globals._check_dialect_module_loaded("aie")
 # Lets ir.loc_tracebacks() skip this package; the exclusion is a path prefix.
 _cext.globals.register_traceback_file_exclusion(f"{AIE_ROOT}{os.sep}")
 
-# The generated `use_lock` builder takes the lock value as an SSA i32 operand.
-# Wrap it so callers may still pass a plain Python int (materialized as an
-# arith.constant) or omit the value entirely (defaults to 1), while also
-# accepting a Value for runtime-parameterized lock values.
 from ._aie_ops_gen import use_lock as _use_lock
 
 
@@ -112,8 +108,8 @@ from ._aiex_ops_gen import NpuWriteRTPOp
 class npu_write_rtp(NpuWriteRTPOp):
     def __init__(self, buffer, index, value, loc=None, ip=None):
         buff_name = buffer
-        if isinstance(buffer, BufferOp):
-            buff_name = buffer.sym_name.value
+        if isinstance(buffer, GetBufferOp):
+            buff_name = buffer.buffer.value
         # `value` is an SSA i32 operand; materialize a constant from a plain int
         # while still accepting a Value for runtime-parameterized sequences.
         if isinstance(value, int):
@@ -515,12 +511,9 @@ class Core(CoreOp):
 
 # Create an aie buffer of (shape x datatype) on given tile.
 # shape examples: [256], [256, 256], [256, 256,]
-# This class hides the BufferOp and instead pretends to be a MemRef
+# This class emits a buffer symbol and exposes its getter value as a memref.
 @ShapedValue
-class buffer(BufferOp):
-    def __init__(self):
-        raise ValueError("Should never be called")
-
+class buffer(GetBufferOp):
     def __init__(
         self,
         tile,
@@ -533,6 +526,10 @@ class buffer(BufferOp):
         loc=None,
         ip=None,
     ):
+        if not name:
+            name = _get_sym_name(inspect.currentframe().f_back, "buffer")
+        if not name:
+            raise ValueError("buffer requires a symbol name")
         self.type = try_convert_np_type_to_mlir_type(datatype)
         self.use_write_rtp = use_write_rtp
         if not (initial_value is None):
@@ -542,19 +539,20 @@ class buffer(BufferOp):
                 type=self.type.element_type,
                 context=None,
             )
-        super().__init__(
-            buffer=self.type,
-            tile=tile,
+        self.definition = BufferOp(
             sym_name=name,
+            tile=tile,
+            type_=self.type,
             address=address,
             mem_bank=mem_bank,
             initial_value=initial_value,
             loc=loc,
             ip=ip,
         )
+        super().__init__(result=self.type, buffer=name, loc=loc, ip=ip)
 
     def get_name(self):
-        return self.sym_name.value if self.sym_name else self.result.get_name()
+        return self.definition.sym_name.value
 
     def __str__(self):
         return str(self.result)
@@ -626,7 +624,7 @@ class buffer(BufferOp):
 
 # Create an aie external buffer of (shape x datatype).
 # shape examples: [256], [256, 256], [256, 256,]
-# This class hides the ExternalBufferOp and instead pretends to be a MemRef
+# This class emits an external-buffer symbol and returns its getter value.
 class external_buffer(MemRefValue):
     def __init__(self):
         raise ValueError("Should never be called")
@@ -639,14 +637,21 @@ class external_buffer(MemRefValue):
         loc=None,
         ip=None,
     ):
-        my_buffer = ExternalBufferOp(
-            buffer=try_convert_np_type_to_mlir_type(datatype),
+        if not name:
+            name = _get_sym_name(inspect.currentframe().f_back, "external_buffer")
+        if not name:
+            raise ValueError("external_buffer requires a symbol name")
+        buffer_type = try_convert_np_type_to_mlir_type(datatype)
+        ExternalBufferOp(
             sym_name=name,
+            type_=buffer_type,
             address=address,
             loc=loc,
             ip=ip,
         )
-        return my_buffer.result
+        return GetExternalBufferOp(
+            result=buffer_type, buffer=name, loc=loc, ip=ip
+        ).result
 
 
 # Create an aie objectFifo between specified tiles, with given depth and memref datatype.
@@ -1164,9 +1169,11 @@ _lock = lock
 def lock(
     tile, *, lock_id=None, init=None, sym_name=None, annot=None, loc=None, ip=None
 ):
-    if sym_name is not None and not sym_name:
+    if not sym_name:
         sym_name = _get_sym_name(inspect.currentframe().f_back, "aie\\.lock|lock")
-    l = _lock(
+    if not sym_name:
+        raise ValueError("lock requires a symbol name")
+    definition = _lock(
         tile,
         lock_id=lock_id,
         init=init,
@@ -1175,8 +1182,8 @@ def lock(
         ip=ip,
     )
     if annot is not None:
-        l.owner.attributes["annot"] = DictAttr.get({annot: UnitAttr.get()})
-    return l
+        definition.attributes["annot"] = DictAttr.get({annot: UnitAttr.get()})
+    return GetLockOp(lock=sym_name, loc=loc, ip=ip).result
 
 
 @_cext.register_operation(_Dialect, replace=True)
@@ -1296,7 +1303,7 @@ def find_matching_locks(tiles, sym_name=None, annot=None, device=None):
             )
 
     return sorted(
-        [o.result for o in find_ops(device, _cb)],
+        [GetLockOp(lock=o.sym_name.value).result for o in find_ops(device, _cb)],
         key=lambda a: (
             int(a.owner.opview.tile.owner.opview.col),
             int(a.owner.opview.tile.owner.opview.row),
@@ -1322,7 +1329,10 @@ def find_matching_buffers(tiles, sym_name=None, annot=None, device=None):
             )
 
     return sorted(
-        [o.result for o in find_ops(device, _cb)],
+        [
+            GetBufferOp(result=o.type.value, buffer=o.sym_name.value).result
+            for o in find_ops(device, _cb)
+        ],
         key=lambda a: (
             int(a.owner.opview.tile.owner.opview.col),
             int(a.owner.opview.tile.owner.opview.row),

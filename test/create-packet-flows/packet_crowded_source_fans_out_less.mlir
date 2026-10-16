@@ -24,8 +24,10 @@ module {
     %t_0_2 = aie.tile(0, 2)
     %t_0_3 = aie.tile(0, 3)
     %t_0_4 = aie.tile(0, 4)
-    %buf_0_1_0 = aie.buffer(%t_0_1) : memref<16xi32>
-    %buf_0_1_1 = aie.buffer(%t_0_1) : memref<16xi32>
+    aie.buffer @buf_0_1_0(%t_0_1) : memref<16xi32>
+    %buf_0_1_0 = aie.get_buffer @buf_0_1_0 : memref<16xi32>
+    aie.buffer @buf_0_1_1(%t_0_1) : memref<16xi32>
+    %buf_0_1_1 = aie.get_buffer @buf_0_1_1 : memref<16xi32>
     %mem_0_1 = aie.memtile_dma(%t_0_1) {
       aie.next_bd ^s0
     ^s0:
@@ -41,8 +43,10 @@ module {
     ^e:
       aie.end
     }
-    %buf_0_2_0 = aie.buffer(%t_0_2) : memref<16xi32>
-    %buf_0_2_1 = aie.buffer(%t_0_2) : memref<16xi32>
+    aie.buffer @buf_0_2_0(%t_0_2) : memref<16xi32>
+    %buf_0_2_0 = aie.get_buffer @buf_0_2_0 : memref<16xi32>
+    aie.buffer @buf_0_2_1(%t_0_2) : memref<16xi32>
+    %buf_0_2_1 = aie.get_buffer @buf_0_2_1 : memref<16xi32>
     %mem_0_2 = aie.mem(%t_0_2) {
       aie.next_bd ^s0
     ^s0:
@@ -58,7 +62,8 @@ module {
     ^e:
       aie.end
     }
-    %buf_0_3_1 = aie.buffer(%t_0_3) : memref<16xi32>
+    aie.buffer @buf_0_3_1(%t_0_3) : memref<16xi32>
+    %buf_0_3_1 = aie.get_buffer @buf_0_3_1 : memref<16xi32>
     %mem_0_3 = aie.mem(%t_0_3) {
       aie.next_bd ^s0
     ^s0:

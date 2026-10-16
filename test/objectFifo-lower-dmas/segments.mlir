@@ -10,12 +10,18 @@ module @segments {
   aie.device(xcve2302) {
     %memtile = aie.tile(2, 1)
 
-    %b0 = aie.buffer(%memtile) {sym_name = "b0"} : memref<48xi32>
-    %b1 = aie.buffer(%memtile) {sym_name = "b1"} : memref<48xi32>
-    %f0 = aie.lock(%memtile) {init = 2 : i32, sym_name = "f0"}
-    %u0 = aie.lock(%memtile) {init = 0 : i32, sym_name = "u0"}
-    %f1 = aie.lock(%memtile) {init = 2 : i32, sym_name = "f1"}
-    %u1 = aie.lock(%memtile) {init = 0 : i32, sym_name = "u1"}
+    aie.buffer @b0(%memtile)  : memref<48xi32>
+    %b0 = aie.get_buffer @b0 : memref<48xi32>
+    aie.buffer @b1(%memtile)  : memref<48xi32>
+    %b1 = aie.get_buffer @b1 : memref<48xi32>
+    aie.lock @f0(%memtile) {init = 2 : i32 }
+    %f0 = aie.get_lock @f0
+    aie.lock @u0(%memtile) {init = 0 : i32 }
+    %u0 = aie.get_lock @u0
+    aie.lock @f1(%memtile) {init = 2 : i32 }
+    %f1 = aie.get_lock @f1
+    aie.lock @u1(%memtile) {init = 0 : i32 }
+    %u1 = aie.get_lock @u1
 
     aie.objectfifo.pool @pool(%memtile) {
       depth = 2 : i32, buffers = [@b0, @b1]
@@ -37,25 +43,30 @@ module @segments {
 }
 
 // CHECK-LABEL: @segments
+// CHECK:   aie.objectfifo.pool @pool
+// CHECK:   %[[FILL_B0:.*]] = aie.get_buffer @b0
+// CHECK:   %[[FILL_B1:.*]] = aie.get_buffer @b1
+// CHECK:   %[[DRAIN_B0:.*]] = aie.get_buffer @b0
+// CHECK:   %[[DRAIN_B1:.*]] = aie.get_buffer @b1
 // CHECK:   aie.memtile_dma(%{{.*}}) {
 // CHECK:     aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:   ^bb1:
-// CHECK:     aie.use_lock(%f1, AcquireGreaterEqual, %{{.*}})
-// CHECK:     aie.dma_bd(%b0 : memref<48xi32> offset = 16 len = 32)
-// CHECK:     aie.use_lock(%u1, Release, %{{.*}})
+// CHECK:     aie.use_lock(@f1, AcquireGreaterEqual, %{{.*}})
+// CHECK:     aie.dma_bd(%[[FILL_B0]] : memref<48xi32> offset = 16 len = 32)
+// CHECK:     aie.use_lock(@u1, Release, %{{.*}})
 // CHECK:   ^bb2:
-// CHECK:     aie.dma_bd(%b1 : memref<48xi32> offset = 16 len = 32)
+// CHECK:     aie.dma_bd(%[[FILL_B1]] : memref<48xi32> offset = 16 len = 32)
 
 // CHECK:     aie.dma_start(MM2S, 0, ^bb4, ^bb8)
 // CHECK:   ^bb4:
-// CHECK:     aie.use_lock(%u0, AcquireGreaterEqual, %{{.*}})
-// CHECK:     aie.dma_bd(%b0 : memref<48xi32> offset = 0 len = 16)
-// CHECK:     aie.use_lock(%f0, Release, %{{.*}})
+// CHECK:     aie.use_lock(@u0, AcquireGreaterEqual, %{{.*}})
+// CHECK:     aie.dma_bd(%[[DRAIN_B0]] : memref<48xi32> offset = 0 len = 16)
+// CHECK:     aie.use_lock(@f0, Release, %{{.*}})
 // CHECK:   ^bb5:
-// CHECK:     aie.use_lock(%u1, AcquireGreaterEqual, %{{.*}})
-// CHECK:     aie.dma_bd(%b0 : memref<48xi32> offset = 16 len = 32)
-// CHECK:     aie.use_lock(%f1, Release, %{{.*}})
+// CHECK:     aie.use_lock(@u1, AcquireGreaterEqual, %{{.*}})
+// CHECK:     aie.dma_bd(%[[DRAIN_B0]] : memref<48xi32> offset = 16 len = 32)
+// CHECK:     aie.use_lock(@f1, Release, %{{.*}})
 // CHECK:   ^bb6:
-// CHECK:     aie.dma_bd(%b1 : memref<48xi32> offset = 0 len = 16)
+// CHECK:     aie.dma_bd(%[[DRAIN_B1]] : memref<48xi32> offset = 0 len = 16)
 // CHECK:   ^bb7:
-// CHECK:     aie.dma_bd(%b1 : memref<48xi32> offset = 16 len = 32)
+// CHECK:     aie.dma_bd(%[[DRAIN_B1]] : memref<48xi32> offset = 16 len = 32)

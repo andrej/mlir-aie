@@ -17,7 +17,8 @@
 
 aie.device(npu2) {
   %mt = aie.tile(0, 1)
-  %b = aie.buffer(%mt) {sym_name = "b"} : memref<64xi32>
+  aie.buffer @b(%mt)  : memref<64xi32>
+  %b = aie.get_buffer @b : memref<64xi32>
   aie.route_endpoint @out(%mt) DMA
   aie.memtile_dma(%mt) {
     // expected-error@+1 {{names route endpoint @out in place of a channel index; run --aie-objectfifo-allocate to assign one}}

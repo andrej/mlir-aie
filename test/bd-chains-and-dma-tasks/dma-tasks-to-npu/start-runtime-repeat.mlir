@@ -30,7 +30,8 @@
 // TXN: aiex.npu.sync
 aie.device(npu2) {
   %mt = aie.tile(0, 1)
-  %buf = aie.buffer(%mt) {address = 0 : i32} : memref<4096xi32>
+  aie.buffer @buf(%mt) {address = 0 : i32} : memref<4096xi32>
+  %buf = aie.get_buffer @buf : memref<4096xi32>
   aie.runtime_sequence @replay(%n: index, %uses: i32) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index

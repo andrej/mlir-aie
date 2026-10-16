@@ -670,7 +670,8 @@ aie.device(npu2) @shim_dev {
 
 aie.device(npu2) @mem_dev {
   %mem = aie.tile(0, 1)
-  %buf = aie.buffer(%mem) {address = 0 : i32} : memref<64xi32>
+  aie.buffer @buf(%mem) {address = 0 : i32} : memref<64xi32>
+  %buf = aie.get_buffer @buf : memref<64xi32>
   aie.runtime_sequence @parity(%arg0: memref<64xi32>) {
     %o0 = aiex.dma_configure_task(%mem, MM2S, 1) {
       aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)

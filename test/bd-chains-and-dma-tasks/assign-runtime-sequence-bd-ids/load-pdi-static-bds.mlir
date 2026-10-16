@@ -19,7 +19,8 @@
 module {
   aie.device(npu2) {
     %tile_0_1 = aie.tile(0, 1)
-    %buf = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<1024xi32>
+    aie.buffer @buf(%tile_0_1) {address = 0 : i32} : memref<1024xi32>
+    %buf = aie.get_buffer @buf : memref<1024xi32>
     %mem = aie.memtile_dma(%tile_0_1) {
       %0 = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
@@ -47,7 +48,8 @@ module {
 
   aie.device(npu2) @a {
     %tile_0_1 = aie.tile(0, 1)
-    %buf = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<1024xi32>
+    aie.buffer @buf(%tile_0_1) {address = 0 : i32} : memref<1024xi32>
+    %buf = aie.get_buffer @buf : memref<1024xi32>
     %mem = aie.memtile_dma(%tile_0_1) {
       %0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
@@ -63,7 +65,8 @@ module {
 
   aie.device(npu2) @b {
     %tile_0_1 = aie.tile(0, 1)
-    %buf = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<1024xi32>
+    aie.buffer @buf(%tile_0_1) {address = 0 : i32} : memref<1024xi32>
+    %buf = aie.get_buffer @buf : memref<1024xi32>
     %mem = aie.memtile_dma(%tile_0_1) {
       %0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
@@ -82,7 +85,8 @@ module {
 module {
   aie.device(npu2) {
     %tile_0_1 = aie.tile(0, 1)
-    %buf = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<1024xi32>
+    aie.buffer @buf(%tile_0_1) {address = 0 : i32} : memref<1024xi32>
+    %buf = aie.get_buffer @buf : memref<1024xi32>
     aie.runtime_sequence @main() {
       %t0 = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
         aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 256)
@@ -107,7 +111,8 @@ module {
 module {
   aie.device(npu2) {
     %tile_0_1 = aie.tile(0, 1)
-    %buf = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<1024xi32>
+    aie.buffer @buf(%tile_0_1) {address = 0 : i32} : memref<1024xi32>
+    %buf = aie.get_buffer @buf : memref<1024xi32>
     aie.runtime_sequence @main() {
       // expected-note@+1 {{the PDI is loaded here}}
       aiex.npu.load_pdi {id = 1 : i32}
@@ -131,7 +136,8 @@ module {
 module {
   aie.device(npu2) {
     %tile_0_1 = aie.tile(0, 1)
-    %buf = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<1024xi32>
+    aie.buffer @buf(%tile_0_1) {address = 0 : i32} : memref<1024xi32>
+    %buf = aie.get_buffer @buf : memref<1024xi32>
     aie.runtime_sequence @main() {
       aiex.npu.load_pdi {id = 1 : i32}
       %t0 = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {

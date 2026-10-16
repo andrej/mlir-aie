@@ -317,15 +317,16 @@ def AIE_ShimDMAOp
 
     Example:
     ```
-      %buf = aie.external_buffer : memref<256xi64>
-      %lock1 = aie.lock(%t70, 1)
+      aie.external_buffer @buf : memref<256xi64>
+      %buf = aie.get_external_buffer @buf : memref<256xi64>
+      aie.lock @lock1(%t70, 1)
 
       %dma = aie.shim_dma(%t70) {
           aie.dma_start(MM2S, 0, ^bd0, ^end)
         ^bd0:
-          aie.use_lock(%lock1, Acquire, 1)
+          aie.use_lock(@lock1, Acquire, 1)
           aie.dma_bd(%buf : memref<512xi16> offset = 0 len = 512)
-          aie.use_lock(%lock1, Release, 0)
+          aie.use_lock(@lock1, Release, 0)
           aie.next_bd ^bd0
         ^end:
           aie.end
@@ -514,10 +515,10 @@ def AIE_CoreOp
     Examples:
     ```
     %tile = aie.tile(1, 1)
-    %lock11_8 = aie.lock(%tile, 8)
+    aie.lock @lock11_8(%tile, 8)
     aie.core(%tile) {
-      aie.use_lock(%lock11_8, "Acquire", 1)
-      aie.use_lock(%lock11_8, "Release", 0)
+      aie.use_lock(@lock11_8, "Acquire", 1)
+      aie.use_lock(@lock11_8, "Release", 0)
       aie.end
     }
     ```
@@ -984,12 +985,12 @@ def AIE_DMABDPACKETOp : AIE_Op<"dma_bd_packet", []> {
 
     Example:
     ```
-      // this defines a BD that uses lock %lck0 and buffer %buf0
+      // this defines a BD that uses lock @lck and buffer %buf0
       ^bd5:
-        aie.use_lock(%lck, "Acquire", 0)
+        aie.use_lock(@lck, "Acquire", 0)
         aie.dma_bd_packet(0x4, 0xD)
         aie.dma_bd(%buf0 : memref<512xi32> offset = 0 len = 512)
-        aie.use_lock(%lck, "Release", 1)
+        aie.use_lock(@lck, "Release", 1)
         br ^bd6 // point to the next Block, which is also a different Block Descriptor
     ```
   }];
@@ -1036,18 +1037,18 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
 
     Example:
     ```
-      // this defines a BD that uses lock %lck0 and buffer %buf0
+      // this defines a BD that uses lock @lck and buffer %buf0
       ^bd5:
-        aie.use_lock(%lck, "Acquire", 0)
+        aie.use_lock(@lck, "Acquire", 0)
         // transfer the first 32 elements of the memref
         aie.dma_bd(%buf0 : memref<128xi32> offset = 0 len = 32)
-        aie.use_lock(%lck, "Release", 1)
+        aie.use_lock(@lck, "Release", 1)
         aie.next_bd ^bd6 // point to the next bb, which describes the next buffer descriptor
       ^bd6:
-        aie.use_lock(%lck, "Acquire", 1)
+        aie.use_lock(@lck, "Acquire", 1)
         // transfer the last 32 elements of the memref
         aie.dma_bd(%buf1 : memref<128xi32> offset = 96 len = 32)
-        aie.use_lock(%lck, "Release", 0)
+        aie.use_lock(@lck, "Release", 0)
         aie.next_bd ^end
 
       ...
@@ -1463,9 +1464,9 @@ def AIE_DMAStartOp
     ```
         aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
-        aie.use_lock(%lock0, "Acquire", 0)
+        aie.use_lock(@lock0, "Acquire", 0)
         aie.dma_bd(%buffer : memref<16xf32> offset = 0 len = 16)
-        aie.use_lock(%lock0, "Release", 1)
+        aie.use_lock(@lock0, "Release", 1)
         br ^bd0
       ^end:
         aie.end
@@ -1543,9 +1544,7 @@ def AIE_DMAStartOp
 def AIE_DMAOp
     : AIE_Op<"dma", [ParentOneOf<["MemOp", "MemTileDMAOp", "ShimDMAOp"]>,
                      NoTerminator,
-                     DeclareOpInterfaceMethods<InferTypeOpInterface>,
-                     DeclareOpInterfaceMethods<
-                         OpAsmOpInterface, ["getAsmResultNames"]>]>,
+           DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
       Results<(outs I1:$valid)> {
 
   let summary = "An op to describe a set of DMA operations.";
@@ -1555,7 +1554,6 @@ def AIE_DMAOp
       DefaultValuedAttr<BoolAttr, "true">:$loop,
       // repeat_count==0 means "do it once" and don't repeat
       DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count,
-      OptionalAttr<StrAttr>:$sym_name,
       // Region form of aie.dma_start's pad_value; see its semantics there.
       DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
       // Put the channel into out-of-order mode (S2MM only).
@@ -1568,13 +1566,6 @@ def AIE_DMAOp
   }];
   let hasVerifier = 1;
 
-  let extraClassDefinition = [{
-    void $cppClass::getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
-      if (auto name = getOperation()->getAttrOfType<mlir::StringAttr>(
-              mlir::SymbolTable::getSymbolAttrName()))
-        setNameFn(getResult(), name.str());
-    }
-  }];
 }
 
 def AIE_MemOp
@@ -1593,9 +1584,9 @@ def AIE_MemOp
       m73 = aie.mem(%t73) {
           %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
         ^bd0:
-          aie.use_lock(%lock, "Acquire", 0)
+          aie.use_lock(@lock, "Acquire", 0)
           aie.dma_bd(%buf : memref<64xi16> offset = 0 len = 64)
-          aie.use_lock(%lock, "Release", 1)
+          aie.use_lock(@lock, "Release", 1)
           aie.next_bd ^bd0
         ^end:
           aie.end
@@ -1637,9 +1628,9 @@ def AIE_MemTileDMAOp
       m73 = aie.memtile_dma(%t71) {
           %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
         ^bd0:
-          aie.use_lock(%lock, "Acquire", 0)
+          aie.use_lock(@lock, "Acquire", 0)
           aie.dma_bd(%buf : memref<64xi16> offset = 0 len = 64)
-          aie.use_lock(%lock, "Release", 1)
+          aie.use_lock(@lock, "Release", 1)
           aie.next_bd ^bd0
         ^end:
           aie.end
@@ -1673,9 +1664,9 @@ def AIE_NextBDOp : AIE_Op<"next_bd", [Terminator]> {
       m73 = aie.mem(%t73) {
           %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
         ^bd0:
-          aie.use_lock(%lock, "Acquire", 0)
+          aie.use_lock(@lock, "Acquire", 0)
           aie.dma_bd(%buf : memref<64xi16> offset = 0 len = 64)
-          aie.use_lock(%lock, "Release", 1)
+          aie.use_lock(@lock, "Release", 1)
           aie.next_bd ^bd0
         ^end:
           aie.end
@@ -1691,9 +1682,7 @@ def AIE_NextBDOp : AIE_Op<"next_bd", [Terminator]> {
 }
 
 def AIE_LockOp
-    : AIE_Op<"lock", [TileElement,
-                      DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
-      Results<(outs Index)> {
+  : AIE_Op<"lock", [TileElement, AIESymbol]> {
   let summary = "Declare a physical lock";
   let description = [{
     This operation creates a physical lock. For this operation the lockID variable is optional.
@@ -1702,7 +1691,7 @@ def AIE_LockOp
     Example:
     ```
       %tile33 = aie.tile(3, 3)
-      %lck = aie.lock(%tile33, 7)
+      aie.lock @lck(%tile33, 7)
     ```
     This operation represents a lock that lives in the Memory module of Tile(3, 3) with a lockID of 7
 
@@ -1711,26 +1700,14 @@ def AIE_LockOp
       After AIEAssignLockIDs: `%tile33 = aie.tile(3, $assigned_value)`
   }];
 
-  let arguments = (ins Index:$tile,
+    let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,
       OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$lockID,
-      OptionalAttr<AIEI32Attr>:$init, OptionalAttr<StrAttr>:$sym_name);
+      OptionalAttr<AIEI32Attr>:$init);
 
-  let assemblyFormat = [{ `(` $tile (`,` $lockID^ )? `)` attr-dict }];
+    let assemblyFormat = [{ $sym_name `(` $tile (`,` $lockID^ )? `)` attr-dict }];
 
   let extraClassDeclaration = [{
-    bool hasName() {
-      return bool(getOperation()->getAttrOfType<mlir::StringAttr>(
-          mlir::SymbolTable::getSymbolAttrName()));
-    }
-
-    mlir::StringAttr name() {
-      if (auto attr = getOperation()->getAttrOfType<mlir::StringAttr>(
-              mlir::SymbolTable::getSymbolAttrName()))
-        return attr;
-      emitOpError("does not have '")
-          << mlir::SymbolTable::getSymbolAttrName() << "' attribute specified";
-      llvm::report_fatal_error("couldn't get name");
-    }
+    mlir::StringAttr name() { return getSymNameAttr(); }
 
     int getLockIDValue() {
       assert(getLockID().has_value() && "Lock has no ID value");
@@ -1739,42 +1716,15 @@ def AIE_LockOp
 
     TileOp getTileOp();
 
-    void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
-      if (hasName())
-        setNameFn(getResult(), name().str());
-      else {
-        std::optional<int> col = getTileLike().tryGetCol();
-        std::optional<int> row = getTileLike().tryGetRow();
-        if (col && row) {
-          std::string nameWithoutDialect =
-              getOperation()->getName().stripDialect().str();
-          setNameFn(getResult(), nameWithoutDialect + "_" +
-                std::to_string(*col) + "_" +
-                std::to_string(*row));
-        }
-      }
-    }
   }];
+  let hasVerifier = 1;
+}
 
-  let builders = [OpBuilder<
-                      (ins "mlir::Value":$tile, "int":$lockID, "int":$init), [{
-      build($_builder, $_state,
-        $_builder.getIndexType(),
-        tile,
-        $_builder.getI32IntegerAttr(lockID),
-        $_builder.getI32IntegerAttr(init),
-        nullptr
-      );
-    }]>,
-                  OpBuilder<(ins "mlir::Value":$tile, "int":$init), [{
-      build($_builder, $_state,
-        $_builder.getIndexType(),
-        tile,
-        /*lockID=*/nullptr,
-        $_builder.getI32IntegerAttr(init),
-        nullptr
-      );
-    }]>];
+def AIE_GetLockOp : AIE_Op<"get_lock", []> {
+  let summary = "Get a lock value from a symbol";
+  let arguments = (ins FlatSymbolRefAttr:$lock);
+  let results = (outs Index:$result);
+  let assemblyFormat = [{ $lock attr-dict }];
   let hasVerifier = 1;
 }
 
@@ -1799,7 +1749,7 @@ def AIE_UseLockOp : AIE_Op<"use_lock", []> {
     otherwise.
   }];
 
-  let arguments = (ins Index:$lock, LockAction:$action, I32:$value,
+  let arguments = (ins FlatSymbolRefAttr:$lock, LockAction:$action, I32:$value,
       OptionalAttr<LockBlocking>:$blocking,
       DefaultValuedOptionalAttr<BoolAttr, "true">:$acq_en);
 
@@ -1810,18 +1760,24 @@ def AIE_UseLockOp : AIE_Op<"use_lock", []> {
   let hasVerifier = 1;
   let hasCanonicalizeMethod = 1;
   let builders =
-      [OpBuilder<(ins "mlir::Value":$lock, "xilinx::AIE::LockAction":$action,
+      [OpBuilder<(ins "mlir::FlatSymbolRefAttr":$lock, "xilinx::AIE::LockAction":$action,
                      "int32_t":$value),
                  [{
       auto constant = mlir::arith::ConstantOp::create(
           $_builder, $_state.location, $_builder.getI32Type(),
           $_builder.getI32IntegerAttr(value));
-      build($_builder, $_state, lock, action, constant, /*blocking=*/nullptr);
+      build($_builder, $_state, lock,
+        xilinx::AIE::LockActionAttr::get($_builder.getContext(), action),
+        constant, /*blocking=*/nullptr,
+        /*acq_en=*/nullptr);
     }]>,
-       OpBuilder<(ins "mlir::Value":$lock, "xilinx::AIE::LockAction":$action,
+      OpBuilder<(ins "mlir::FlatSymbolRefAttr":$lock, "xilinx::AIE::LockAction":$action,
                      "mlir::Value":$value),
                  [{
-      build($_builder, $_state, lock, action, value, /*blocking=*/nullptr);
+      build($_builder, $_state, lock,
+        xilinx::AIE::LockActionAttr::get($_builder.getContext(), action),
+        value, /*blocking=*/nullptr,
+        /*acq_en=*/nullptr);
     }]>];
 
   let extraClassDeclaration = [{
@@ -1838,16 +1794,17 @@ def AIE_UseLockOp : AIE_Op<"use_lock", []> {
       return 1;
     }
     LockOp getLockOp() {
-      return llvm::cast<xilinx::AIE::LockOp>(getLock().getDefiningOp());
+      return mlir::SymbolTable::lookupNearestSymbolFrom<xilinx::AIE::LockOp>(
+          getOperation(), getLockAttr());
     }
   }];
 }
 
 def AIE_BufferOp
     : AIE_Op<
-          "buffer", [TileElement, IsTileWithMemory,
+          "buffer", [TileElement, IsTileWithMemory, AIESymbol,
                      DeclareOpInterfaceMethods<BufferLike, ["getBufferTile"]>]>,
-      Results<(outs AnyMemRef)> {
+    Results<(outs)> {
   let summary = "Declare a buffer";
   let description = [{
     This operation instantiates a buffer that belongs to a Memory Module of a tile.
@@ -1855,7 +1812,8 @@ def AIE_BufferOp
     Example:
     ```
       %tile33 = aie.tile(3, 3)
-      %buf = aie.buffer(%tile33) : memref<256xi64>
+      aie.buffer @buf(%tile33) : memref<256xi64>
+      %buf = aie.get_buffer @buf : memref<256xi64>
     ```
     This operation represents a buffer in tile (3, 3) of 256 elements, each a 64-bit integer.
 
@@ -1880,61 +1838,37 @@ def AIE_BufferOp
     extents rather than reserving room of its own.
   }];
 
-  let arguments = (ins Index:$tile, OptionalAttr<StrAttr>:$sym_name,
+  let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile, TypeAttr:$type,
       OptionalAttr<AIEI32Attr>:$address,
       OptionalAttr<ElementsAttr>:$initial_value,
       OptionalAttr<AIEI32Attr>:$mem_bank, UnitAttr:$core_data,
       UnitAttr:$bank_reserved, DefaultValuedAttr<BoolAttr, "true">:$aligned);
 
-  let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{
-    `(` $tile `)`
-    attr-dict `:` type($buffer)
-    custom<BufferInitialValue>(ref(type($buffer)), $initial_value)
+    $sym_name `(` $tile `)`
+    attr-dict `:` $type
+    custom<BufferInitialValue>(ref($type), $initial_value)
   }];
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    bool hasName() {
-      return bool(getOperation()->getAttrOfType<mlir::StringAttr>(
-          mlir::SymbolTable::getSymbolAttrName()));
-    }
-
-    mlir::StringAttr name() {
-      if (auto attr = getOperation()->getAttrOfType<mlir::StringAttr>(
-              mlir::SymbolTable::getSymbolAttrName()))
-        return attr;
-      emitOpError("does not have '")
-          << mlir::SymbolTable::getSymbolAttrName() << "' attribute specified";
-      llvm::report_fatal_error("couldn't get name");
-    }
-
+    mlir::StringAttr name() { return getSymNameAttr(); }
     TileOp getTileOp();
     // Return the number of bytes that need to be allocated for this buffer.
     int64_t getAllocationSize();
-    void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
-      if (hasName())
-        setNameFn(getResult(), name().str());
-      else {
-        std::optional<int> col = getTileLike().tryGetCol();
-        std::optional<int> row = getTileLike().tryGetRow();
-        if (col && row) {
-          std::string nameWithoutDialect =
-              getOperation()->getName().stripDialect().str();
-          setNameFn(getResult(), nameWithoutDialect + "_" +
-                std::to_string(*col) + "_" +
-                std::to_string(*row));
-        }
-      }
-    }
   }];
 }
 
+def AIE_GetBufferOp : AIE_Op<"get_buffer", []> {
+  let summary = "Get a buffer value from a symbol";
+  let arguments = (ins FlatSymbolRefAttr:$buffer);
+  let results = (outs AnyMemRef:$result);
+  let assemblyFormat = [{ $buffer attr-dict `:` type($result) }];
+  let hasVerifier = 1;
+}
+
 def AIE_ExternalBufferOp
-    : AIE_Op<"external_buffer", [BufferLike,
-                                 DeclareOpInterfaceMethods<
-                                     OpAsmOpInterface, ["getAsmResultNames"]>]>,
-      Results<(outs AnyMemRef)> {
+  : AIE_Op<"external_buffer", [BufferLike, AIESymbol]> {
   let summary = "Declare a buffer in external memory";
   let description = [{
     This operation represents a buffer that exists in some physical
@@ -1948,39 +1882,28 @@ def AIE_ExternalBufferOp
 
     Example:
     ```
-      %buf = aie.external_buffer : memref<256xi64>
+      aie.external_buffer @buf : memref<256xi64>
+      %buf = aie.get_external_buffer @buf : memref<256xi64>
     ```
     This operation represents an external buffer.
   }];
 
-  let arguments = (ins OptionalAttr<StrAttr>:$sym_name,
+  let arguments = (ins SymbolNameAttr:$sym_name, TypeAttr:$type,
       OptionalAttr<AIEI64Attr>:$address);
 
-  let results = (outs AnyMemRef:$buffer);
-  let assemblyFormat = [{ attr-dict `:` type($buffer) }];
+  let assemblyFormat = [{ $sym_name attr-dict `:` $type }];
 
   let extraClassDeclaration = [{
-    bool hasName() {
-      return bool(getOperation()->getAttrOfType<mlir::StringAttr>(
-          mlir::SymbolTable::getSymbolAttrName()));
-    }
-
-    mlir::StringAttr name() {
-      if (auto attr = getOperation()->getAttrOfType<mlir::StringAttr>(
-              mlir::SymbolTable::getSymbolAttrName()))
-        return attr;
-      emitOpError("does not have '")
-          << mlir::SymbolTable::getSymbolAttrName() << "' attribute specified";
-      llvm::report_fatal_error("couldn't get name");
-    }
+    mlir::StringAttr name() { return getSymNameAttr(); }
   }];
+}
 
-  let extraClassDefinition = [{
-    void $cppClass::getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
-      if (hasName())
-        setNameFn(getResult(), name().str());
-    }
-  }];
+def AIE_GetExternalBufferOp : AIE_Op<"get_external_buffer", []> {
+  let summary = "Get an external buffer value from a symbol";
+  let arguments = (ins FlatSymbolRefAttr:$buffer);
+  let results = (outs AnyMemRef:$result);
+  let assemblyFormat = [{ $buffer attr-dict `:` type($result) }];
+  let hasVerifier = 1;
 }
 
 def AIE_EventOp : AIE_Op<"event", []> {

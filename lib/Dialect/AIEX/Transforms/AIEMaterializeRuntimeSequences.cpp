@@ -251,7 +251,7 @@ getOrClone(PatternRewriter &rewriter, Operation *op, IRMapping &argMap,
 }
 
 // Copies SSA value definitions into the caller device.
-// Supports `aie.tile`, `aie.lock` and `aie.buffer` operations.
+// Supports AIE tiles and buffer or lock getters.
 // Updates argMap to map old values to new/existing values.
 static LogicalResult copyReferencedSSAValues(
     PatternRewriter &rewriter, const llvm::SetVector<Value> &referencedValues,
@@ -262,6 +262,10 @@ static LogicalResult copyReferencedSSAValues(
 
   llvm::SetVector<Value> referencedValuesToVisit = referencedValues;
   std::vector<Operation *> referencedOpsToClone = {};
+  auto appendIfMissing = [&](Operation *op) {
+    if (!llvm::is_contained(referencedOpsToClone, op))
+      referencedOpsToClone.push_back(op);
+  };
   while (!referencedValuesToVisit.empty()) {
     Value referencedValue = referencedValuesToVisit.pop_back_val();
     Operation *definingOp = referencedValue.getDefiningOp();
@@ -276,20 +280,37 @@ static LogicalResult copyReferencedSSAValues(
 
     if (auto tileOp = llvm::dyn_cast<AIE::TileOp>(definingOp)) {
       referencedOpsToClone.insert(referencedOpsToClone.begin(), definingOp);
-    } else if (auto lockOp = llvm::dyn_cast<AIE::LockOp>(definingOp)) {
-      Value lockTile = lockOp.getTile();
-      if (lockTile) {
-        referencedValuesToVisit.insert(lockTile);
-      }
-      referencedOpsToClone.push_back(definingOp);
-    } else if (auto bufferOp = llvm::dyn_cast<AIE::BufferOp>(definingOp)) {
-      referencedValuesToVisit.insert(bufferOp.getTile());
-      referencedOpsToClone.push_back(definingOp);
+    } else if (auto getLock = llvm::dyn_cast<AIE::GetLockOp>(definingOp)) {
+      AIE::LockOp lock = SymbolTable::lookupNearestSymbolFrom<AIE::LockOp>(
+          getLock, getLock.getLockAttr());
+      if (!lock)
+        return getLock.emitOpError("references an unknown lock");
+      referencedValuesToVisit.insert(lock.getTile());
+      appendIfMissing(lock);
+      appendIfMissing(getLock);
+    } else if (auto getBuffer = llvm::dyn_cast<AIE::GetBufferOp>(definingOp)) {
+      AIE::BufferOp buffer =
+          SymbolTable::lookupNearestSymbolFrom<AIE::BufferOp>(
+              getBuffer, getBuffer.getBufferAttr());
+      if (!buffer)
+        return getBuffer.emitOpError("references an unknown buffer");
+      referencedValuesToVisit.insert(buffer.getTile());
+      appendIfMissing(buffer);
+      appendIfMissing(getBuffer);
+    } else if (auto getBuffer =
+                   llvm::dyn_cast<AIE::GetExternalBufferOp>(definingOp)) {
+      AIE::ExternalBufferOp buffer =
+          SymbolTable::lookupNearestSymbolFrom<AIE::ExternalBufferOp>(
+              getBuffer, getBuffer.getBufferAttr());
+      if (!buffer)
+        return getBuffer.emitOpError("references an unknown external buffer");
+      appendIfMissing(buffer);
+      appendIfMissing(getBuffer);
     } else {
       return errorReportOp->emitError()
              << "Referenced SSA value defined by unsupported operation type: "
              << definingOp->getName().getStringRef()
-             << ". Currently only aie.tile, aie.lock and aie.buffer "
+             << ". Currently only aie.tile and AIE buffer or lock getter "
                 "operations are supported.";
     }
   }
@@ -342,11 +363,32 @@ static LogicalResult copyReferencedSSAValues(
 
     Operation *clonedOp = getOrClone(rewriter, definingOp, argMap, clonedDefs,
                                      clonedSSAInsertPoint, allSymbolNames);
-    rewriter.replaceOpUsesWithIf(
-        definingOp, clonedOp->getResult(0), [&](OpOperand &operand) {
-          return operand.getOwner()->getParentOfType<AIE::DeviceOp>() ==
-                 callerDevice;
-        });
+    auto rewriteGetterSymbol = [&](StringRef attrName, Operation *symbolDef) {
+      Operation *clonedDef = clonedDefs.lookup(symbolDef);
+      auto name = clonedDef->getAttrOfType<StringAttr>(
+          SymbolTable::getSymbolAttrName());
+      clonedOp->setAttr(attrName, FlatSymbolRefAttr::get(name));
+    };
+    if (auto getLock = llvm::dyn_cast<AIE::GetLockOp>(definingOp)) {
+      rewriteGetterSymbol("lock",
+                          SymbolTable::lookupNearestSymbolFrom<AIE::LockOp>(
+                              getLock, getLock.getLockAttr()));
+    } else if (auto getBuffer = llvm::dyn_cast<AIE::GetBufferOp>(definingOp)) {
+      rewriteGetterSymbol("buffer",
+                          SymbolTable::lookupNearestSymbolFrom<AIE::BufferOp>(
+                              getBuffer, getBuffer.getBufferAttr()));
+    } else if (auto getBuffer =
+                   llvm::dyn_cast<AIE::GetExternalBufferOp>(definingOp)) {
+      rewriteGetterSymbol(
+          "buffer", SymbolTable::lookupNearestSymbolFrom<AIE::ExternalBufferOp>(
+                        getBuffer, getBuffer.getBufferAttr()));
+    }
+    if (clonedOp->getNumResults() != 0)
+      rewriter.replaceOpUsesWithIf(
+          definingOp, clonedOp->getResult(0), [&](OpOperand &operand) {
+            return operand.getOwner()->getParentOfType<AIE::DeviceOp>() ==
+                   callerDevice;
+          });
   }
 
   return success();
@@ -378,10 +420,6 @@ static LogicalResult inlineReferencedSymbolDefinitions(
       // (for cross-device references).
       Operation *symbolDefOp =
           SymbolTable::lookupNearestSymbolFrom(lookupFrom, oldSymbolRef);
-      if (!symbolDefOp && oldSymbolRef.getNestedReferences().empty()) {
-        symbolDefOp =
-            AIE::lookupNamedOp(lookupFrom, oldSymbolRef.getRootReference());
-      }
       if (!symbolDefOp) {
         if (ModuleOp moduleOp = lookupFrom->getParentOfType<ModuleOp>()) {
           symbolDefOp = SymbolTable::lookupSymbolIn(moduleOp, oldSymbolRef);

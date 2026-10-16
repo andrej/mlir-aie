@@ -46,8 +46,10 @@ module {
 
     // One bank each. Unpinned: finding room for the tables is the allocator's
     // job, not the design's.
-    %buf_in = aie.buffer(%tile_0_2) {sym_name = "buf_in"} : memref<16384xi8>
-    %buf_out = aie.buffer(%tile_0_2) {sym_name = "buf_out"} : memref<16384xi8>
+    aie.buffer @buf_in(%tile_0_2)  : memref<16384xi8>
+    %buf_in = aie.get_buffer @buf_in : memref<16384xi8>
+    aie.buffer @buf_out(%tile_0_2)  : memref<16384xi8>
+    %buf_out = aie.get_buffer @buf_out : memref<16384xi8>
 
     aie.objectfifo @of_out(%tile_0_2, {%tile_0_0}, 2 : i32) : !aie.objectfifo<memref<64xi8>>
 

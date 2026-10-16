@@ -143,7 +143,8 @@ aie.device(npu1) {
 
 aie.device(npu2) {
   %tile_0_1 = aie.tile(0, 1)
-  %buf = aie.buffer(%tile_0_1) : memref<1024xi32>
+  aie.buffer @buf(%tile_0_1) : memref<1024xi32>
+  %buf = aie.get_buffer @buf : memref<1024xi32>
   aie.runtime_sequence @memtile_chain(%n: index) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index

@@ -83,7 +83,8 @@ module {
     aie.packet_flow(2) { aie.packet_source<%t05, DMA : 1> aie.packet_dest<%t01, DMA : 0> }
     aie.packet_flow(3) { aie.packet_source<%t04, DMA : 0> aie.packet_dest<%t03, DMA : 1> }
 
-    %src0 = aie.buffer(%t02) : memref<16xi32>
+    aie.buffer @src0(%t02) : memref<16xi32>
+    %src0 = aie.get_buffer @src0 : memref<16xi32>
     aie.mem(%t02) {
       %0 = aie.dma_start(MM2S, 0, ^send0, ^end)
     ^send0:
@@ -93,8 +94,10 @@ module {
       aie.end
     }
 
-    %src1 = aie.buffer(%t05) : memref<16xi32>
-    %src2 = aie.buffer(%t05) : memref<16xi32>
+    aie.buffer @src1(%t05) : memref<16xi32>
+    %src1 = aie.get_buffer @src1 : memref<16xi32>
+    aie.buffer @src2(%t05) : memref<16xi32>
+    %src2 = aie.get_buffer @src2 : memref<16xi32>
     aie.mem(%t05) {
       %0 = aie.dma_start(MM2S, 0, ^send1, ^next)
     ^send1:
@@ -109,27 +112,34 @@ module {
       aie.end
     }
 
-    %buf0 = aie.buffer(%t04) : memref<16xi32>
-    %buf1 = aie.buffer(%t04) : memref<16xi32>
-    %src3 = aie.buffer(%t04) : memref<16xi32>
-    %prod0 = aie.lock(%t04, 0) {init = 1 : i32}
-    %cons0 = aie.lock(%t04, 1) {init = 0 : i32}
-    %prod1 = aie.lock(%t04, 2) {init = 1 : i32}
-    %cons1 = aie.lock(%t04, 3) {init = 0 : i32}
+    aie.buffer @buf0(%t04) : memref<16xi32>
+    %buf0 = aie.get_buffer @buf0 : memref<16xi32>
+    aie.buffer @buf1(%t04) : memref<16xi32>
+    %buf1 = aie.get_buffer @buf1 : memref<16xi32>
+    aie.buffer @src3(%t04) : memref<16xi32>
+    %src3 = aie.get_buffer @src3 : memref<16xi32>
+    aie.lock @prod0(%t04, 0) {init = 1 : i32}
+    %prod0 = aie.get_lock @prod0
+    aie.lock @cons0(%t04, 1) {init = 0 : i32}
+    %cons0 = aie.get_lock @cons0
+    aie.lock @prod1(%t04, 2) {init = 1 : i32}
+    %prod1 = aie.get_lock @prod1
+    aie.lock @cons1(%t04, 3) {init = 0 : i32}
+    %cons1 = aie.get_lock @cons1
     aie.mem(%t04) {
       %one = arith.constant 1 : i32
       %0 = aie.dma_start(S2MM, 0, ^recv0, ^next1)
     ^recv0:
-      aie.use_lock(%prod0, AcquireGreaterEqual, %one)
+      aie.use_lock(@prod0, AcquireGreaterEqual, %one)
       aie.dma_bd(%buf0 : memref<16xi32> offset = 0 len = 16)
-      aie.use_lock(%cons0, Release, %one)
+      aie.use_lock(@cons0, Release, %one)
       aie.next_bd ^recv0
     ^next1:
       %1 = aie.dma_start(S2MM, 1, ^recv1, ^next2)
     ^recv1:
-      aie.use_lock(%prod1, AcquireGreaterEqual, %one)
+      aie.use_lock(@prod1, AcquireGreaterEqual, %one)
       aie.dma_bd(%buf1 : memref<16xi32> offset = 0 len = 16)
-      aie.use_lock(%cons1, Release, %one)
+      aie.use_lock(@cons1, Release, %one)
       aie.next_bd ^recv1
     ^next2:
       %2 = aie.dma_start(MM2S, 0, ^send3, ^end)
@@ -145,15 +155,16 @@ module {
       %c1 = arith.constant 1 : index
       %c4 = arith.constant 4 : index
       scf.for %i = %c0 to %c4 step %c1 {
-        aie.use_lock(%cons1, AcquireGreaterEqual, %one)
-        aie.use_lock(%cons0, AcquireGreaterEqual, %one)
-        aie.use_lock(%prod0, Release, %one)
-        aie.use_lock(%prod1, Release, %one)
+        aie.use_lock(@cons1, AcquireGreaterEqual, %one)
+        aie.use_lock(@cons0, AcquireGreaterEqual, %one)
+        aie.use_lock(@prod0, Release, %one)
+        aie.use_lock(@prod1, Release, %one)
       }
       aie.end
     }
 
-    %dst3 = aie.buffer(%t03) : memref<16xi32>
+    aie.buffer @dst3(%t03) : memref<16xi32>
+    %dst3 = aie.get_buffer @dst3 : memref<16xi32>
     aie.mem(%t03) {
       %0 = aie.dma_start(S2MM, 1, ^recv, ^end)
     ^recv:
@@ -163,7 +174,8 @@ module {
       aie.end
     }
 
-    %dst2 = aie.buffer(%t01) : memref<16xi32>
+    aie.buffer @dst2(%t01) : memref<16xi32>
+    %dst2 = aie.get_buffer @dst2 : memref<16xi32>
     aie.memtile_dma(%t01) {
       %0 = aie.dma_start(S2MM, 0, ^recv, ^end)
     ^recv:

@@ -13,10 +13,14 @@
 module {
   aie.device(xcve2302) {
     %t = aie.tile(1, 2)
-    %b0 = aie.buffer(%t) {sym_name = "b0"} : memref<32xi32>
-    %b1 = aie.buffer(%t) {sym_name = "b1"} : memref<32xi32>
-    %pl = aie.lock(%t) {init = 2 : i32, sym_name = "pl"}
-    %cl = aie.lock(%t) {init = 0 : i32, sym_name = "cl"}
+    aie.buffer @b0(%t)  : memref<32xi32>
+    %b0 = aie.get_buffer @b0 : memref<32xi32>
+    aie.buffer @b1(%t)  : memref<32xi32>
+    %b1 = aie.get_buffer @b1 : memref<32xi32>
+    aie.lock @pl(%t) {init = 2 : i32 }
+    %pl = aie.get_lock @pl
+    aie.lock @cl(%t) {init = 0 : i32 }
+    %cl = aie.get_lock @cl
     aie.objectfifo.pool @p(%t) {depth = 2 : i32, buffers = [@b0, @b1]} : memref<32xi32> {
       aie.objectfifo.segment @s0 {consumeLock = @cl, offset = 0 : i32, produceLock = @pl, size = 16 : i32}
       aie.objectfifo.segment @s1 {consumeLock = @cl, offset = 16 : i32, produceLock = @pl, size = 16 : i32}
@@ -31,8 +35,10 @@ module {
 }
 
 // CHECK-LABEL: aie.core
-// CHECK:   %[[V0:.*]] = memref.subview %b0[16] [16] [1] : memref<32xi32> to memref<16xi32, strided<[1], offset: 16>>
-// CHECK:   %[[V1:.*]] = memref.subview %b1[16] [16] [1] : memref<32xi32> to memref<16xi32, strided<[1], offset: 16>>
+// CHECK:   %[[B0:.*]] = aie.get_buffer @b0
+// CHECK:   %[[B1:.*]] = aie.get_buffer @b1
+// CHECK:   %[[V0:.*]] = memref.subview %[[B0]][16] [16] [1] : memref<32xi32> to memref<16xi32, strided<[1], offset: 16>>
+// CHECK:   %[[V1:.*]] = memref.subview %[[B1]][16] [16] [1] : memref<32xi32> to memref<16xi32, strided<[1], offset: 16>>
 // CHECK:   scf.index_switch
 // CHECK:     scf.yield %[[V0]]
 // CHECK:     scf.yield %[[V1]]

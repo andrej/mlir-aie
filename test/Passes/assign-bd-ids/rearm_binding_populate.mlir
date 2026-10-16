@@ -19,16 +19,19 @@
 module @populate {
   aie.device(npu2) {
     %t03 = aie.tile(0, 3)
-    %buf = aie.buffer(%t03) : memref<64xi32>
-    %pl = aie.lock(%t03, 0) {init = 1 : i32}
-    %cl = aie.lock(%t03, 1) {init = 0 : i32}
+    aie.buffer @buf(%t03) : memref<64xi32>
+    %buf = aie.get_buffer @buf : memref<64xi32>
+    aie.lock @pl(%t03, 0) {init = 1 : i32}
+    %pl = aie.get_lock @pl
+    aie.lock @cl(%t03, 1) {init = 0 : i32}
+    %cl = aie.get_lock @cl
     %mem = aie.mem(%t03) {
       %s = aie.dma_start(S2MM, 0, ^bd, ^end, repeat_count = 3)
     ^bd:
       %c1 = arith.constant 1 : i32
-      aie.use_lock(%pl, AcquireGreaterEqual, %c1)
+      aie.use_lock(@pl, AcquireGreaterEqual, %c1)
       aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 64) {bd_id = 5 : i32, next_bd_id = 5 : i32}
-      aie.use_lock(%cl, Release, %c1)
+      aie.use_lock(@cl, Release, %c1)
       aie.next_bd ^bd
     ^end:
       aie.end
@@ -50,7 +53,8 @@ module @populate {
 module @already_populated {
   aie.device(npu2) {
     %t03 = aie.tile(0, 3)
-    %pl = aie.lock(%t03, 0) {init = 1 : i32}
+    aie.lock @pl(%t03, 0) {init = 1 : i32}
+    %pl = aie.get_lock @pl
     aie.objectfifo_rearm_binding @of_rearm channels(%t03 : index) locks(%pl : index) {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, lock_inits = array<i32: 1>, head_bd_ids = array<i32: 9>, repeat_counts = array<i32: 1>}
   }
 }
@@ -64,7 +68,8 @@ module @already_populated {
 module @unresolvable {
   aie.device(npu2) {
     %t03 = aie.tile(0, 3)
-    %pl = aie.lock(%t03, 0) {init = 1 : i32}
+    aie.lock @pl(%t03, 0) {init = 1 : i32}
+    %pl = aie.get_lock @pl
     aie.objectfifo_rearm_binding @of_rearm channels(%t03 : index) locks(%pl : index) {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, lock_inits = array<i32: 1>}
   }
 }

@@ -15,8 +15,10 @@ module @program_endpoints {
   aie.device(npu2) {
     %mt = aie.tile(0, 1)
     %core = aie.tile(0, 2)
-    %b = aie.buffer(%mt) {sym_name = "b"} : memref<64xi32>
-    %b_l1 = aie.buffer(%core) {sym_name = "b_l1"} : memref<64xi32>
+    aie.buffer @b(%mt)  : memref<64xi32>
+    %b = aie.get_buffer @b : memref<64xi32>
+    aie.buffer @b_l1(%core)  : memref<64xi32>
+    %b_l1 = aie.get_buffer @b_l1 : memref<64xi32>
     aie.route_endpoint @b_in(%mt) DMA
     aie.route_endpoint @b_out(%mt) DMA
     aie.route_endpoint @b_core(%core) DMA
@@ -52,7 +54,8 @@ aie.device(npu2) {
 
 aie.device(npu2) {
   %core = aie.tile(0, 2)
-  %b = aie.buffer(%core) {sym_name = "b"} : memref<64xi32>
+  aie.buffer @b(%core)  : memref<64xi32>
+  %b = aie.get_buffer @b : memref<64xi32>
   aie.mem(%core) {
     // expected-error @+1 {{@b is not an aie.route_endpoint}}
     aie.dma_start(S2MM, @b, ^bd0, ^end)
@@ -68,7 +71,8 @@ aie.device(npu2) {
 
 aie.device(npu2) {
   %core = aie.tile(0, 2)
-  %b = aie.buffer(%core) {sym_name = "b"} : memref<64xi32>
+  aie.buffer @b(%core)  : memref<64xi32>
+  %b = aie.get_buffer @b : memref<64xi32>
   aie.route_endpoint @port(%core) Core {channelIndex = 0 : i32}
   aie.mem(%core) {
     // expected-error @+1 {{@port names a Core port, not a DMA channel}}
@@ -86,7 +90,8 @@ aie.device(npu2) {
 aie.device(npu2) {
   %core = aie.tile(0, 2)
   %other = aie.tile(0, 3)
-  %b = aie.buffer(%core) {sym_name = "b"} : memref<64xi32>
+  aie.buffer @b(%core)  : memref<64xi32>
+  %b = aie.get_buffer @b : memref<64xi32>
   aie.route_endpoint @elsewhere(%other) DMA
   aie.mem(%core) {
     // expected-error @+1 {{@elsewhere is on a different tile than this DMA program}}
@@ -103,7 +108,8 @@ aie.device(npu2) {
 
 aie.device(npu2) {
   %core = aie.tile(0, 2)
-  %b = aie.buffer(%core) {sym_name = "b"} : memref<64xi32>
+  aie.buffer @b(%core)  : memref<64xi32>
+  %b = aie.get_buffer @b : memref<64xi32>
   aie.mem(%core) {
     // expected-error @+1 {{attribute 'channel' failed to satisfy constraint}}
     aie.dma_start(S2MM, -1, ^bd0, ^end)
@@ -120,7 +126,8 @@ aie.device(npu2) {
 // Each endpoint a program names takes a channel of its own.
 aie.device(npu2) {
   %core = aie.tile(0, 2)
-  %b = aie.buffer(%core) {sym_name = "b"} : memref<64xi32>
+  aie.buffer @b(%core)  : memref<64xi32>
+  %b = aie.get_buffer @b : memref<64xi32>
   aie.route_endpoint @e0(%core) DMA
   aie.route_endpoint @e1(%core) DMA
   // expected-error @+1 {{uses more input channels than available on this tile}}

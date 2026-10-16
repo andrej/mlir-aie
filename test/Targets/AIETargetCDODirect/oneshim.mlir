@@ -8,22 +8,23 @@
 // RUN: aie-translate --aie-generate-cdo %s --cdo-debug=true 2>&1 | FileCheck %s
 
 // CHECK: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000001D000  Size: 8
-// CHECK:     Address: 0x000000000001D000  Data@ {{0x[0-9a-z]+}} is: 0x00000004 
-// CHECK:     Address: 0x000000000001D004  Data@ {{0x[0-9a-z]+}} is: 0x00000000 
-// CHECK:     Address: 0x000000000001D008  Data@ {{0x[0-9a-z]+}} is: 0x00000000 
-// CHECK:     Address: 0x000000000001D00C  Data@ {{0x[0-9a-z]+}} is: 0x00000000 
-// CHECK:     Address: 0x000000000001D010  Data@ {{0x[0-9a-z]+}} is: 0x80000000 
+// CHECK:     Address: 0x000000000001D000  Data@ {{0x[0-9a-z]+}} is: 0x00000004
+// CHECK:     Address: 0x000000000001D004  Data@ {{0x[0-9a-z]+}} is: 0x00000000
+// CHECK:     Address: 0x000000000001D008  Data@ {{0x[0-9a-z]+}} is: 0x00000000
+// CHECK:     Address: 0x000000000001D00C  Data@ {{0x[0-9a-z]+}} is: 0x00000000
+// CHECK:     Address: 0x000000000001D010  Data@ {{0x[0-9a-z]+}} is: 0x80000000
 // CHECK:     Address: 0x000000000001D014  Data@ {{0x[0-9a-z]+}} is: 0x02000000
-// CHECK:     Address: 0x000000000001D018  Data@ {{0x[0-9a-z]+}} is: 0x00000000 
-// CHECK:     Address: 0x000000000001D01C  Data@ {{0x[0-9a-z]+}} is: 0x02000000 
+// CHECK:     Address: 0x000000000001D018  Data@ {{0x[0-9a-z]+}} is: 0x00000000
+// CHECK:     Address: 0x000000000001D01C  Data@ {{0x[0-9a-z]+}} is: 0x02000000
 // check that burst length is set to 128B
 // CHECK:     Address: 0x000000000001D030  Data@ {{0x[0-9a-z]+}} is: 0x40000000
-// CHECK: (Write64): Address:  0x000000000001D204 Data:  0x80000000  
-// CHECK: (MaskWrite64): Address: 0x000000000001D200  Mask: 0x00000000  Data: 0x00000001 
+// CHECK: (Write64): Address:  0x000000000001D204 Data:  0x80000000
+// CHECK: (MaskWrite64): Address: 0x000000000001D200  Mask: 0x00000000  Data: 0x00000001
 
 module {
  aie.device(npu1) {
-  %buffer = aie.external_buffer { sym_name = "buf" } : memref<16 x f32>
+  aie.external_buffer @buf  : memref<16 x f32>
+  %buffer = aie.get_external_buffer @buf : memref<16 x f32>
   %t00 = aie.tile(0, 0)
   aie.shim_dma(%t00)  {
       aie.dma_start(S2MM, 0, ^bd0, ^bd1)

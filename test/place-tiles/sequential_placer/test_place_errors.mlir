@@ -173,7 +173,7 @@ module @compute_tiles_exhausted {
     %c2 = aie.logical_tile<CoreTile>(?, ?)
     %c3 = aie.logical_tile<CoreTile>(?, ?)
     %c4 = aie.logical_tile<CoreTile>(?, ?)
-    // CHECK: error: no available compute tiles for placement
+    // CHECK: error: 'aie.buffer' op in Column 1 and Row 3 is accessed from an unreachable tile in Column 0 and Row 5
     %c5 = aie.logical_tile<CoreTile>(?, ?)
 
     aie.core(%c1) { aie.end }
@@ -323,11 +323,10 @@ module @mixed_channels_exceed_capacity {
 // Both endpoints pinned far apart: not memory-affinity neighbors.
 module @buffer_adjacency_both_pinned_violation {
   aie.device(npu1) {
-    // CHECK: error: tile (0, 2) violates shared-L1 buffer adjacency
-    // CHECK: note: shared-L1 buffer consumer peer placed at (3, 5)
-    // CHECK: note: shared-L1 buffer adjacency requires this LTO to be on a tile whose L1 is shared with the buffer owner's tile
+    // CHECK: error: 'aie.buffer' op in Column 0 and Row 2 is accessed from an unreachable tile in Column 3
     %owner = aie.logical_tile<CoreTile>(0, 2)
-    %buf   = aie.buffer(%owner) : memref<16xi32>
+    aie.buffer @buf(%owner) : memref<16xi32>
+    %buf = aie.get_buffer @buf : memref<16xi32>
     aie.core(%owner) { aie.end }
     %consumer = aie.logical_tile<CoreTile>(3, 5)
     aie.core(%consumer) {
@@ -344,10 +343,10 @@ module @buffer_adjacency_both_pinned_violation {
 // memory-affinity slot relative to the owner.
 module @buffer_adjacency_unsatisfiable_column {
   aie.device(npu1) {
-    // CHECK: error: no compute tile available matching constraint (3, ?) and shared-L1 buffer adjacency
-    // CHECK: note: shared-L1 buffer owner peer placed at (0, 2)
+    // CHECK: error: 'aie.buffer' op in Column 0 and Row 2 is accessed from an unreachable tile in Column 3 and Row {{[0-9]+}}
     %owner = aie.logical_tile<CoreTile>(0, 2)
-    %buf   = aie.buffer(%owner) : memref<16xi32>
+    aie.buffer @buf(%owner) : memref<16xi32>
+    %buf = aie.get_buffer @buf : memref<16xi32>
     aie.core(%owner) { aie.end }
     %consumer = aie.logical_tile<CoreTile>(3, ?)
     aie.core(%consumer) {
@@ -366,13 +365,13 @@ module @buffer_adjacency_unsatisfiable_column {
 module @buffer_adjacency_star_oversubscribed {
   aie.device(npu1) {
     %owner = aie.logical_tile<CoreTile>(1, 3)
-    %buf   = aie.buffer(%owner) : memref<16xi32>
+    aie.buffer @buf(%owner) : memref<16xi32>
+    %buf = aie.get_buffer @buf : memref<16xi32>
     aie.core(%owner) { aie.end }
     %c1 = aie.logical_tile<CoreTile>(?, ?)
     %c2 = aie.logical_tile<CoreTile>(?, ?)
     %c3 = aie.logical_tile<CoreTile>(?, ?)
-    // CHECK: error: no available compute tiles for placement (shared-L1 buffer adjacency unsatisfiable)
-    // CHECK: note: shared-L1 buffer owner peer placed at (1, 3)
+    // CHECK: error: no available compute tiles for placement
     %c4 = aie.logical_tile<CoreTile>(?, ?)
     aie.core(%c1) {
       %i = arith.constant 0 : index

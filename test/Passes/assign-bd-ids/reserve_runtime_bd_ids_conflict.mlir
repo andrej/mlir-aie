@@ -9,7 +9,8 @@
 
 aie.device(npu2) {
   %t = aie.tile(0, 0)
-  %buf = aie.external_buffer {sym_name = "b"} : memref<8xi32>
+  aie.external_buffer @b  : memref<8xi32>
+  %buf = aie.get_external_buffer @b : memref<8xi32>
   aie.shim_dma(%t) {
     %0 = aie.dma_start(MM2S, 0, ^bd, ^end)
   ^bd:

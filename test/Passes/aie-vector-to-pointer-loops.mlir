@@ -12,13 +12,14 @@
 // CHECK-LABEL: @test1
 aie.device(xcvc1902) @test1 {
   %tile = aie.tile(1, 1)
-  %buf = aie.buffer(%tile) : memref<1024xi32, 2 : i32>
-  
+  aie.buffer @buf(%tile) : memref<1024xi32, 2 : i32>
+  %buf = aie.get_buffer @buf : memref<1024xi32, 2 : i32>
+
   %core = aie.core(%tile) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %c16 = arith.constant 16 : index
-    
+
     // CHECK: builtin.unrealized_conversion_cast
     // CHECK: ptr.to_ptr
     // CHECK: scf.for
@@ -47,7 +48,8 @@ aie.device(xcvc1902) @test1 {
 // CHECK-LABEL: @default_space
 aie.device(npu2) @default_space {
   %tile = aie.tile(0, 2)
-  %buf = aie.buffer(%tile) : memref<1024xi32>
+  aie.buffer @buf(%tile) : memref<1024xi32>
+  %buf = aie.get_buffer @buf : memref<1024xi32>
 
   %core = aie.core(%tile) {
     %c0 = arith.constant 0 : index
@@ -78,8 +80,10 @@ aie.device(npu2) @default_space {
 // CHECK-LABEL: @mixed_element_sizes
 aie.device(npu2) @mixed_element_sizes {
   %tile = aie.tile(0, 2)
-  %in = aie.buffer(%tile) : memref<1024xi16>
-  %out = aie.buffer(%tile) : memref<1024xi32>
+  aie.buffer @in(%tile) : memref<1024xi16>
+  %in = aie.get_buffer @in : memref<1024xi16>
+  aie.buffer @out(%tile) : memref<1024xi32>
+  %out = aie.get_buffer @out : memref<1024xi32>
 
   %core = aie.core(%tile) {
     %c0 = arith.constant 0 : index
@@ -116,8 +120,10 @@ aie.device(npu2) @mixed_element_sizes {
 // CHECK-LABEL: @shared_index
 aie.device(npu2) @shared_index {
   %tile = aie.tile(0, 2)
-  %a = aie.buffer(%tile) : memref<1024xi32>
-  %b = aie.buffer(%tile) : memref<1024xi32>
+  aie.buffer @a(%tile) : memref<1024xi32>
+  %a = aie.get_buffer @a : memref<1024xi32>
+  aie.buffer @b(%tile) : memref<1024xi32>
+  %b = aie.get_buffer @b : memref<1024xi32>
 
   %core = aie.core(%tile) {
     %c0 = arith.constant 0 : index
@@ -145,8 +151,10 @@ aie.device(npu2) @shared_index {
 // CHECK-LABEL: @invariant_index_load
 aie.device(npu2) @invariant_index_load {
   %tile = aie.tile(0, 2)
-  %acc = aie.buffer(%tile) : memref<16xbf16, 2 : i32>
-  %in = aie.buffer(%tile) : memref<64xbf16, 2 : i32>
+  aie.buffer @acc(%tile) : memref<16xbf16, 2 : i32>
+  %acc = aie.get_buffer @acc : memref<16xbf16, 2 : i32>
+  aie.buffer @in(%tile) : memref<64xbf16, 2 : i32>
+  %in = aie.get_buffer @in : memref<64xbf16, 2 : i32>
 
   %core = aie.core(%tile) {
     %c0 = arith.constant 0 : index
@@ -174,8 +182,10 @@ aie.device(npu2) @invariant_index_load {
 // CHECK-LABEL: @index_has_scalar_use
 aie.device(npu2) @index_has_scalar_use {
   %tile = aie.tile(0, 2)
-  %buf = aie.buffer(%tile) : memref<1024xi32>
-  %lut = aie.buffer(%tile) : memref<1024xi32>
+  aie.buffer @buf(%tile) : memref<1024xi32>
+  %buf = aie.get_buffer @buf : memref<1024xi32>
+  aie.buffer @lut(%tile) : memref<1024xi32>
+  %lut = aie.get_buffer @lut : memref<1024xi32>
 
   %core = aie.core(%tile) {
     %c0 = arith.constant 0 : index
@@ -203,7 +213,8 @@ aie.device(npu2) @index_has_scalar_use {
 // CHECK-LABEL: @index_result_used
 aie.device(npu2) @index_result_used {
   %tile = aie.tile(0, 2)
-  %buf = aie.buffer(%tile) : memref<1024xi32>
+  aie.buffer @buf(%tile) : memref<1024xi32>
+  %buf = aie.get_buffer @buf : memref<1024xi32>
 
   %core = aie.core(%tile) {
     %c0 = arith.constant 0 : index
@@ -231,7 +242,8 @@ aie.device(npu2) @index_result_used {
 // CHECK-LABEL: @commuted_increment
 aie.device(npu2) @commuted_increment {
   %tile = aie.tile(0, 2)
-  %buf = aie.buffer(%tile) : memref<1024xi32>
+  aie.buffer @buf(%tile) : memref<1024xi32>
+  %buf = aie.get_buffer @buf : memref<1024xi32>
 
   %core = aie.core(%tile) {
     %c0 = arith.constant 0 : index
@@ -257,7 +269,8 @@ aie.device(npu2) @commuted_increment {
 // CHECK-LABEL: @nested_use
 aie.device(npu2) @nested_use {
   %tile = aie.tile(0, 2)
-  %buf = aie.buffer(%tile) : memref<1024xi32>
+  aie.buffer @buf(%tile) : memref<1024xi32>
+  %buf = aie.get_buffer @buf : memref<1024xi32>
 
   %core = aie.core(%tile) {
     %c0 = arith.constant 0 : index
@@ -288,7 +301,8 @@ aie.device(npu2) @nested_use {
 // CHECK-LABEL: @base_defined_in_loop
 aie.device(npu2) @base_defined_in_loop {
   %tile = aie.tile(0, 2)
-  %buf = aie.buffer(%tile) : memref<4x256xi32>
+  aie.buffer @buf(%tile) : memref<4x256xi32>
+  %buf = aie.get_buffer @buf : memref<4x256xi32>
 
   %core = aie.core(%tile) {
     %c0 = arith.constant 0 : index
@@ -318,7 +332,8 @@ aie.device(npu2) @base_defined_in_loop {
 // CHECK-LABEL: @summed_indices
 aie.device(npu2) @summed_indices {
   %tile = aie.tile(0, 2)
-  %buf = aie.buffer(%tile) : memref<1024xi32>
+  aie.buffer @buf(%tile) : memref<1024xi32>
+  %buf = aie.get_buffer @buf : memref<1024xi32>
 
   %core = aie.core(%tile) {
     %c0 = arith.constant 0 : index
@@ -347,7 +362,8 @@ aie.device(npu2) @summed_indices {
 // CHECK-LABEL: @unsigned_compare_kept
 aie.device(npu2) @unsigned_compare_kept {
   %tile = aie.tile(0, 2)
-  %buf = aie.buffer(%tile) : memref<1024xi32>
+  aie.buffer @buf(%tile) : memref<1024xi32>
+  %buf = aie.get_buffer @buf : memref<1024xi32>
 
   %core = aie.core(%tile) {
     %c0 = arith.constant 0 : index

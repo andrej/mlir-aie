@@ -10,21 +10,26 @@
 module @test_simple_lock_set {
   aie.device(npu2) {
     %tile22 = aie.tile(2, 2)
-    %lock22_0 = aie.lock(%tile22, 0)  {init = 1 : i32}
-    %lock22_15 = aie.lock(%tile22, 15)  {init = 0 : i32}
+    aie.lock @lock22_0(%tile22, 0)  {init = 1 : i32}
+    %lock22_0 = aie.get_lock @lock22_0
+    aie.lock @lock22_15(%tile22, 15)  {init = 0 : i32}
+    %lock22_15 = aie.get_lock @lock22_15
 
     %memtile11 = aie.tile(1, 1)
-    %lock11_3 = aie.lock(%memtile11, 3)  {init = 1 : i32}
-    %lock11_56 = aie.lock(%memtile11, 56)  {init = 1 : i32}
+    aie.lock @lock11_3(%memtile11, 3)  {init = 1 : i32}
+    %lock11_3 = aie.get_lock @lock11_3
+    aie.lock @lock11_56(%memtile11, 56)  {init = 1 : i32}
+    %lock11_56 = aie.get_lock @lock11_56
 
     %shimtile00 = aie.tile(0, 0)
-    %lock00_5 = aie.lock(%shimtile00, 5)  {init = 1 : i32}
+    aie.lock @lock00_5(%shimtile00, 5)  {init = 1 : i32}
+    %lock00_5 = aie.get_lock @lock00_5
 
     %core22 = aie.core(%tile22) {
         %c0_ul0 = arith.constant 0 : i32
-        aie.use_lock(%lock22_0, "Acquire", %c0_ul0)
+        aie.use_lock(@lock22_0, "Acquire", %c0_ul0)
         %c1_ul1 = arith.constant 1 : i32
-        aie.use_lock(%lock22_15, "Acquire", %c1_ul1)
+        aie.use_lock(@lock22_15, "Acquire", %c1_ul1)
         // Do operations
         aie.end
     }

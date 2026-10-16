@@ -11,11 +11,13 @@
 // CHECK-LABEL: module @test_lock3 {
 // CHECK:         aie.device(xcvc1902) {
 // CHECK:           %[[VAL_0:.*]] = aie.tile(4, 4)
-// CHECK:           %[[VAL_1:.*]] = aie.lock(%[[VAL_0]], 0) {init = 0 : i32}
+// CHECK:           aie.lock @lock_4_4_0(%[[VAL_0]], 0) {init = 0 : i32}
 // CHECK:           %[[VAL_2:.*]] = aie.tile(3, 3)
-// CHECK:           %[[VAL_3:.*]] = aie.lock(%[[VAL_2]], 0) {init = 0 : i32}
-// CHECK:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_2]]) : memref<256xi32>
-// CHECK:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_0]]) : memref<256xi32>
+// CHECK:           aie.lock @lock_3_3_0(%[[VAL_2]], 0) {init = 0 : i32}
+// CHECK:           aie.buffer @buf33(%[[VAL_2]]) : memref<256xi32>
+// CHECK:           %[[VAL_4:.*]] = aie.get_buffer @buf33 : memref<256xi32>
+// CHECK:           aie.buffer @buf44(%[[VAL_0]]) : memref<256xi32>
+// CHECK:           %[[VAL_5:.*]] = aie.get_buffer @buf44 : memref<256xi32>
 // CHECK:           aiex.token(0) {sym_name = "token0"}
 // CHECK:           %[[VAL_6:.*]] = aie.mem(%[[VAL_2]]) {
 // CHECK:             %[[VAL_7:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
@@ -55,8 +57,10 @@ module @test_lock3 {
  aie.device(xcvc1902) {
   %t44 = aie.tile(4, 4)
   %t33 = aie.tile(3, 3)
-  %buf33 = aie.buffer(%t33) : memref<256xi32>
-  %buf44 = aie.buffer(%t44) : memref<256xi32>
+  aie.buffer @buf33(%t33) : memref<256xi32>
+  %buf33 = aie.get_buffer @buf33 : memref<256xi32>
+  aie.buffer @buf44(%t44) : memref<256xi32>
+  %buf44 = aie.get_buffer @buf44 : memref<256xi32>
   aiex.token(0) {sym_name = "token0"}
   %m33 = aie.mem(%t33) {
       %dmaSt = aie.dma_start(MM2S, 0, ^bd0, ^end)

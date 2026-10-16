@@ -18,8 +18,8 @@ module {
       // CHECK: aiex.cert.uc_dma_bd @dma_data_1, 6292736, 256, false
       aiex.cert.uc_dma_bd @dma_data_1, 0x600500, 256, false
     }
-    
-    
+
+
     // Define a cert job
     // CHECK: aiex.cert.job(42)
     aiex.cert.job(42) {

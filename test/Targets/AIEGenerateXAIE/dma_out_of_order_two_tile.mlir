@@ -19,7 +19,8 @@
 module {
   aie.device(npu2) {
     %t0 = aie.tile(0, 2)
-    %b0 = aie.buffer(%t0) : memref<8xi32>
+    aie.buffer @b0(%t0) : memref<8xi32>
+    %b0 = aie.get_buffer @b0 : memref<8xi32>
     aie.mem(%t0) {
         aie.dma_start(S2MM, 0, ^bd0, ^end0, repeat_count = 7) { out_of_order }
       ^bd0:
@@ -34,7 +35,8 @@ module {
         aie.end
     }
     %t1 = aie.tile(1, 2)
-    %b1 = aie.buffer(%t1) : memref<8xi32>
+    aie.buffer @b1(%t1) : memref<8xi32>
+    %b1 = aie.get_buffer @b1 : memref<8xi32>
     aie.mem(%t1) {
         aie.dma_start(S2MM, 0, ^bd2, ^end1, repeat_count = 9) { out_of_order }
       ^bd2:

@@ -32,16 +32,22 @@ using namespace xilinx::AIEX;
 
 struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
   using OpConversionPattern<UseTokenOp>::OpConversionPattern;
-  DenseMap<Operation *, std::vector<std::pair<Value, int>>> &acqLocks;
-  DenseMap<Operation *, std::vector<std::pair<Value, int>>> &relLocks;
-  DenseMap<std::pair<Operation *, Operation *>, std::pair<Value, int>>
+    DenseMap<Operation *, std::vector<std::pair<FlatSymbolRefAttr, int>>>
+      &acqLocks;
+    DenseMap<Operation *, std::vector<std::pair<FlatSymbolRefAttr, int>>>
+      &relLocks;
+    DenseMap<std::pair<Operation *, Operation *>,
+         std::pair<FlatSymbolRefAttr, int>>
       &lockChains;
 
   Token2LockLowering(
       MLIRContext *context,
-      DenseMap<Operation *, std::vector<std::pair<Value, int>>> &acqLocks,
-      DenseMap<Operation *, std::vector<std::pair<Value, int>>> &relLocks,
-      DenseMap<std::pair<Operation *, Operation *>, std::pair<Value, int>>
+        DenseMap<Operation *, std::vector<std::pair<FlatSymbolRefAttr, int>>>
+          &acqLocks,
+        DenseMap<Operation *, std::vector<std::pair<FlatSymbolRefAttr, int>>>
+          &relLocks,
+        DenseMap<std::pair<Operation *, Operation *>,
+             std::pair<FlatSymbolRefAttr, int>>
           &lockChains,
       PatternBenefit benefit = 1)
       : OpConversionPattern<UseTokenOp>(context, benefit), acqLocks(acqLocks),
@@ -61,7 +67,7 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
       // Acquire lock from pair
       LLVM_DEBUG(llvm::dbgs() << "Replacing Acquire: " << op << "\n");
       for (auto acqLock : acqLocks[op]) {
-        Value lockFromPair = acqLock.first;
+        FlatSymbolRefAttr lockFromPair = acqLock.first;
         int lockValueFromPair = acqLock.second;
         UseLockOp::create(rewriter, op.getLoc(), lockFromPair,
                           LockAction::Acquire, lockValueFromPair);
@@ -71,7 +77,7 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
 
       // Acquire lock from chain
       for (auto map : lockChains) {
-        Value lockFromChain = map.second.first;
+        FlatSymbolRefAttr lockFromChain = map.second.first;
         int lockValueFromChain = map.second.second;
         Operation *acqOp = map.first.second;
         if (acqOp != Op)
@@ -86,7 +92,7 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
       // Release lock from pair
       LLVM_DEBUG(llvm::dbgs() << "Replacing Release: " << op << "\n");
       for (auto relLock : relLocks[op]) {
-        Value lockFromPair = relLock.first;
+        FlatSymbolRefAttr lockFromPair = relLock.first;
         int lockValueFromPair = relLock.second;
         UseLockOp::create(rewriter, op.getLoc(), lockFromPair,
                           LockAction::Release, lockValueFromPair);
@@ -96,7 +102,7 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
 
       // Release lock from chain
       for (auto map : lockChains) {
-        Value lockFromChain = map.second.first;
+        FlatSymbolRefAttr lockFromChain = map.second.first;
         int lockValueFromChain = map.second.second;
         Operation *relOp = map.first.first;
         if (relOp != Op)
@@ -151,10 +157,13 @@ struct AIECreateLocksPass
     DenseMap<TileID, Operation *> tiles(TA.getTiles());
 
     DenseMap<std::pair<Operation *, int>, int> locks;
-    DenseMap<std::pair<Operation *, Operation *>, std::pair<Value, int>>
+    DenseMap<std::pair<Operation *, Operation *>,
+         std::pair<FlatSymbolRefAttr, int>>
         lockChains;
-    DenseMap<Operation *, std::vector<std::pair<Value, int>>> acqLocks;
-    DenseMap<Operation *, std::vector<std::pair<Value, int>>> relLocks;
+    DenseMap<Operation *, std::vector<std::pair<FlatSymbolRefAttr, int>>>
+      acqLocks;
+    DenseMap<Operation *, std::vector<std::pair<FlatSymbolRefAttr, int>>>
+      relLocks;
 
     for (auto map : tokenChains) {
       Operation *release = map.first;
@@ -198,19 +207,27 @@ struct AIECreateLocksPass
       LLVM_DEBUG(llvm::dbgs() << "Shared tile \n"; tileOp->print(llvm::dbgs()));
       LLVM_DEBUG(llvm::dbgs() << " LockID: " << lockID << '\n');
       builder.setInsertionPointAfter(tileOp);
-      LockOp lock = LockOp::create(builder, tile.getLoc(), tile, lockID, 0);
+        std::string name = "lock_" + std::to_string(tile.colIndex()) + "_" +
+                 std::to_string(tile.rowIndex()) + "_" +
+                 std::to_string(lockID);
+        LockOp lock = LockOp::create(
+          builder, tile.getLoc(), builder.getStringAttr(name), tile,
+          builder.getI32IntegerAttr(lockID), builder.getI32IntegerAttr(0));
+        FlatSymbolRefAttr lockRef =
+          FlatSymbolRefAttr::get(lock.getSymNameAttr());
 
-      lockChains[std::make_pair(release, acquire)] = std::make_pair(lock, 1);
+        lockChains[std::make_pair(release, acquire)] =
+          std::make_pair(lockRef, 1);
 
       for (auto pair : tokenPairs) {
         Operation *acqFromPair = pair.first;
         Operation *relFromPair = pair.second;
 
         if (relFromPair == release)
-          acqLocks[acqFromPair].emplace_back(lock, 0);
+          acqLocks[acqFromPair].emplace_back(lockRef, 0);
 
         if (acqFromPair == acquire)
-          relLocks[relFromPair].emplace_back(lock, 0);
+          relLocks[relFromPair].emplace_back(lockRef, 0);
       }
     }
 

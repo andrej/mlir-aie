@@ -127,12 +127,20 @@ struct AIECreateCoresPass
 
           assert(t && "Unsupported type!");
           coreBufTypes.push_back({t, i});
+            std::string name = "core_" + std::to_string(colIndex) + "_" +
+                     std::to_string(rowIndex) + "_arg_" +
+                     std::to_string(i);
           BufferOp buf = BufferOp::create(
-              builder, callOp.getLoc(), t, tile, /*sym_name*/ nullptr,
-              /*address*/ nullptr, /*initial_value*/ nullptr,
-              /*mem_bank*/ nullptr, /*aligned*/ nullptr);
-          buffers[callOperands[i]] = buf;
-          operand.replaceAllUsesWith(buf.getResult());
+              builder, callOp.getLoc(), builder.getStringAttr(name), tile,
+              TypeAttr::get(t), /*address*/ nullptr,
+              /*initial_value*/ nullptr, /*mem_bank*/ nullptr,
+              /*core_data*/ nullptr, /*bank_reserved*/ nullptr,
+              /*aligned*/ nullptr);
+            Value value = GetBufferOp::create(
+              builder, callOp.getLoc(), t,
+              FlatSymbolRefAttr::get(buf.getSymNameAttr()));
+            buffers[callOperands[i]] = value;
+            operand.replaceAllUsesWith(value);
         }
 
         MemOp mem = MemOp::create(builder, callOp.getLoc(),

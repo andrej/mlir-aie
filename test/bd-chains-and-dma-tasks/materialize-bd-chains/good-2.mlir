@@ -12,9 +12,12 @@ module {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
 
-    %lock_0 = aie.lock(%tile_0_0, 0)
-    %lock_1 = aie.lock(%tile_0_0, 1)
-    %lock_2 = aie.lock(%tile_0_0, 2)
+    aie.lock @lock_0(%tile_0_0, 0)
+    %lock_0 = aie.get_lock @lock_0
+    aie.lock @lock_1(%tile_0_0, 1)
+    %lock_1 = aie.get_lock @lock_1
+    aie.lock @lock_2(%tile_0_0, 2)
+    %lock_2 = aie.get_lock @lock_2
 
     aie.bd_chain @simple_chain(%buf: memref<8xi16>, %l0: index, %l1: index, %l2: index) {
             %c1_ul1 = arith.constant 1 : i32
@@ -43,57 +46,57 @@ module {
       %t1 = aiex.dma_start_bd_chain @simple_chain(%buf, %lock_0, %lock_1, %lock_2) : (memref<8xi16>, index, index, index)
                                     on (%tile_0_0, MM2S, 0)
       // CHECK: %[[task1:.+]] = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      // CHECK:   aie.use_lock(%lock_0, "Acquire", %{{.*}})
+      // CHECK:   aie.use_lock(@lock_0, "Acquire", %{{.*}})
       // CHECK:   aie.dma_bd(%buf : memref<8xi16> offset = {{.*}} len = {{.*}})
-      // CHECK:   aie.use_lock(%lock_1, "Release", %{{.*}})
+      // CHECK:   aie.use_lock(@lock_1, "Release", %{{.*}})
       // CHECK:   aie.next_bd ^bb1
       // CHECK: ^bb1:
-      // CHECK:   aie.use_lock(%lock_1, "Acquire", %{{.*}})
+      // CHECK:   aie.use_lock(@lock_1, "Acquire", %{{.*}})
       // CHECK:   aie.dma_bd(%buf : memref<12xi16> offset = {{.*}} len = {{.*}})
-      // CHECK:   aie.use_lock(%lock_2, "Release", %{{.*}})
+      // CHECK:   aie.use_lock(@lock_2, "Release", %{{.*}})
       // CHECK:   aie.next_bd ^bb2
       // CHECK: ^bb2:
-      // CHECK:   aie.use_lock(%lock_2, "Acquire", %{{.*}})
+      // CHECK:   aie.use_lock(@lock_2, "Acquire", %{{.*}})
       // CHECK:   aie.dma_bd(%buf : memref<8xi16> offset = {{.*}} len = {{.*}})
-      // CHECK:   aie.use_lock(%lock_1, "Release", %{{.*}})
+      // CHECK:   aie.use_lock(@lock_1, "Release", %{{.*}})
       // CHECK:   aie.end
       // CHECK: }
       // CHECK: aiex.dma_start_task(%[[task1]])
       %t2 = aiex.dma_start_bd_chain @simple_chain(%buf, %lock_0, %lock_0, %lock_0) : (memref<8xi16>, index, index, index)
                                     on (%tile_0_0, MM2S, 1)
       // CHECK: %[[task2:.+]] = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      // CHECK:   aie.use_lock(%lock_0, "Acquire", %{{.*}})
+      // CHECK:   aie.use_lock(@lock_0, "Acquire", %{{.*}})
       // CHECK:   aie.dma_bd(%buf : memref<8xi16> offset = {{.*}} len = {{.*}})
-      // CHECK:   aie.use_lock(%lock_0, "Release", %{{.*}})
+      // CHECK:   aie.use_lock(@lock_0, "Release", %{{.*}})
       // CHECK:   aie.next_bd ^bb1
       // CHECK: ^bb1:
-      // CHECK:   aie.use_lock(%lock_0, "Acquire", %{{.*}})
+      // CHECK:   aie.use_lock(@lock_0, "Acquire", %{{.*}})
       // CHECK:   aie.dma_bd(%buf : memref<12xi16> offset = {{.*}} len = {{.*}})
-      // CHECK:   aie.use_lock(%lock_0, "Release", %{{.*}})
+      // CHECK:   aie.use_lock(@lock_0, "Release", %{{.*}})
       // CHECK:   aie.next_bd ^bb2
       // CHECK: ^bb2:
-      // CHECK:   aie.use_lock(%lock_0, "Acquire", %{{.*}})
+      // CHECK:   aie.use_lock(@lock_0, "Acquire", %{{.*}})
       // CHECK:   aie.dma_bd(%buf : memref<8xi16> offset = {{.*}} len = {{.*}})
-      // CHECK:   aie.use_lock(%lock_0, "Release", %{{.*}})
+      // CHECK:   aie.use_lock(@lock_0, "Release", %{{.*}})
       // CHECK:   aie.end
       // CHECK: }
       // CHECK: aiex.dma_start_task(%[[task2]])
       %t3 = aiex.dma_start_bd_chain @simple_chain(%buf, %lock_2, %lock_1, %lock_0) : (memref<8xi16>, index, index, index)
                                     on (%tile_0_0, S2MM, 0)
       // CHECK: %[[task3:.+]] = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      // CHECK:   aie.use_lock(%lock_2, "Acquire", %{{.*}})
+      // CHECK:   aie.use_lock(@lock_2, "Acquire", %{{.*}})
       // CHECK:   aie.dma_bd(%buf : memref<8xi16> offset = {{.*}} len = {{.*}})
-      // CHECK:   aie.use_lock(%lock_1, "Release", %{{.*}})
+      // CHECK:   aie.use_lock(@lock_1, "Release", %{{.*}})
       // CHECK:   aie.next_bd ^bb1
       // CHECK: ^bb1:
-      // CHECK:   aie.use_lock(%lock_1, "Acquire", %{{.*}})
+      // CHECK:   aie.use_lock(@lock_1, "Acquire", %{{.*}})
       // CHECK:   aie.dma_bd(%buf : memref<12xi16> offset = {{.*}} len = {{.*}})
-      // CHECK:   aie.use_lock(%lock_0, "Release", %{{.*}})
+      // CHECK:   aie.use_lock(@lock_0, "Release", %{{.*}})
       // CHECK:   aie.next_bd ^bb2
       // CHECK: ^bb2:
-      // CHECK:   aie.use_lock(%lock_0, "Acquire", %{{.*}})
+      // CHECK:   aie.use_lock(@lock_0, "Acquire", %{{.*}})
       // CHECK:   aie.dma_bd(%buf : memref<8xi16> offset = {{.*}} len = {{.*}})
-      // CHECK:   aie.use_lock(%lock_2, "Release", %{{.*}})
+      // CHECK:   aie.use_lock(@lock_2, "Release", %{{.*}})
       // CHECK:   aie.end
       // CHECK: }
       // CHECK: aiex.dma_start_task(%[[task3]])

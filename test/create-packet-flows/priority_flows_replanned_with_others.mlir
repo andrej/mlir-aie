@@ -33,7 +33,8 @@ module {
     %t_3_2 = aie.tile(3, 2)
     %t_3_3 = aie.tile(3, 3)
     %t_3_5 = aie.tile(3, 5)
-    %b_3_1_0 = aie.buffer(%t_3_1) {sym_name = "b_3_1_0"} : memref<16xi32>
+    aie.buffer @b_3_1_0(%t_3_1)  : memref<16xi32>
+    %b_3_1_0 = aie.get_buffer @b_3_1_0 : memref<16xi32>
     %dma_3_1 = aie.memtile_dma(%t_3_1) {
       %d0 = aie.dma_start(MM2S, 2, ^p0b0, ^end, repeat_count = 2)
     ^p0b0:

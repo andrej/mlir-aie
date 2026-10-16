@@ -27,7 +27,8 @@
 module {
   aie.device(xcve2302) {
   %12 = aie.tile(1, 2)
-  %buf = aie.buffer(%12) : memref<256xi32>
+  aie.buffer @buf(%12) : memref<256xi32>
+  %buf = aie.get_buffer @buf : memref<256xi32>
   %4 = aie.core(%12)  {
     %0 = arith.constant 0 : i32
     %1 = arith.constant 0 : index

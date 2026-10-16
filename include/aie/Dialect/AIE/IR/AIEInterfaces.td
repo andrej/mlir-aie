@@ -161,10 +161,7 @@ def BufferLike : OpInterface<"BufferLike"> {
     `aie.buffer` in a tile's memory module and `aie.external_buffer` in DDR.
   }];
   let cppNamespace = "::xilinx::AIE";
-  let methods = [InterfaceMethod<[{The memref this op declares.}],
-                                 "mlir::Value", "getBuffer", (ins), [{}],
-                                 [{ return $_op.getBuffer(); }]>,
-                 InterfaceMethod<
+  let methods = [InterfaceMethod<
                      [{The tile whose memory module holds this buffer, null
       where it lives outside the array.}],
                      "mlir::Value", "getBufferTile", (ins), [{}],

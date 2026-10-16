@@ -25,8 +25,10 @@ module {
     %t10 = aie.tile(1, 0)
     %t11 = aie.tile(1, 1)
     %t12 = aie.tile(1, 2)
-    %k11 = aie.buffer(%t11) {sym_name = "k11"} : memref<4xi32>
-    %k12 = aie.buffer(%t12) {sym_name = "k12"} : memref<4xi32>
+    aie.buffer @k11(%t11)  : memref<4xi32>
+    %k11 = aie.get_buffer @k11 : memref<4xi32>
+    aie.buffer @k12(%t12)  : memref<4xi32>
+    %k12 = aie.get_buffer @k12 : memref<4xi32>
     %t02 = aie.tile(0, 2)
     %t03 = aie.tile(0, 3)
     %t04 = aie.tile(0, 4)

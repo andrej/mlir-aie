@@ -32,7 +32,8 @@ module {
     // 256 bytes a descriptor, into a channel taking 64: four receive
     // descriptors per packet, and the reason flow 0 would otherwise be given
     // an arbiter of its own.
-    %b02 = aie.buffer(%c02) : memref<64xi32>
+    aie.buffer @b02(%c02) : memref<64xi32>
+    %b02 = aie.get_buffer @b02 : memref<64xi32>
     aie.mem(%c02) {
       %0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
@@ -42,7 +43,8 @@ module {
       aie.end
     }
 
-    %b22 = aie.buffer(%c22) : memref<16xi32>
+    aie.buffer @b22(%c22) : memref<16xi32>
+    %b22 = aie.get_buffer @b22 : memref<16xi32>
     aie.mem(%c22) {
       %0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
@@ -52,7 +54,8 @@ module {
       aie.end
     }
 
-    %b13 = aie.buffer(%c13) : memref<16xi32>
+    aie.buffer @b13(%c13) : memref<16xi32>
+    %b13 = aie.get_buffer @b13 : memref<16xi32>
     aie.mem(%c13) {
       %0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
@@ -62,7 +65,8 @@ module {
       aie.end
     }
 
-    %b12 = aie.buffer(%c12) : memref<16xi32>
+    aie.buffer @b12(%c12) : memref<16xi32>
+    %b12 = aie.get_buffer @b12 : memref<16xi32>
     aie.mem(%c12) {
       %0 = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:

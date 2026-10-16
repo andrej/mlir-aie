@@ -10,8 +10,10 @@ module {
     %tile_0_0 = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
     %tile_0_1 = aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
 
-    %in_buff = aie.buffer(%tile_0_1) {sym_name = "in_buff"} : memref<4096xi32>
-    %out_buff = aie.buffer(%tile_0_1) {sym_name = "out_buff"} : memref<4096xi32>
+    aie.buffer @in_buff(%tile_0_1)  : memref<4096xi32>
+    %in_buff = aie.get_buffer @in_buff : memref<4096xi32>
+    aie.buffer @out_buff(%tile_0_1)  : memref<4096xi32>
+    %out_buff = aie.get_buffer @out_buff : memref<4096xi32>
 
     aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
     aie.flow(%tile_0_1, DMA : 0, %tile_0_0, DMA : 0)

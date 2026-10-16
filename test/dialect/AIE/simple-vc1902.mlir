@@ -16,7 +16,8 @@ module {
     %01 = aie.tile(0, 1)
     %12 = aie.tile(1, 2)
     %02 = aie.tile(0, 2)
-    %lock = aie.lock(%12, 15) { sym_name = "lock1" }
+    aie.lock @lock1(%12, 15)
+    %lock = aie.get_lock @lock1
     aie.flow(%01, DMA : 0, %12, Core : 1)
   }
 }

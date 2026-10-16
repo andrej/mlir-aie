@@ -196,7 +196,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     bool hasAcq = false, hasRel = false;
     int acqLockID = 0, relLockID = 0;
     for (auto op : block->getOps<UseLockOp>()) {
-      LockOp lock = cast<LockOp>(op.getLock().getDefiningOp());
+      LockOp lock = op.getLockOp();
       int lockCol = lock.colIndex();
       int lockRow = lock.rowIndex();
       int lockID = lock.getLockIDValue();
@@ -621,22 +621,20 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
   output << "} // mlir_aie_configure_dmas\n\n";
 
   for (auto op : targetOp.getOps<ExternalBufferOp>()) {
-    if (op.hasName()) {
       output << "static u64 _mlir_aie_external_" << op.name().getValue()
-             << ";\n";
+        << ";\n";
       output << "static bool _mlir_aie_external_set_" << op.name().getValue()
-             << " = false;\n";
+        << " = false;\n";
 
       output << "void mlir_aie_external_set_addr_" << op.name().getValue()
-             << "(" << ctx_p << ", u64 VA) {\n"
-             << "  u64 device_address = mlir_aie_get_device_address(ctx, (void "
-                "*)VA);\n"
-             << "    _mlir_aie_external_set_" << op.name().getValue()
-             << " = true;\n"
-             << "    _mlir_aie_external_" << op.name().getValue()
-             << " = device_address;\n"
-             << "}\n";
-    }
+        << "(" << ctx_p << ", u64 VA) {\n"
+        << "  u64 device_address = mlir_aie_get_device_address(ctx, (void "
+      "*)VA);\n"
+        << "    _mlir_aie_external_set_" << op.name().getValue()
+        << " = true;\n"
+        << "    _mlir_aie_external_" << op.name().getValue()
+        << " = device_address;\n"
+        << "}\n";
   }
 
   // ShimDMA Config
@@ -659,7 +657,10 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
         uint64_t offset = 0;
         for (auto op : block.getOps<DMABDOp>()) {
           offset = op.getOffsetInBytes();
-          auto buffer = cast<ExternalBufferOp>(op.getBuffer().getDefiningOp());
+          auto getBuffer =
+              cast<GetExternalBufferOp>(op.getBuffer().getDefiningOp());
+          auto buffer = SymbolTable::lookupNearestSymbolFrom<ExternalBufferOp>(
+              getBuffer, getBuffer.getBufferAttr());
 
           output << "u64 mlir_aie_external_get_addr_myBuffer_" << col << row
                  << "_" << slot << "(void) {\n"
@@ -982,8 +983,6 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
   auto lockAccessor = [&](LockOp lock) {
     int col = lock.colIndex();
     int row = lock.rowIndex();
-    if (!lock.hasName())
-      return;
     std::string lockName(lock.name().getValue());
     output << "int mlir_aie_acquire_" << lockName << "(" << ctx_p
            << ", int value, int timeout) {\n";

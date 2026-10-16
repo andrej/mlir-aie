@@ -138,7 +138,8 @@ aie.device(npu2) {
 aiex.scratchpad_parameter @n : i32
 aie.device(npu2) {
   %t = aie.tile(0, 1)
-  %buf = aie.buffer(%t) : memref<64xi32>
+  aie.buffer @buf(%t) : memref<64xi32>
+  %buf = aie.get_buffer @buf : memref<64xi32>
   aie.memtile_dma(%t) {
     %0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
   ^bd0:

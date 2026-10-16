@@ -31,7 +31,8 @@
 
 aie.device(npu2) {
   %tile_0_1 = aie.tile(0, 1)
-  %buf = aie.buffer(%tile_0_1) : memref<1024xi32>
+  aie.buffer @buf(%tile_0_1) : memref<1024xi32>
+  %buf = aie.get_buffer @buf : memref<1024xi32>
   aie.runtime_sequence @runtime_next_bd_memtile() {
     %bd0 = aiex.dma_bd_pool_pop(0, 1) partition [0, 24) : i32
     %bd1 = aiex.dma_bd_pool_pop(0, 1) partition [0, 24) : i32

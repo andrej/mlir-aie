@@ -15,7 +15,8 @@
 module {
   aie.device(xcvc1902) {
     %t = aie.tile(3, 3)
-    %b = aie.buffer(%t) : memref<256xi32>
+    aie.buffer @b(%t) : memref<256xi32>
+    %b = aie.get_buffer @b : memref<256xi32>
     %m = aie.mem(%t) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
@@ -34,7 +35,8 @@ module {
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 1)
-    %b = aie.buffer(%t) : memref<256xi32>
+    aie.buffer @b(%t) : memref<256xi32>
+    %b = aie.get_buffer @b : memref<256xi32>
     %m = aie.memtile_dma(%t) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
@@ -53,7 +55,8 @@ module {
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 1)
-    %b = aie.buffer(%t) : memref<256xi32>
+    aie.buffer @b(%t) : memref<256xi32>
+    %b = aie.get_buffer @b : memref<256xi32>
     %m = aie.memtile_dma(%t) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
@@ -72,7 +75,8 @@ module {
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 1)
-    %b = aie.buffer(%t) : memref<256xi32>
+    aie.buffer @b(%t) : memref<256xi32>
+    %b = aie.get_buffer @b : memref<256xi32>
     %m = aie.memtile_dma(%t) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
@@ -91,7 +95,8 @@ module {
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 1)
-    %b = aie.buffer(%t) : memref<256xi16>
+    aie.buffer @b(%t) : memref<256xi16>
+    %b = aie.get_buffer @b : memref<256xi16>
     %m = aie.memtile_dma(%t) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
@@ -110,7 +115,8 @@ module {
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 1)
-    %b = aie.buffer(%t) : memref<256xi32>
+    aie.buffer @b(%t) : memref<256xi32>
+    %b = aie.get_buffer @b : memref<256xi32>
     %m = aie.memtile_dma(%t) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
@@ -129,7 +135,8 @@ module {
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %b = aie.buffer(%t) : memref<256xi32>
+    aie.buffer @b(%t) : memref<256xi32>
+    %b = aie.get_buffer @b : memref<256xi32>
     %m = aie.mem(%t) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
@@ -148,7 +155,8 @@ module {
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 1)
-    %b = aie.buffer(%t) : memref<256xi32>
+    aie.buffer @b(%t) : memref<256xi32>
+    %b = aie.get_buffer @b : memref<256xi32>
     %m = aie.memtile_dma(%t) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:

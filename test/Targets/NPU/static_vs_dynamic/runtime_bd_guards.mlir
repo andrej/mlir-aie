@@ -14,9 +14,12 @@ module {
     %mem = aie.tile(0, 1)
     %core = aie.tile(0, 2)
     %shim = aie.tile(0, 0)
-    %bytes = aie.buffer(%mem) {address = 4096 : i32} : memref<4096xi8>
-    %halves = aie.buffer(%core) {address = 4096 : i32} : memref<1024xi16>
-    %words = aie.buffer(%mem) {address = 8192 : i32} : memref<1024xi32>
+    aie.buffer @bytes(%mem) {address = 4096 : i32} : memref<4096xi8>
+    %bytes = aie.get_buffer @bytes : memref<4096xi8>
+    aie.buffer @halves(%core) {address = 4096 : i32} : memref<1024xi16>
+    %halves = aie.get_buffer @halves : memref<1024xi16>
+    aie.buffer @words(%mem) {address = 8192 : i32} : memref<1024xi32>
+    %words = aie.get_buffer @words : memref<1024xi32>
 
     // CHECK-LABEL: @mem_bytes
     // CHECK: cf.assert %{{.*}}, "a runtime DMA d0 size must be in [1:524284]"

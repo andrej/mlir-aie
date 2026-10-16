@@ -116,9 +116,12 @@ def deviceOp():
 
 # CHECK-LABEL: bufferOp
 # CHECK: %[[VAL_0:.*]] = aie.tile(0, 3)
-# CHECK: %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) : memref<12xi32>
-# CHECK: %[[VAL_2:.*]] = aie.buffer(%[[VAL_0]]) : memref<2x2xi32> = dense<{{\[}}[0, 1], [2, 3]]>
-# CHECK: %[[VAL_3:.*]] = aie.buffer(%[[VAL_0]]) {address = 48879 : i32} : memref<42xi8>
+# CHECK: aie.buffer @b(%[[VAL_0]]) : memref<12xi32>
+# CHECK: %[[VAL_1:.*]] = aie.get_buffer @b : memref<12xi32>
+# CHECK: aie.buffer @b_0(%[[VAL_0]]) : memref<2x2xi32> = dense<{{\[}}[0, 1], [2, 3]]>
+# CHECK: %[[VAL_2:.*]] = aie.get_buffer @b_0 : memref<2x2xi32>
+# CHECK: aie.buffer @b_1(%[[VAL_0]]) {address = 48879 : i32} : memref<42xi8>
+# CHECK: %[[VAL_3:.*]] = aie.get_buffer @b_1 : memref<42xi8>
 @construct_and_print_module
 def bufferOp():
     t = tile(col=0, row=3)
@@ -132,8 +135,10 @@ def bufferOp():
 
 
 # CHECK-LABEL: externalBufferOp
-# CHECK: %[[VAL_0:.*]] = aie.external_buffer : memref<12xi32>
-# CHECK: %[[VAL_1:.*]] = aie.external_buffer {address = 209934011881080 : i64} : memref<13xi8>
+# CHECK: aie.external_buffer @b : memref<12xi32>
+# CHECK: %[[VAL_0:.*]] = aie.get_external_buffer @b : memref<12xi32>
+# CHECK: aie.external_buffer @c {address = 209934011881080 : i64} : memref<13xi8>
+# CHECK: %[[VAL_1:.*]] = aie.get_external_buffer @c : memref<13xi8>
 @construct_and_print_module
 def externalBufferOp():
     b = external_buffer(T.memref(12, T.i32()))
@@ -373,7 +378,8 @@ def packetFlowViaOp():
 
 # CHECK-LABEL: dmaBDOp
 # CHECK: %[[VAL_0:.*]] = aie.tile(1, 3)
-# CHECK: %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) : memref<12xi32>
+# CHECK: aie.buffer @b(%[[VAL_0]]) : memref<12xi32>
+# CHECK: %[[VAL_1:.*]] = aie.get_buffer @b : memref<12xi32>
 # CHECK: aie.dma_bd(%[[VAL_1]] : memref<12xi32>) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
 @construct_and_print_module
 def dmaBDOp():

@@ -259,7 +259,6 @@ struct AIELowerScratchpadParametersPass
   // buffer and store a reference to it on the ReadScratchpadParameterOp as
   // the `buffer` attribute.
   void allocateBuffers(DeviceOp device, OpBuilder &builder) {
-    MLIRContext *ctx = device.getContext();
     unsigned uniquingCounter = 0;
 
     DenseMap<std::pair<StringRef, Operation *>, BufferOp> seen;
@@ -272,7 +271,7 @@ struct AIELowerScratchpadParametersPass
 
       if (seen.count(key)) {
         readOp.setBufferAttr(
-            FlatSymbolRefAttr::get(ctx, *seen[key].getSymName()));
+            FlatSymbolRefAttr::get(seen[key].getSymNameAttr()));
         return;
       }
 
@@ -293,13 +292,16 @@ struct AIELowerScratchpadParametersPass
       std::string bufName =
           AIE::generateUniqueSymbolName(device, prefix, uniquingCounter);
       auto buf =
-          BufferOp::create(builder, readOp.getLoc(), bufType, tile,
-                           builder.getStringAttr(bufName), /*address=*/nullptr,
-                           /*initial_value=*/nullptr, /*mem_bank=*/nullptr);
+          BufferOp::create(builder, readOp.getLoc(),
+                   builder.getStringAttr(bufName), tile,
+                   TypeAttr::get(bufType), /*address=*/nullptr,
+                   /*initial_value=*/nullptr, /*mem_bank=*/nullptr,
+                   /*core_data=*/nullptr, /*bank_reserved=*/nullptr,
+                   /*aligned=*/nullptr);
       seen[key] = buf;
 
       readOp.setBufferAttr(
-          FlatSymbolRefAttr::get(ctx, *seen[key].getSymName()));
+          FlatSymbolRefAttr::get(seen[key].getSymNameAttr()));
     });
   }
 
@@ -312,11 +314,15 @@ struct AIELowerScratchpadParametersPass
 
     for (auto readOp : readOps) {
       FlatSymbolRefAttr bufRef = readOp.getBufferAttr();
-      auto buf = AIE::lookupNamedOpIn<BufferOp>(device, bufRef.getAttr());
+      auto buf = cast<BufferOp>(SymbolTable::lookupSymbolIn(device, bufRef));
 
       builder.setInsertionPoint(readOp);
+        Value bufValue = GetBufferOp::create(builder, readOp.getLoc(),
+                           cast<MemRefType>(buf.getType()),
+                           bufRef);
       Value c0 = arith::ConstantIndexOp::create(builder, readOp.getLoc(), 0);
-      Value raw = memref::LoadOp::create(builder, readOp.getLoc(), buf, c0);
+        Value raw =
+          memref::LoadOp::create(builder, readOp.getLoc(), bufValue, c0);
       Value c2 = arith::ConstantOp::create(builder, readOp.getLoc(),
                                            builder.getI32IntegerAttr(2));
       Value decoded = arith::ShRUIOp::create(builder, readOp.getLoc(), raw, c2);
@@ -351,15 +357,20 @@ struct AIELowerScratchpadParametersPass
 
       TileOp tile = coreOp.getTileOp();
       builder.setInsertionPointAfter(tile);
-      auto lockOp = LockOp::create(
-          builder, coreOp.getLoc(), builder.getIndexType(), tile.getResult(),
-          /*lockID=*/IntegerAttr{}, builder.getI32IntegerAttr(0),
-          /*sym_name=*/StringAttr{});
-      syncLocks.push_back(lockOp.getResult());
+        std::string name = "__param_sync_" + std::to_string(tile.getCol()) +
+                 "_" + std::to_string(tile.getRow());
+        auto lockOp = LockOp::create(builder, coreOp.getLoc(),
+                       builder.getStringAttr(name), tile.getResult(),
+                       /*lockID=*/IntegerAttr{},
+                       builder.getI32IntegerAttr(0));
+        syncLocks.push_back(GetLockOp::create(
+          builder, coreOp.getLoc(),
+          FlatSymbolRefAttr::get(lockOp.getSymNameAttr())));
 
       Block &bodyBlock = coreOp.getBody().front();
       builder.setInsertionPointToStart(&bodyBlock);
-      UseLockOp::create(builder, coreOp.getLoc(), lockOp.getResult(),
+      UseLockOp::create(builder, coreOp.getLoc(),
+            FlatSymbolRefAttr::get(lockOp.getSymNameAttr()),
                         LockAction::Acquire, 1);
 
       // Mark as done so the pass is idempotent.

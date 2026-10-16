@@ -50,7 +50,8 @@ module {
     aie.packet_flow(0) { aie.packet_source<%t02, DMA : 0> aie.packet_dest<%t04, DMA : 0> }
     aie.packet_flow(2) { aie.packet_source<%t05, DMA : 0> aie.packet_dest<%t03, DMA : 0> }
     aie.packet_flow(2, mask = 30) { aie.packet_source<%t05, DMA : 0> aie.packet_dest<%t03, DMA : 0> }
-    %buf = aie.buffer(%t05) : memref<16xi32>
+    aie.buffer @buf(%t05) : memref<16xi32>
+    %buf = aie.get_buffer @buf : memref<16xi32>
     aie.mem(%t05) {
       %0 = aie.dma_start(MM2S, 0, ^send, ^end)
     ^send:
@@ -99,7 +100,8 @@ module {
     aie.packet_flow(0) { aie.packet_source<%t02, DMA : 0> aie.packet_dest<%t04, DMA : 0> }
     aie.packet_flow(2, mask = 30) { aie.packet_source<%t05, DMA : 0> aie.packet_dest<%t03, DMA : 0> }
     aie.packet_flow(2) { aie.packet_source<%t05, DMA : 0> aie.packet_dest<%t03, DMA : 0> }
-    %buf = aie.buffer(%t05) : memref<16xi32>
+    aie.buffer @buf(%t05) : memref<16xi32>
+    %buf = aie.get_buffer @buf : memref<16xi32>
     aie.mem(%t05) {
       %0 = aie.dma_start(MM2S, 0, ^send, ^end)
     ^send:

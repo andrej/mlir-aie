@@ -16,12 +16,18 @@ module @memtileDMA_channels {
         %tile11 = aie.tile(1, 1)
         %tile33 = aie.tile(3, 3)
 
-        %buff0 = aie.buffer(%tile11) : memref<16xi32>
-        %buff1 = aie.buffer(%tile11) : memref<16xi32>
-        %buff2 = aie.buffer(%tile11) : memref<16xi32>
-        %buff3 = aie.buffer(%tile11) : memref<16xi32>
-        %buff4 = aie.buffer(%tile11) : memref<16xi32>
-        %buff5 = aie.buffer(%tile11) : memref<16xi32>
+        aie.buffer @buff0(%tile11) : memref<16xi32>
+        %buff0 = aie.get_buffer @buff0 : memref<16xi32>
+        aie.buffer @buff1(%tile11) : memref<16xi32>
+        %buff1 = aie.get_buffer @buff1 : memref<16xi32>
+        aie.buffer @buff2(%tile11) : memref<16xi32>
+        %buff2 = aie.get_buffer @buff2 : memref<16xi32>
+        aie.buffer @buff3(%tile11) : memref<16xi32>
+        %buff3 = aie.get_buffer @buff3 : memref<16xi32>
+        aie.buffer @buff4(%tile11) : memref<16xi32>
+        %buff4 = aie.get_buffer @buff4 : memref<16xi32>
+        aie.buffer @buff5(%tile11) : memref<16xi32>
+        %buff5 = aie.get_buffer @buff5 : memref<16xi32>
 
         aie.objectfifo @objfifo (%tile11, {%tile33}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 

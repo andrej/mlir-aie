@@ -361,8 +361,11 @@ struct AIEDMATasksToNPUPass
                                 /*addr*/ register_addr,
                                 /*addr_val*/ runtimeRegisterAddr,
                                 /*arg_idx*/ arg_idx, argPlus);
-    } else if (AIE::BufferOp buffer =
-                   llvm::dyn_cast<AIE::BufferOp>(buf.getDefiningOp())) {
+    } else if (auto accessor =
+             llvm::dyn_cast<AIE::GetBufferOp>(buf.getDefiningOp())) {
+      AIE::BufferOp buffer =
+        SymbolTable::lookupNearestSymbolFrom<AIE::BufferOp>(
+          accessor, accessor.getBufferAttr());
       std::optional<uint32_t> bufferAddr = buffer.getAddress();
       if (!bufferAddr.has_value()) {
         return bd_op->emitOpError(

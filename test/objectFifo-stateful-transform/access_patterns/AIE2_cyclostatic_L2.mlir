@@ -40,38 +40,40 @@
 // CHECK-DAG:     %[[t1:.*]] = aie.tile(2, 1)
 // CHECK-DAG:     %[[t2:.*]] = aie.tile(8, 3)
 
-// CHECK-DAG:     %[[fifo1_cons_buff_0:.*]] = aie.buffer(%[[t2]]) {sym_name = "fifo1_cons_buff_0"} : memref<1xi32>
-// CHECK-DAG:     %[[fifo1_cons_buff_1:.*]] = aie.buffer(%[[t2]]) {sym_name = "fifo1_cons_buff_1"} : memref<1xi32>
-// CHECK-DAG:     %[[fifo1_cons_buff_2:.*]] = aie.buffer(%[[t2]]) {sym_name = "fifo1_cons_buff_2"} : memref<1xi32>
-// CHECK-DAG:     %[[fifo1_cons_buff_3:.*]] = aie.buffer(%[[t2]]) {sym_name = "fifo1_cons_buff_3"} : memref<1xi32>
-// CHECK-DAG:     %[[fifo1_cons_prod_lock:.*]] = aie.lock(%[[t2]]) {init = 4 : i32, sym_name = "fifo1_cons_prod_lock_0"}
-// CHECK-DAG:     %[[fifo1_cons_cons_lock:.*]] = aie.lock(%[[t2]]) {init = 0 : i32, sym_name = "fifo1_cons_cons_lock_0"}
+// CHECK-DAG:     aie.buffer @fifo1_cons_buff_0(%[[t2]]) : memref<1xi32>
+// CHECK-DAG:     aie.buffer @fifo1_cons_buff_1(%[[t2]]) : memref<1xi32>
+// CHECK-DAG:     aie.buffer @fifo1_cons_buff_2(%[[t2]]) : memref<1xi32>
+// CHECK-DAG:     aie.buffer @fifo1_cons_buff_3(%[[t2]]) : memref<1xi32>
+// CHECK-DAG:     aie.lock @fifo1_cons_prod_lock_0(%[[t2]]) {init = 4 : i32}
+// CHECK-DAG:     aie.lock @fifo1_cons_cons_lock_0(%[[t2]]) {init = 0 : i32}
 
 // The consume buffers are used at the receiving end of a stream to notify the
 // sender to send more objects once they have been consumed. In this case,
 // the (intermediary) consumer is the memtile.
-// CHECK-DAG:     %[[fifo0_cons_buff_0:.*]] = aie.buffer(%[[t1]]) {sym_name = "fifo0_cons_buff_0"} : memref<1xi32>
-// CHECK-DAG:     %[[fifo0_cons_buff_1:.*]] = aie.buffer(%[[t1]]) {sym_name = "fifo0_cons_buff_1"} : memref<1xi32>
-// CHECK-DAG:     %[[fifo0_cons_buff_2:.*]] = aie.buffer(%[[t1]]) {sym_name = "fifo0_cons_buff_2"} : memref<1xi32>
-// CHECK-DAG:     %[[fifo0_cons_buff_3:.*]] = aie.buffer(%[[t1]]) {sym_name = "fifo0_cons_buff_3"} : memref<1xi32>
+// CHECK-DAG:     aie.buffer @fifo0_cons_buff_0(%[[t1]]) : memref<1xi32>
+// CHECK-DAG:     aie.buffer @fifo0_cons_buff_1(%[[t1]]) : memref<1xi32>
+// CHECK-DAG:     aie.buffer @fifo0_cons_buff_2(%[[t1]]) : memref<1xi32>
+// CHECK-DAG:     aie.buffer @fifo0_cons_buff_3(%[[t1]]) : memref<1xi32>
 
-// CHECK-DAG:     %[[fifo0_cons_prod_lock:.*]] = aie.lock(%[[t1]]) {init = 4 : i32, sym_name = "fifo0_cons_prod_lock_0"}
-// CHECK-DAG:     %[[fifo0_cons_cons_lock:.*]] = aie.lock(%[[t1]]) {init = 0 : i32, sym_name = "fifo0_cons_cons_lock_0"}
+// CHECK-DAG:     aie.lock @fifo0_cons_prod_lock_0(%[[t1]]) {init = 4 : i32}
+// CHECK-DAG:     aie.lock @fifo0_cons_cons_lock_0(%[[t1]]) {init = 0 : i32}
 
 // The objectFifo lowering creates two buffers (for ping-pong) on the producer
 // side to which elements are written.
-// CHECK-DAG:     %[[fifo0_buff_0:.*]] = aie.buffer(%[[t0]]) {sym_name = "fifo0_buff_0"} : memref<1xi32>
-// CHECK-DAG:     %[[fifo0_buff_1:.*]] = aie.buffer(%[[t0]]) {sym_name = "fifo0_buff_1"} : memref<1xi32>
+// CHECK-DAG:     aie.buffer @fifo0_buff_0(%[[t0]]) : memref<1xi32>
+// CHECK-DAG:     aie.buffer @fifo0_buff_1(%[[t0]]) : memref<1xi32>
+// CHECK-DAG:     %[[fifo0_buff_0:.*]] = aie.get_buffer @fifo0_buff_0 : memref<1xi32>
+// CHECK-DAG:     %[[fifo0_buff_1:.*]] = aie.get_buffer @fifo0_buff_1 : memref<1xi32>
 
 // Whenever the prod lock can be acquired, the core can proceed to put another
 // object into the fifo, i.e. there is space in the queue.
-// CHECK-DAG:     %[[fifo0_prod_lock:.*]] = aie.lock(%[[t0]]) {init = 2 : i32, sym_name = "fifo0_prod_lock_0"}
+// CHECK-DAG:     aie.lock @fifo0_prod_lock_0(%[[t0]]) {init = 2 : i32}
 
 // Whenever the cons lock can be acquired, there is an object available in the
 // queue to be consumed.
-// CHECK-DAG:     %[[fifo0_cons_lock:.*]] = aie.lock(%[[t0]]) {init = 0 : i32, sym_name = "fifo0_cons_lock_0"}
+// CHECK-DAG:     aie.lock @fifo0_cons_lock_0(%[[t0]]) {init = 0 : i32}
 
-// CHECK-DAG:     %[[buf83:.*]] = aie.buffer(%[[t2]]) {sym_name = "buf83"} : memref<1xi32>
+// CHECK-DAG:     aie.buffer @buf83(%[[t2]]) : memref<1xi32>
 
 // We expect a flow out of t0's core into the memtile:
 // CHECK-DAG:     aie.flow(%[[t0]], DMA : 0, %[[t1]], DMA : 0)
@@ -85,20 +87,19 @@
 // Producer core:
 // ////////////////////////////////////////////////////////////////////////// //
 
-// CHECK:     %[[c0:.*]] = aie.core(%[[t0]]) {
 // CHECK-DAG:       %c0 = arith.constant 0 : index
-// CHECK:       aie.use_lock(%[[fifo0_prod_lock]], AcquireGreaterEqual, %{{.*}})
+// CHECK:       aie.use_lock(@fifo0_prod_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       memref.store %c55_i32, %[[fifo0_buff_0]][%c0] : memref<1xi32>
-// CHECK:       aie.use_lock(%[[fifo0_cons_lock]], Release, %{{.*}})
-// CHECK:       aie.use_lock(%[[fifo0_prod_lock]], AcquireGreaterEqual, %{{.*}})
+// CHECK:       aie.use_lock(@fifo0_cons_lock_0, Release, %{{.*}})
+// CHECK:       aie.use_lock(@fifo0_prod_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       memref.store %c66_i32, %[[fifo0_buff_1]][%c0] : memref<1xi32>
-// CHECK:       aie.use_lock(%[[fifo0_cons_lock]], Release, %{{.*}})
-// CHECK:       aie.use_lock(%[[fifo0_prod_lock]], AcquireGreaterEqual, %{{.*}})
+// CHECK:       aie.use_lock(@fifo0_cons_lock_0, Release, %{{.*}})
+// CHECK:       aie.use_lock(@fifo0_prod_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       memref.store %c77_i32, %[[fifo0_buff_0]][%c0] : memref<1xi32>
-// CHECK:       aie.use_lock(%[[fifo0_cons_lock]], Release, %{{.*}})
-// CHECK:       aie.use_lock(%[[fifo0_prod_lock]], AcquireGreaterEqual, %{{.*}})
+// CHECK:       aie.use_lock(@fifo0_cons_lock_0, Release, %{{.*}})
+// CHECK:       aie.use_lock(@fifo0_prod_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       memref.store %c88_i32, %[[fifo0_buff_1]][%c0] : memref<1xi32>
-// CHECK:       aie.use_lock(%[[fifo0_cons_lock]], Release, %{{.*}})
+// CHECK:       aie.use_lock(@fifo0_cons_lock_0, Release, %{{.*}})
 // CHECK:       aie.end
 // CHECK:     }
 
@@ -274,7 +275,8 @@ module @aie2_cyclostatic_L2 {
         %tile22 = aie.tile(2, 2)  // producer tile
         %memtile = aie.tile(2, 1) // mem tile
         %tile83 = aie.tile(8, 3)  // consumer tile
-        %buf83  = aie.buffer(%tile83) {sym_name = "buf83"} : memref<1xi32>
+        aie.buffer @buf83(%tile83)  : memref<1xi32>
+        %buf83 = aie.get_buffer @buf83 : memref<1xi32>
 
         // ObjectFifo that can hold 4 memref<1xi32>s, populated by tile22 and
         // consumed by tile23

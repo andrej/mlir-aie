@@ -464,8 +464,18 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
 
       SmallVector<Value, 2> args;
       auto i32Ty = IntegerType::get(rewriter.getContext(), 32);
-      args.push_back(arith::IndexCastOp::create(rewriter, useLock.getLoc(),
-                                                i32Ty, useLock.getLock()));
+      LockOp lock = useLock.getLockOp();
+      std::optional<int64_t> lockID;
+      if (auto localLockID =
+          useLock->getAttrOfType<IntegerAttr>("local_lock_id"))
+        lockID = localLockID.getValue().trySExtValue();
+      if (!lockID && lock && lock.getLockID())
+        lockID = lock.getLockIDValue();
+      if (!lockID)
+        return useLock.emitOpError("lock has no assigned ID");
+      args.push_back(arith::ConstantOp::create(
+          rewriter, useLock.getLoc(), i32Ty,
+          rewriter.getI32IntegerAttr(*lockID)));
 
       Value value = adaptor.getValue();
       // AIE2 acquire-greater-equal is encoded as a negative value, so negate
@@ -480,6 +490,21 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
       func::CallOp::create(rewriter, useLock.getLoc(), useLockFunc, args);
     }
     rewriter.eraseOp(useLock);
+    return success();
+  }
+};
+
+struct AIEGetLockToStandard : OpConversionPattern<GetLockOp> {
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(GetLockOp getLock, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    LockOp lock = SymbolTable::lookupNearestSymbolFrom<LockOp>(
+        getLock, getLock.getLockAttr());
+    if (!lock || !lock.getLockID())
+      return getLock.emitOpError("lock has no assigned ID");
+    rewriter.replaceOpWithNewOp<arith::ConstantIndexOp>(getLock,
+                                                        lock.getLockIDValue());
     return success();
   }
 };
@@ -499,8 +524,7 @@ struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
       return success();
     }
     rewriter.setInsertionPointToStart(module.getBody());
-    auto t = llvm::cast<MemRefType>(buffer.getType());
-    auto symName = buffer.name().getValue();
+    StringRef symName = buffer.getSymName();
     // A declaration, never a definition: a buffer lives at the address the
     // allocator chose, and the linker supplies that address from the generated
     // script or BCF. `initial_value` is device state, written by whoever
@@ -509,23 +533,37 @@ struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
     // `*(.data*)` lands, which costs the core's data region a copy it never
     // reads.
     memref::GlobalOp::create(rewriter, buffer.getLoc(), symName,
-                             rewriter.getStringAttr("public"), buffer.getType(),
+                             rewriter.getStringAttr("public"),
+                             cast<MemRefType>(buffer.getType()),
                              /*initial_value=*/nullptr, /*constant*/ false,
                              /*alignment*/ nullptr);
 
-    for (auto &use : make_early_inc_range(buffer.getResult().getUses())) {
-      Operation *user = use.getOwner();
-      rewriter.setInsertionPoint(user);
-      auto allocated =
-          memref::GetGlobalOp::create(rewriter, buffer.getLoc(), t, symName);
-      // Assume that buffers are aligned so they can be vectorized.
-      memref::AssumeAlignmentOp::create(rewriter, buffer.getLoc(), allocated,
-                                        32);
-
-      use.set(allocated.getResult());
-    }
-
     rewriter.eraseOp(buffer);
+    return success();
+  }
+};
+
+struct AIEGetBufferToStandard : OpConversionPattern<GetBufferOp> {
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(GetBufferOp getBuffer, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // A use can sit inside a not-yet-outlined core body, so each one needs
+    // its own memref.get_global: AIECoreToStandardFunc later clones that
+    // body into an isolated func.func, which cannot capture a value defined
+    // at device scope.
+    auto type = getBuffer.getResult().getType();
+    StringRef symName = getBuffer.getBuffer();
+    for (OpOperand &use :
+        llvm::make_early_inc_range(getBuffer.getResult().getUses())) {
+      rewriter.setInsertionPoint(use.getOwner());
+      auto allocated = memref::GetGlobalOp::create(rewriter, getBuffer.getLoc(),
+                                                    type, symName);
+      memref::AssumeAlignmentOp::create(rewriter, getBuffer.getLoc(),
+                                        allocated, 32);
+        use.set(allocated.getResult());
+    }
+    rewriter.eraseOp(getBuffer);
     return success();
   }
 };
@@ -775,6 +813,7 @@ struct AIECoreToStandardPass
                  AIEPutCascadeToStdLowering, AIEGetCascadeToStdLowering,
                  AIEDebugOpToStdLowering, AIEUseLockToStdLowering,
                  AIEEventOpToStdLowering>(m.getContext(), m);
+    patterns.add<AIEGetLockToStandard, AIEGetBufferToStandard>(m.getContext());
 
     patterns.add<AIEBufferToStandard>(m.getContext(), m, /*benefit*/ 1);
     if (failed(applyPartialConversion(deviceOp, target, std::move(patterns))))

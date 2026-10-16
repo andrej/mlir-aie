@@ -142,7 +142,8 @@ struct RtpToWrite32Pattern : OpConversionPattern<NpuWriteRTPOp> {
 
     auto device = op->getParentOfType<AIE::DeviceOp>();
 
-    auto buffer = AIE::lookupNamedOpIn<AIE::BufferOp>(device, op.getBuffer());
+    auto buffer = dyn_cast_or_null<AIE::BufferOp>(
+      SymbolTable::lookupSymbolIn(device, op.getBuffer()));
     if (!buffer) {
       op->emitError("buffer '" + op.getBuffer() + "' not found in device");
       return failure();

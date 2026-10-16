@@ -18,7 +18,8 @@
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %b = aie.buffer(%t) : memref<8xi32>
+    aie.buffer @b(%t) : memref<8xi32>
+    %b = aie.get_buffer @b : memref<8xi32>
 
     // CHECK: aie.mem
     // CHECK: aie.dma_bd({{.*}}) {bd_id = 0 : i32

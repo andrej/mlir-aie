@@ -31,10 +31,12 @@ module {
 
         // Local buffer for the runtime parameter (zero-initialized by default).
         // UPDATE_REG writes 8 bytes here (2 x i32).
-        %params_buf = aie.buffer(%t02) {sym_name = "params_buf"} : memref<2xi32>
+        aie.buffer @params_buf(%t02)  : memref<2xi32>
+        %params_buf = aie.get_buffer @params_buf : memref<2xi32>
 
         // Lock for synchronization between runtime sequence and core.
-        %sync_lock = aie.lock(%t02, 0) {init = 0 : i32, sym_name = "sync_lock"}
+        aie.lock @sync_lock(%t02, 0) {init = 0 : i32 }
+        %sync_lock = aie.get_lock @sync_lock
 
         // Output ObjectFIFO: core sends the recovered value to DDR.
         aie.objectfifo @objfifo_out (%t02, {%t00}, 1 : i32) : !aie.objectfifo<memref<1xi32>>
@@ -46,14 +48,14 @@ module {
 
             // Block until run-time parameters are ready
             %c1_ul0 = arith.constant 1 : i32
-            aie.use_lock(%sync_lock, Acquire, %c1_ul0)
+            aie.use_lock(@sync_lock, Acquire, %c1_ul0)
 
             // Read the parameter written by UPDATE_REG
             %raw_val = memref.load %params_buf[%c0] : memref<2xi32>
 
             // Reset run-time parameter lock for next iteration
             %c0_ul1 = arith.constant 0 : i32
-            aie.use_lock(%sync_lock, Release, %c0_ul1)
+            aie.use_lock(@sync_lock, Release, %c0_ul1)
 
             // Undo the left-shift-by-2 that was applied to survive the 0xFFFFFFFC masking in the firmware
             %val = arith.shrui %raw_val, %c2_i32 : i32

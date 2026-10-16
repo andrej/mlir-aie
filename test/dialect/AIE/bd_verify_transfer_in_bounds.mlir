@@ -14,7 +14,8 @@
 // An omitted len is the whole buffer, so with an offset it runs past the end.
 aie.device(npu2) {
   %t = aie.tile(0, 2)
-  %buf = aie.buffer(%t) : memref<1024xi32>
+  aie.buffer @buf(%t) : memref<1024xi32>
+  %buf = aie.get_buffer @buf : memref<1024xi32>
   aie.mem(%t) {
     aie.dma_start(MM2S, 0, ^bd0, ^end)
   ^bd0:
@@ -31,7 +32,8 @@ aie.device(npu2) {
 
 aie.device(npu2) {
   %t = aie.tile(0, 2)
-  %buf = aie.buffer(%t) : memref<1024xi32>
+  aie.buffer @buf(%t) : memref<1024xi32>
+  %buf = aie.get_buffer @buf : memref<1024xi32>
   aie.mem(%t) {
     aie.dma_start(MM2S, 0, ^bd0, ^end)
   ^bd0:
@@ -48,7 +50,8 @@ aie.device(npu2) {
 // Control: the rest of the buffer from the offset fits.
 aie.device(npu2) {
   %t = aie.tile(0, 2)
-  %buf = aie.buffer(%t) : memref<1024xi32>
+  aie.buffer @buf(%t) : memref<1024xi32>
+  %buf = aie.get_buffer @buf : memref<1024xi32>
   aie.mem(%t) {
     aie.dma_start(MM2S, 0, ^bd0, ^end)
   ^bd0:
@@ -64,7 +67,8 @@ aie.device(npu2) {
 // The dims alone reach index 1023; the offset pushes them past the end.
 aie.device(npu2) {
   %t = aie.tile(0, 1)
-  %buf = aie.buffer(%t) : memref<1024xi32>
+  aie.buffer @buf(%t) : memref<1024xi32>
+  %buf = aie.get_buffer @buf : memref<1024xi32>
   aie.memtile_dma(%t) {
     aie.dma_start(MM2S, 0, ^bd0, ^end)
   ^bd0:
@@ -80,7 +84,8 @@ aie.device(npu2) {
 
 aie.device(npu2) {
   %t = aie.tile(0, 1)
-  %buf = aie.buffer(%t) {address = 0 : i32} : memref<1024xi32>
+  aie.buffer @buf(%t) {address = 0 : i32} : memref<1024xi32>
+  %buf = aie.get_buffer @buf : memref<1024xi32>
   aie.runtime_sequence @task_no_len() {
     %task = aiex.dma_configure_task(%t, MM2S, 0) {
       // expected-error@+2 {{transfer of 1024 elements at offset 512 runs past the end of the 1024-element buffer}}
@@ -97,7 +102,8 @@ aie.device(npu2) {
 // but every index it reads is inside it.
 aie.device(npu2) {
   %t = aie.tile(0, 1)
-  %buf = aie.buffer(%t) {address = 0 : i32} : memref<256xi32>
+  aie.buffer @buf(%t) {address = 0 : i32} : memref<256xi32>
+  %buf = aie.get_buffer @buf : memref<256xi32>
   aie.runtime_sequence @task_repeat() {
     %task = aiex.dma_configure_task(%t, MM2S, 0) {
       aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 1024 sizes = [4, 256] strides = [0, 1]) {bd_id = 0 : i32}
@@ -126,7 +132,8 @@ aie.device(npu2) {
 aiex.scratchpad_parameter @off : i32
 aie.device(npu2) {
   %t = aie.tile(0, 1)
-  %buf = aie.buffer(%t) {address = 0 : i32} : memref<1024xi32>
+  aie.buffer @buf(%t) {address = 0 : i32} : memref<1024xi32>
+  %buf = aie.get_buffer @buf : memref<1024xi32>
   aie.runtime_sequence @param_no_len() {
     %task = aiex.dma_configure_task(%t, MM2S, 0) {
       // expected-error@+1 {{offset_parameter requires an explicit `len` on a local buffer; the default whole-buffer length runs past the end for any nonzero runtime offset}}
@@ -143,7 +150,8 @@ aie.device(npu2) {
 aiex.scratchpad_parameter @off : i32
 aie.device(npu2) {
   %t = aie.tile(0, 1)
-  %buf = aie.buffer(%t) {address = 0 : i32} : memref<1024xi32>
+  aie.buffer @buf(%t) {address = 0 : i32} : memref<1024xi32>
+  %buf = aie.get_buffer @buf : memref<1024xi32>
   aie.runtime_sequence @param_len() {
     %task = aiex.dma_configure_task(%t, MM2S, 0) {
       aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 256) {bd_id = 0 : i32, offset_parameter = @off}

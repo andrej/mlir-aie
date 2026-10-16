@@ -20,8 +20,7 @@ aie.device(npu1) {
 // rolled loop or a select arm may hold one. It still has to be under a
 // sequence somewhere, though: this one is under a plain func.
 func.func @set_lock_outside_sequence() {
-  %tile22 = aie.tile(2, 2)
-  %lock22_0 = aie.lock(%tile22, 0) {init = 0 : i32}
+  %lock22_0 = arith.constant 0 : index
   // expected-error@+2 {{'aiex.set_lock' op expects ancestor op 'aie.runtime_sequence'}}
   %lock22_0_v1 = arith.constant 1 : i32
   aiex.set_lock(%lock22_0, %lock22_0_v1)
@@ -32,7 +31,8 @@ func.func @set_lock_outside_sequence() {
 
 aie.device(npu1) {
   %tile = aie.tile(0, 1)
-  %lock = aie.lock(%tile) {init = 0 : i32}
+  aie.lock @lock(%tile) {init = 0 : i32}
+  %lock = aie.get_lock @lock
   aie.runtime_sequence() {
     // expected-error@+2 {{Lock value must be non-negative}}
     %lock_vm1 = arith.constant -1 : i32
@@ -44,7 +44,8 @@ aie.device(npu1) {
 
 aie.device(npu2) {
   %tile = aie.tile(0, 1)
-  %lock = aie.lock(%tile) {init = 0 : i32}
+  aie.lock @lock(%tile) {init = 0 : i32}
+  %lock = aie.get_lock @lock
   aie.runtime_sequence() {
     // expected-error@+2 {{Lock value must be non-negative}}
     %lock_vm1 = arith.constant -1 : i32
@@ -56,7 +57,8 @@ aie.device(npu2) {
 
 aie.device(npu2) {
   %tile = aie.tile(0, 1)
-  %lock = aie.lock(%tile) {init = 0 : i32}
+  aie.lock @lock(%tile) {init = 0 : i32}
+  %lock = aie.get_lock @lock
   aie.runtime_sequence() {
     // expected-error@+2 {{Lock value exceeds the maximum value of 63}}
     %lock_v64 = arith.constant 64 : i32

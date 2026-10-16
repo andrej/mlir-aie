@@ -39,8 +39,9 @@ module @standalone_memtile {
   aie.device(npu1) {
     // CHECK: %[[MEM:.*]] = aie.tile(0, 1)
     %mem = aie.logical_tile<MemTile>(?, ?)
-    // CHECK: aie.buffer(%[[MEM]])
-    %buf = aie.buffer(%mem) : memref<16xi32>
+    // CHECK: aie.buffer @buf(%[[MEM]]) : memref<16xi32>
+    aie.buffer @buf(%mem) : memref<16xi32>
+    %buf = aie.get_buffer @buf : memref<16xi32>
     // CHECK-NOT: aie.logical_tile
   }
 }

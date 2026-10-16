@@ -64,7 +64,8 @@ module @test_buffer_on_shim_tile {
   aie.device(npu2) {
     // ShimNOCTile has no memory for buffers
     %shim_tile = aie.logical_tile<ShimNOCTile>(?, ?)
-    %buf = aie.buffer(%shim_tile) : memref<256xi32>
+    aie.buffer @buf(%shim_tile) : memref<256xi32>
+    %buf = aie.get_buffer @buf : memref<256xi32>
     aie.end
   }
 }
@@ -114,7 +115,8 @@ module @test_has_valid_dma_channels {
 module @test_has_valid_bds {
   aie.device(npu2) {
     %tile = aie.logical_tile<CoreTile>(?, ?)
-    %buf = aie.buffer(%tile) : memref<256xi32>
+    aie.buffer @buf(%tile) : memref<256xi32>
+    %buf = aie.get_buffer @buf : memref<256xi32>
     aie.mem(%tile) {
       %dma = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:

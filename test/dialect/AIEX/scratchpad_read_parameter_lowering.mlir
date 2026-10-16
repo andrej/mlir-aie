@@ -12,8 +12,9 @@
 
 // RUN: aie-opt --aie-lower-scratchpad-parameters %s | FileCheck %s
 
-// CHECK: %[[BUF:.*]] = aie.buffer(%{{.*}}) {sym_name = "__param_n_0_2_{{[0-9]+}}"} : memref<2xi32>
+// CHECK: aie.buffer @[[BUF_NAME:__param_n_0_2_[0-9]+]](%{{.*}}) : memref<2xi32>
 // CHECK: aie.core
+// CHECK: %[[BUF:.*]] = aie.get_buffer @[[BUF_NAME]] : memref<2xi32>
 // CHECK: %[[RAW:.*]] = memref.load %[[BUF]][%{{.*}}] : memref<2xi32>
 // CHECK: arith.shrui %[[RAW]], %{{.*}} : i32
 module {

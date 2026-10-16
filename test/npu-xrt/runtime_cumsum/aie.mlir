@@ -46,7 +46,8 @@ module {
         aie.objectfifo.link [@out] -> [@mem_out]([] [])
 
         // Buffers used to hold runtime parameters
-        %rtp2 = aie.buffer(%tile_0_2) {sym_name = "rtp2"} : memref<16xi32>
+        aie.buffer @rtp2(%tile_0_2)  : memref<16xi32>
+        %rtp2 = aie.get_buffer @rtp2 : memref<16xi32>
 
         %core_0_2 = aie.core(%tile_0_2) {
             %c0 = arith.constant 0 : index

@@ -12,7 +12,8 @@ aie.device(xcvc1902) {
     %tile34 = aie.tile(3, 4)
     %tile70 = aie.tile(7, 0)
 
-    %hostLock = aie.lock(%tile34, 0) {sym_name="hostLock"}
+    aie.lock @hostLock(%tile34, 0)
+    %hostLock = aie.get_lock @hostLock
 
     func.func @evaluate_condition(%argIn : i32) -> (i1) {
         %true = arith.constant 1 : i1
@@ -24,8 +25,10 @@ aie.device(xcvc1902) {
         return %next : i32
     }
 
-    %ext_buf70_in  = aie.external_buffer {sym_name = "ddr_test_buffer_in"}: memref<256xi32>
-    %ext_buf70_out = aie.external_buffer {sym_name = "ddr_test_buffer_out"}: memref<64xi32>
+    aie.external_buffer @ddr_test_buffer_in : memref<256xi32>
+    %ext_buf70_in = aie.get_external_buffer @ddr_test_buffer_in : memref<256xi32>
+    aie.external_buffer @ddr_test_buffer_out : memref<64xi32>
+    %ext_buf70_out = aie.get_external_buffer @ddr_test_buffer_out : memref<64xi32>
 
     aie.objectfifo @of_in (%tile70, {%tile34}, 1 : i32) : !aie.objectfifo<memref<64xi32>>
     aie.objectfifo @of_out (%tile34, {%tile70}, 1 : i32) : !aie.objectfifo<memref<64xi32>>
@@ -47,7 +50,7 @@ aie.device(xcvc1902) {
             %next = func.call @payload(%arg2) : (i32) -> i32
 
             %c1_ul0 = arith.constant 1 : i32
-            aie.use_lock(%hostLock, Acquire, %c1_ul0)
+            aie.use_lock(@hostLock, Acquire, %c1_ul0)
 
             %input = aie.objectfifo.acquire @of_in (Consume, 1) : memref<64xi32>
             %output = aie.objectfifo.acquire @of_out (Produce, 1) : memref<64xi32>
@@ -62,7 +65,7 @@ aie.device(xcvc1902) {
             aie.objectfifo.release @of_out (Produce, 1)
 
             %c0_ul1 = arith.constant 0 : i32
-            aie.use_lock(%hostLock, Release, %c0_ul1)
+            aie.use_lock(@hostLock, Release, %c0_ul1)
 
             scf.yield %next : i32
         }

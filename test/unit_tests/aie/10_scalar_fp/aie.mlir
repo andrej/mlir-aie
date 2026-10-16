@@ -14,7 +14,8 @@ aie.device(xcvc1902) {
 
   %tile13 = aie.tile(1, 3)
 
-  %buf13_0 = aie.buffer(%tile13) { sym_name = "a" } : memref<256xf32>
+  aie.buffer @a(%tile13)  : memref<256xf32>
+  %buf13_0 = aie.get_buffer @a : memref<256xf32>
 
   %core13 = aie.core(%tile13) {
     %val1 = arith.constant 7.0 : f32

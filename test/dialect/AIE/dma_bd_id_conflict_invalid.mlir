@@ -12,7 +12,8 @@
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %b = aie.buffer(%t) : memref<4xi32>
+    aie.buffer @b(%t) : memref<4xi32>
+    %b = aie.get_buffer @b : memref<4xi32>
     aie.mem(%t) {
         aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:

@@ -10,6 +10,7 @@
 module @test {
   aie.device(xcve2802) {
     %t1 = aie.tile(1, 1)
-    %lock = aie.lock(%t1, 64) { sym_name = "lock1" }
+    aie.lock @lock1(%t1, 64)
+    %lock = aie.get_lock @lock1
   }
 }

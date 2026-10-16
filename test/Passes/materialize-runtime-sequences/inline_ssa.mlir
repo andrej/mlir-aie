@@ -36,8 +36,10 @@ module {
     // CHECK: aie.lock
     %tile_0_2 = aie.tile(0, 2)
 
-    %rtp_0_0 = aie.buffer(%tile_0_2) {sym_name = "rtp_0_0", address = 0xDEADBEEF : i32} : memref<1xi32>
-    %lock_0_2 = aie.lock(%tile_0_2)
+    aie.buffer @rtp_0_0(%tile_0_2) { address = 0xDEADBEEF : i32} : memref<1xi32>
+    %rtp_0_0 = aie.get_buffer @rtp_0_0 : memref<1xi32>
+    aie.lock @lock_0_2(%tile_0_2)
+    %lock_0_2 = aie.get_lock @lock_0_2
 
     aie.runtime_sequence (%arg0: memref<64xi32>) {
       // These are the operations that reference other SSA values in the device, which will require hoisting those SSA values into the calling device.

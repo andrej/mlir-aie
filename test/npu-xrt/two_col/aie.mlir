@@ -12,10 +12,14 @@ module {
     %3 = aie.tile(0, 3)
     %4 = aie.tile(1, 4)
     %5 = aie.tile(1, 5)
-    %rtp0 = aie.buffer(%2) {sym_name = "rtp0"} : memref<16xi32>
-    %rtp1 = aie.buffer(%3) {sym_name = "rtp1"} : memref<16xi32>
-    %rtp2 = aie.buffer(%4) {sym_name = "rtp2"} : memref<16xi32>
-    %rtp3 = aie.buffer(%5) {sym_name = "rtp3"} : memref<16xi32>
+    aie.buffer @rtp0(%2)  : memref<16xi32>
+    %rtp0 = aie.get_buffer @rtp0 : memref<16xi32>
+    aie.buffer @rtp1(%3)  : memref<16xi32>
+    %rtp1 = aie.get_buffer @rtp1 : memref<16xi32>
+    aie.buffer @rtp2(%4)  : memref<16xi32>
+    %rtp2 = aie.get_buffer @rtp2 : memref<16xi32>
+    aie.buffer @rtp3(%5)  : memref<16xi32>
+    %rtp3 = aie.get_buffer @rtp3 : memref<16xi32>
     aie.objectfifo @objFifo_in0(%0, {%1}, 2 : i32) : !aie.objectfifo<memref<512xui8>>
     aie.objectfifo @objFifo_in1(%1, {%2}, 2 : i32) : !aie.objectfifo<memref<128xui8>>
     aie.objectfifo @objFifo_in2(%1, {%3}, 2 : i32) : !aie.objectfifo<memref<128xui8>>

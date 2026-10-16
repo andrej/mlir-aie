@@ -23,10 +23,15 @@ module @test_mmap1 {
   %tsouth = aie.tile(3, 2) // Different row
   %tnorth = aie.tile(3, 4) // Different row
 
-  %bufsame = aie.buffer(%tsame) { sym_name = "same", address = 0x0 : i32 } : memref<4xi32>
-  %bufeast = aie.buffer(%teast) { sym_name = "east", address = 0x0 : i32 } : memref<4xi32>
-  %bufwest = aie.buffer(%twest) { sym_name = "west", address = 0x0 : i32 } : memref<4xi32>
-  %bufsouth = aie.buffer(%tsouth) { sym_name = "south", address = 0x0 : i32 } : memref<4xi32>
-  %bufnorth = aie.buffer(%tnorth) { sym_name = "north", address = 0x0 : i32 } : memref<4xi32>
+  aie.buffer @same(%tsame) { address = 0x0 : i32 } : memref<4xi32>
+  %bufsame = aie.get_buffer @same : memref<4xi32>
+  aie.buffer @east(%teast) { address = 0x0 : i32 } : memref<4xi32>
+  %bufeast = aie.get_buffer @east : memref<4xi32>
+  aie.buffer @west(%twest) { address = 0x0 : i32 } : memref<4xi32>
+  %bufwest = aie.get_buffer @west : memref<4xi32>
+  aie.buffer @south(%tsouth) { address = 0x0 : i32 } : memref<4xi32>
+  %bufsouth = aie.get_buffer @south : memref<4xi32>
+  aie.buffer @north(%tnorth) { address = 0x0 : i32 } : memref<4xi32>
+  %bufnorth = aie.get_buffer @north : memref<4xi32>
  }
 }

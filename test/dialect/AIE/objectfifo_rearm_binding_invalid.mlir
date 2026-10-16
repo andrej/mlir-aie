@@ -34,7 +34,8 @@ module {
 module {
   aie.device(npu2) {
     %ct = aie.tile(0, 3)
-    %l = aie.lock(%ct, 0) {init = 2 : i32}
+    aie.lock @l(%ct, 0) {init = 2 : i32}
+    %l = aie.get_lock @l
     // expected-error @+1 {{expected one lock_inits entry per lock}}
     aie.objectfifo_rearm_binding @b channels() locks(%l : index) {channel_dirs = array<i32>, channel_indices = array<i32>, lock_inits = array<i32: 2, 0>}
   }
@@ -65,11 +66,11 @@ module {
 
 // -----
 
-// locks operands must be aie.lock values (the lowering emits set_lock on them).
+// Lock operands must come from aie.get_lock.
 module {
   aie.device(npu2) {
     %c = arith.constant 7 : index
-    // expected-error @+1 {{locks operands must be aie.lock values}}
+    // expected-error @+1 {{locks operands must be aie.get_lock values}}
     aie.objectfifo_rearm_binding @b channels() locks(%c : index) {channel_dirs = array<i32>, channel_indices = array<i32>, lock_inits = array<i32: 1>}
   }
 }

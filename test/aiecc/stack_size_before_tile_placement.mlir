@@ -21,7 +21,8 @@
 module {
   aie.device(npu2) {
     %c = aie.logical_tile<CoreTile>(?, ?)
-    %b = aie.buffer(%c) : memref<15000xi32>
+    aie.buffer @b(%c) : memref<15000xi32>
+    %b = aie.get_buffer @b : memref<15000xi32>
     aie.core(%c) { aie.end } {measured_stack_size = 8192 : i32}
   }
 }

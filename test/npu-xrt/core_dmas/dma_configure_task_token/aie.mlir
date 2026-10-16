@@ -11,8 +11,9 @@ module {
     %tile_0_2 = aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
 
     // Core tile buffers
-    %in_buff = aie.buffer(%tile_0_2) {sym_name = "in_buff"} : memref<1024xi32>
-    // %out_buff = aie.buffer(%tile_0_2) {sym_name = "out_buff"} : memref<1024xi32>
+    aie.buffer @in_buff(%tile_0_2)  : memref<1024xi32>
+    %in_buff = aie.get_buffer @in_buff : memref<1024xi32>
+    // aie.buffer @out_buff(%tile_0_2) : memref<1024xi32>
 
     // Flows: shim -> memtile -> core -> memtile -> shim
     aie.flow(%tile_0_0, DMA : 0, %tile_0_2, DMA : 0)

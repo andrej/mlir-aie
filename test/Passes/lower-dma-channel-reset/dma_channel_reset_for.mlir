@@ -39,8 +39,10 @@
 module @core_tile {
   aie.device(npu2) {
     %t03 = aie.tile(0, 3)
-    %pl = aie.lock(%t03, 0) {init = 1 : i32}
-    %cl = aie.lock(%t03, 1) {init = 0 : i32}
+    aie.lock @pl(%t03, 0) {init = 1 : i32}
+    %pl = aie.get_lock @pl
+    aie.lock @cl(%t03, 1) {init = 0 : i32}
+    %cl = aie.get_lock @cl
     aie.objectfifo_rearm_binding @of_rearm channels(%t03 : index) locks(%pl, %cl : index, index) {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, lock_inits = array<i32: 1, 0>, head_bd_ids = array<i32: 5>, repeat_counts = array<i32: 3>}
     aie.runtime_sequence() {
       aiex.dma_channel_reset_for(@of_rearm)
@@ -60,8 +62,10 @@ module @core_tile {
 module @mem_tile {
   aie.device(npu2) {
     %mt = aie.tile(0, 1)
-    %pl = aie.lock(%mt, 0) {init = 2 : i32}
-    %cl = aie.lock(%mt, 1) {init = 0 : i32}
+    aie.lock @pl(%mt, 0) {init = 2 : i32}
+    %pl = aie.get_lock @pl
+    aie.lock @cl(%mt, 1) {init = 0 : i32}
+    %cl = aie.get_lock @cl
     aie.objectfifo_rearm_binding @r channels(%mt : index) locks(%pl, %cl : index, index) {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, lock_inits = array<i32: 2, 0>, head_bd_ids = array<i32: 24>, repeat_counts = array<i32: 0>}
     aie.runtime_sequence() {
       aiex.dma_channel_reset_for(@r)
@@ -78,8 +82,10 @@ module @mem_tile {
 module @npu1_core {
   aie.device(npu1) {
     %t03 = aie.tile(0, 3)
-    %pl = aie.lock(%t03, 0) {init = 1 : i32}
-    %cl = aie.lock(%t03, 1) {init = 0 : i32}
+    aie.lock @pl(%t03, 0) {init = 1 : i32}
+    %pl = aie.get_lock @pl
+    aie.lock @cl(%t03, 1) {init = 0 : i32}
+    %cl = aie.get_lock @cl
     aie.objectfifo_rearm_binding @of_rearm channels(%t03 : index) locks(%pl, %cl : index, index) {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, lock_inits = array<i32: 1, 0>, head_bd_ids = array<i32: 7>, repeat_counts = array<i32: 0>}
     aie.runtime_sequence() {
       aiex.dma_channel_reset_for(@of_rearm)
@@ -102,16 +108,19 @@ module @npu1_core {
 module @binding_wins {
   aie.device(npu2) {
     %mt = aie.tile(0, 1)
-    %buf = aie.buffer(%mt) : memref<64xi32>
-    %pl = aie.lock(%mt, 0) {init = 2 : i32}
-    %cl = aie.lock(%mt, 1) {init = 0 : i32}
+    aie.buffer @buf(%mt) : memref<64xi32>
+    %buf = aie.get_buffer @buf : memref<64xi32>
+    aie.lock @pl(%mt, 0) {init = 2 : i32}
+    %pl = aie.get_lock @pl
+    aie.lock @cl(%mt, 1) {init = 0 : i32}
+    %cl = aie.get_lock @cl
     %mem = aie.memtile_dma(%mt) {
       %s = aie.dma_start(S2MM, 0, ^bd, ^end, repeat_count = 7)
     ^bd:
       %c1 = arith.constant 1 : i32
-      aie.use_lock(%pl, AcquireGreaterEqual, %c1)
+      aie.use_lock(@pl, AcquireGreaterEqual, %c1)
       aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 64) {bd_id = 24 : i32, next_bd_id = 24 : i32}
-      aie.use_lock(%cl, Release, %c1)
+      aie.use_lock(@cl, Release, %c1)
       aie.next_bd ^bd
     ^end:
       aie.end

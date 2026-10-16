@@ -56,14 +56,14 @@ static std::optional<int64_t> getStaticTripCount(scf::ForOp forOp) {
 // dropping the intra-body re-acquires of locks whose element is still held.
 static void removeRedundantBinaryAcquires(DeviceOp device) {
   device.walk([&](Block *block) {
-    llvm::DenseSet<Value> held;
+    llvm::DenseSet<Attribute> held;
     SmallVector<UseLockOp> toErase;
     for (Operation &op : *block) {
       auto useLock = dyn_cast<UseLockOp>(&op);
       if (!useLock) {
         continue;
       }
-      Value lock = useLock.getLock();
+      FlatSymbolRefAttr lock = useLock.getLockAttr();
       if (useLock.acquire()) {
         // A binary `Acquire` of a lock already in the held set is redundant.
         if (!held.insert(lock).second) {

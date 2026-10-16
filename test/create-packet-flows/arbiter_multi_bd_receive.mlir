@@ -38,7 +38,8 @@ module {
     // 64 bytes out, 64 bytes in.
     aie.packet_flow(6) { aie.packet_source<%c5, DMA : 0>  aie.packet_dest<%m, DMA : 2> }
 
-    %b4 = aie.buffer(%c4) : memref<64xi32>
+    aie.buffer @b4(%c4) : memref<64xi32>
+    %b4 = aie.get_buffer @b4 : memref<64xi32>
     aie.mem(%c4) {
       %0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
@@ -48,7 +49,8 @@ module {
       aie.end
     }
 
-    %b3 = aie.buffer(%c3) : memref<16xi32>
+    aie.buffer @b3(%c3) : memref<16xi32>
+    %b3 = aie.get_buffer @b3 : memref<16xi32>
     aie.mem(%c3) {
       %0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
@@ -58,7 +60,8 @@ module {
       aie.end
     }
 
-    %b5 = aie.buffer(%c5) : memref<16xi32>
+    aie.buffer @b5(%c5) : memref<16xi32>
+    %b5 = aie.get_buffer @b5 : memref<16xi32>
     aie.mem(%c5) {
       %0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
@@ -68,7 +71,8 @@ module {
       aie.end
     }
 
-    %bm = aie.buffer(%m) : memref<16xi32>
+    aie.buffer @bm(%m) : memref<16xi32>
+    %bm = aie.get_buffer @bm : memref<16xi32>
     aie.memtile_dma(%m) {
       %0 = aie.dma_start(S2MM, 0, ^bd0, ^ch1)
     ^bd0:

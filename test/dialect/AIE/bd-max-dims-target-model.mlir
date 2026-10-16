@@ -16,7 +16,8 @@
 module @memtile_four_dims_ok {
   aie.device(xcve2802) {
     %tile = aie.tile(3, 1)
-    %buf = aie.buffer(%tile) { sym_name = "buf" } : memref<128xi32>
+    aie.buffer @buf(%tile)  : memref<128xi32>
+    %buf = aie.get_buffer @buf : memref<128xi32>
     %mem = aie.memtile_dma(%tile) {
       %dma = aie.dma_start("MM2S", 0, ^bd0, ^end)
     ^bd0:
@@ -35,7 +36,8 @@ module @memtile_four_dims_ok {
 module @core_three_dims_ok {
   aie.device(xcve2802) {
     %tile = aie.tile(3, 3)
-    %buf = aie.buffer(%tile) { sym_name = "buf" } : memref<128xi32>
+    aie.buffer @buf(%tile)  : memref<128xi32>
+    %buf = aie.get_buffer @buf : memref<128xi32>
     %mem = aie.mem(%tile) {
       %dma = aie.dma_start("MM2S", 0, ^bd0, ^end)
     ^bd0:

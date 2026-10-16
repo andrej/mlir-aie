@@ -11,13 +11,19 @@ module @test {
   aie.device(npu1) {
     %t00 = aie.tile(0, 0)
 
-    %buf_e = aie.external_buffer : memref<256xi32>
-    %buf_l = aie.external_buffer : memref<256xi32>
-    %buf_n = aie.external_buffer : memref<256xi32>
+    aie.external_buffer @buf_e : memref<256xi32>
+    %buf_e = aie.get_external_buffer @buf_e : memref<256xi32>
+    aie.external_buffer @buf_l : memref<256xi32>
+    %buf_l = aie.get_external_buffer @buf_l : memref<256xi32>
+    aie.external_buffer @buf_n : memref<256xi32>
+    %buf_n = aie.get_external_buffer @buf_n : memref<256xi32>
 
-    %lock_e = aie.lock(%t00, 0)
-    %lock_l = aie.lock(%t00, 1)
-    %lock_n = aie.lock(%t00, 2)
+    aie.lock @lock_e(%t00, 0)
+    %lock_e = aie.get_lock @lock_e
+    aie.lock @lock_l(%t00, 1)
+    %lock_l = aie.get_lock @lock_l
+    aie.lock @lock_n(%t00, 2)
+    %lock_n = aie.get_lock @lock_n
 
     // Tile DMA
     %m00 = aie.shim_dma(%t00) {
@@ -30,17 +36,17 @@ module @test {
       ^bd0:
         aie.dma_bd(%buf_e : memref<256xi32> offset = 1 len = 256)
         %c1_ul1 = arith.constant 1 : i32
-        aie.use_lock(%lock_e, Release, %c1_ul1)
+        aie.use_lock(@lock_e, Release, %c1_ul1)
         aie.next_bd ^bd0
       ^bd1:
         aie.dma_bd(%buf_l : memref<256xi32> offset = 1 len = 256)
         %c1_ul2 = arith.constant 1 : i32
-        aie.use_lock(%lock_l, Release, %c1_ul2)
+        aie.use_lock(@lock_l, Release, %c1_ul2)
         aie.next_bd ^bd1
       ^bd2:
         aie.dma_bd(%buf_n : memref<256xi32> offset = 1 len = 256)
         %c1_ul3 = arith.constant 1 : i32
-        aie.use_lock(%lock_n, Release, %c1_ul3)
+        aie.use_lock(@lock_n, Release, %c1_ul3)
         aie.next_bd ^bd2
       ^end:
         aie.end
@@ -55,9 +61,12 @@ module @test {
 module @test {
   aie.device(npu1) {
     %t1 = aie.tile(1, 0)
-    %buff = aie.external_buffer : memref<16xi32>
-    %lock = aie.lock(%t1, 0)
-    %lock_test = aie.lock(%t1, 1)
+    aie.external_buffer @buff : memref<16xi32>
+    %buff = aie.get_external_buffer @buff : memref<16xi32>
+    aie.lock @lock(%t1, 0)
+    %lock = aie.get_lock @lock
+    aie.lock @lock_test(%t1, 1)
+    %lock_test = aie.get_lock @lock_test
     // expected-error@+1 {{'aie.shim_dma' op BD block must have at most one acquire UseLockOp, found 2}}
     %mem13 = aie.shim_dma(%t1) {
       %c0_i32 = arith.constant 0 : i32
@@ -66,12 +75,12 @@ module @test {
       ^bd0:
         // expected-note@+1 {{in this BD block}}
         %c1_ul4 = arith.constant 1 : i32
-        aie.use_lock(%lock, Acquire, %c1_ul4)
+        aie.use_lock(@lock, Acquire, %c1_ul4)
         %c1_ul5 = arith.constant 1 : i32
-        aie.use_lock(%lock, Acquire, %c1_ul5)
+        aie.use_lock(@lock, Acquire, %c1_ul5)
         aie.dma_bd(%buff : memref<16xi32> offset = 0 len = 16)
         %c0_ul6 = arith.constant 0 : i32
-        aie.use_lock(%lock, Release, %c0_ul6)
+        aie.use_lock(@lock, Release, %c0_ul6)
         aie.next_bd ^bd0
       ^end:
         aie.end
@@ -86,10 +95,14 @@ module @test {
 module @test {
   aie.device(npu2) {
     %t1 = aie.tile(1, 0)
-    %buff = aie.external_buffer : memref<16xi32>
-    %prod_lock = aie.lock(%t1, 0) {init = 2 : i32}
-    %prod_lock_test = aie.lock(%t1, 1) {init = 2 : i32}
-    %cons_lock = aie.lock(%t1, 2) {init = 0 : i32}
+    aie.external_buffer @buff : memref<16xi32>
+    %buff = aie.get_external_buffer @buff : memref<16xi32>
+    aie.lock @prod_lock(%t1, 0) {init = 2 : i32}
+    %prod_lock = aie.get_lock @prod_lock
+    aie.lock @prod_lock_test(%t1, 1) {init = 2 : i32}
+    %prod_lock_test = aie.get_lock @prod_lock_test
+    aie.lock @cons_lock(%t1, 2) {init = 0 : i32}
+    %cons_lock = aie.get_lock @cons_lock
     // expected-error@+1 {{'aie.shim_dma' op BD block must have at most one acquire UseLockOp, found 2}}
     %mem13 = aie.shim_dma(%t1) {
       %c0_i32 = arith.constant 0 : i32
@@ -98,12 +111,12 @@ module @test {
       ^bd0:
         // expected-note@+1 {{in this BD block}}
         %c1_ul7 = arith.constant 1 : i32
-        aie.use_lock(%prod_lock, AcquireGreaterEqual, %c1_ul7)
+        aie.use_lock(@prod_lock, AcquireGreaterEqual, %c1_ul7)
         %c1_ul8 = arith.constant 1 : i32
-        aie.use_lock(%prod_lock_test, AcquireGreaterEqual, %c1_ul8)
+        aie.use_lock(@prod_lock_test, AcquireGreaterEqual, %c1_ul8)
         aie.dma_bd(%buff : memref<16xi32> offset = 0 len = 16)
         %c1_ul9 = arith.constant 1 : i32
-        aie.use_lock(%cons_lock, Release, %c1_ul9)
+        aie.use_lock(@cons_lock, Release, %c1_ul9)
         aie.next_bd ^bd0
       ^end:
         aie.end
@@ -118,10 +131,14 @@ module @test {
 module @test {
   aie.device(npu2) {
     %t1 = aie.tile(1, 0)
-    %buff = aie.external_buffer : memref<16xi32>
-    %prod_lock = aie.lock(%t1, 0) {init = 2 : i32}
-    %cons_lock = aie.lock(%t1, 2) {init = 0 : i32}
-    %cons_lock_test = aie.lock(%t1, 1) {init = 0 : i32}
+    aie.external_buffer @buff : memref<16xi32>
+    %buff = aie.get_external_buffer @buff : memref<16xi32>
+    aie.lock @prod_lock(%t1, 0) {init = 2 : i32}
+    %prod_lock = aie.get_lock @prod_lock
+    aie.lock @cons_lock(%t1, 2) {init = 0 : i32}
+    %cons_lock = aie.get_lock @cons_lock
+    aie.lock @cons_lock_test(%t1, 1) {init = 0 : i32}
+    %cons_lock_test = aie.get_lock @cons_lock_test
     // expected-error@+1 {{'aie.shim_dma' op BD block must have at most one release UseLockOp, found 2}}
     %mem13 = aie.shim_dma(%t1) {
       %c0_i32 = arith.constant 0 : i32
@@ -130,12 +147,12 @@ module @test {
       ^bd0:
         // expected-note@+1 {{in this BD block}}
         %c1_ul10 = arith.constant 1 : i32
-        aie.use_lock(%prod_lock, AcquireGreaterEqual, %c1_ul10)
+        aie.use_lock(@prod_lock, AcquireGreaterEqual, %c1_ul10)
         aie.dma_bd(%buff : memref<16xi32> offset = 0 len = 16)
         %c1_ul11 = arith.constant 1 : i32
-        aie.use_lock(%cons_lock, Release, %c1_ul11)
+        aie.use_lock(@cons_lock, Release, %c1_ul11)
         %c1_ul12 = arith.constant 1 : i32
-        aie.use_lock(%cons_lock_test, Release, %c1_ul12)
+        aie.use_lock(@cons_lock_test, Release, %c1_ul12)
         aie.next_bd ^bd0
       ^end:
         aie.end
@@ -150,10 +167,14 @@ module @test {
 module @test {
   aie.device(npu2) {
     %t1 = aie.tile(1, 0)
-    %buff = aie.external_buffer : memref<16xi32>
-    %buff2 = aie.external_buffer : memref<16xi32>
-    %prod_lock = aie.lock(%t1, 0) {init = 2 : i32}
-    %cons_lock = aie.lock(%t1, 2) {init = 0 : i32}
+    aie.external_buffer @buff : memref<16xi32>
+    %buff = aie.get_external_buffer @buff : memref<16xi32>
+    aie.external_buffer @buff2 : memref<16xi32>
+    %buff2 = aie.get_external_buffer @buff2 : memref<16xi32>
+    aie.lock @prod_lock(%t1, 0) {init = 2 : i32}
+    %prod_lock = aie.get_lock @prod_lock
+    aie.lock @cons_lock(%t1, 2) {init = 0 : i32}
+    %cons_lock = aie.get_lock @cons_lock
     // expected-error@+1 {{'aie.shim_dma' op BD block must have at most one DMABDOp, found 2}}
     %mem13 = aie.shim_dma(%t1) {
       %c0_i32 = arith.constant 0 : i32
@@ -162,11 +183,11 @@ module @test {
       ^bd0:
         // expected-note@+1 {{in this BD block}}
         %c1_ul13 = arith.constant 1 : i32
-        aie.use_lock(%prod_lock, AcquireGreaterEqual, %c1_ul13)
+        aie.use_lock(@prod_lock, AcquireGreaterEqual, %c1_ul13)
         aie.dma_bd(%buff : memref<16xi32> offset = 0 len = 16)
         aie.dma_bd(%buff2 : memref<16xi32> offset = 0 len = 16)
         %c1_ul14 = arith.constant 1 : i32
-        aie.use_lock(%cons_lock, Release, %c1_ul14)
+        aie.use_lock(@cons_lock, Release, %c1_ul14)
         aie.next_bd ^bd0
       ^end:
         aie.end

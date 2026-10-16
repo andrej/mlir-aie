@@ -22,7 +22,7 @@ module {
   }
 }
 // CHECK: %[[HOME:.*]] = aie.tile(0, 1)
-// CHECK: aie.buffer(%[[HOME]]) {sym_name = "shared_buff_0"}
+// CHECK: aie.buffer @shared_buff_0(%[[HOME]])
 // CHECK: @reader({{.*}}) drains @shared {channelIndex = 5 : i32}
 // CHECK: @home_reader({{.*}}) drains @shared {channelIndex = 0 : i32}
 // CHECK: @alias_reader({{.*}}) drains @shared {channelIndex = 1 : i32}
@@ -37,7 +37,8 @@ module @existing_dma {
   aie.device(npu2) {
     %home = aie.tile(0, 1)
     %alias = aie.logical_tile<MemTile>(0, 1)
-    %b = aie.buffer(%home) {sym_name = "b"} : memref<16xi32>
+    aie.buffer @b(%home)  : memref<16xi32>
+    %b = aie.get_buffer @b : memref<16xi32>
     aie.memtile_dma(%home) {
       aie.dma_start(MM2S, 0, ^read, ^next)
     ^next:

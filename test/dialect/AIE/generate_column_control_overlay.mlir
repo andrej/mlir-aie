@@ -293,9 +293,12 @@ aie.device(npu2_1col) {
   %tile_0_2 = aie.tile(0, 2)
   %tile_0_3 = aie.tile(0, 3)
   %tile_0_4 = aie.tile(0, 4)
-  %buf = aie.buffer(%tile_0_1) : memref<16xi32>
-  %buf3 = aie.buffer(%tile_0_3) : memref<16xi32>
-  %buf4 = aie.buffer(%tile_0_4) : memref<16xi32>
+  aie.buffer @buf(%tile_0_1) : memref<16xi32>
+  %buf = aie.get_buffer @buf : memref<16xi32>
+  aie.buffer @buf3(%tile_0_3) : memref<16xi32>
+  %buf3 = aie.get_buffer @buf3 : memref<16xi32>
+  aie.buffer @buf4(%tile_0_4) : memref<16xi32>
+  %buf4 = aie.get_buffer @buf4 : memref<16xi32>
   aie.route_endpoint @into4(%tile_0_4) DMA
   aie.route_endpoint @from0(%tile_0_0) DMA
   aie.route from @from0 to [@into4]

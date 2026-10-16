@@ -15,10 +15,14 @@ module @counting {
   aie.device(xcve2302) {
     %tile12 = aie.tile(1, 2)
 
-    %b0 = aie.buffer(%tile12) {sym_name = "b0"} : memref<16xi32>
-    %b1 = aie.buffer(%tile12) {sym_name = "b1"} : memref<16xi32>
-    %free = aie.lock(%tile12) {init = 2 : i32, sym_name = "free"}
-    %full = aie.lock(%tile12) {init = 0 : i32, sym_name = "full"}
+    aie.buffer @b0(%tile12)  : memref<16xi32>
+    %b0 = aie.get_buffer @b0 : memref<16xi32>
+    aie.buffer @b1(%tile12)  : memref<16xi32>
+    %b1 = aie.get_buffer @b1 : memref<16xi32>
+    aie.lock @free(%tile12) {init = 2 : i32 }
+    %free = aie.get_lock @free
+    aie.lock @full(%tile12) {init = 0 : i32 }
+    %full = aie.get_lock @full
 
     aie.objectfifo.pool @pool(%tile12) {
       depth = 2 : i32, buffers = [@b0, @b1]
@@ -40,14 +44,16 @@ module @counting {
 
 // Take the shortfall between what is wanted and what is held.
 // CHECK:     %[[DELTA:.*]] = arith.maxsi
-// CHECK:     aie.use_lock(%free, AcquireGreaterEqual, %[[DELTA]])
+// CHECK:     aie.use_lock(@free, AcquireGreaterEqual, %[[DELTA]])
 
 // The object handed over is the one the rotating index selects.
+// CHECK:     %[[B0:.*]] = aie.get_buffer @b0
+// CHECK:     %[[B1:.*]] = aie.get_buffer @b1
 // CHECK:     scf.index_switch
-// CHECK:       scf.yield %b0
-// CHECK:       scf.yield %b1
+// CHECK:       scf.yield %[[B0]]
+// CHECK:       scf.yield %[[B1]]
 
-// CHECK:     aie.use_lock(%full, Release, %{{.*}})
+// CHECK:     aie.use_lock(@full, Release, %{{.*}})
 // CHECK:     aie.end
 
 // CHECK-NOT: aie.objectfifo.acquire
@@ -57,8 +63,8 @@ module @counting {
 // Check provenance as well as coverage: acquire/release lower to the same op
 // kind but must still point at their respective user source lines.
 // LOC-DAG: arith.maxsi {{.*}} loc(#[[ACQUIRE:loc[0-9]*]])
-// LOC-DAG: aie.use_lock(%free, AcquireGreaterEqual, {{.*}}) loc(#[[ACQUIRE]])
-// LOC-DAG: scf.yield %b0 {{.*}} loc(#[[ACQUIRE]])
-// LOC-DAG: aie.use_lock(%full, Release, {{.*}}) loc(#[[RELEASE:loc[0-9]*]])
+// LOC-DAG: aie.use_lock(@free, AcquireGreaterEqual, {{.*}}) loc(#[[ACQUIRE]])
+// LOC-DAG: scf.yield %{{.*}} {{.*}} loc(#[[ACQUIRE]])
+// LOC-DAG: aie.use_lock(@full, Release, {{.*}}) loc(#[[RELEASE:loc[0-9]*]])
 // LOC-DAG: #[[ACQUIRE]] = loc("fifo_user.py":50:4)
 // LOC-DAG: #[[RELEASE]] = loc("fifo_user.py":60:4)

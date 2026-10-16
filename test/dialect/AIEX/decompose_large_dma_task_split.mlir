@@ -252,7 +252,8 @@ module {
   aie.device(npu2_1col) {
     %t = aie.tile(0, 0)
     %core = aie.tile(0, 2)
-    %rtp = aie.buffer(%core) {sym_name = "rtp", address = 1024 : i32} : memref<4xi32>
+    aie.buffer @rtp(%core) { address = 1024 : i32} : memref<4xi32>
+    %rtp = aie.get_buffer @rtp : memref<4xi32>
     aie.shim_dma_allocation @a (%t, MM2S, 0)
     aie.shim_dma_allocation @c (%t, S2MM, 0)
     aie.runtime_sequence @past_parameters(%in: memref<32768xi32>, %out: memref<32768xi32>) {
@@ -298,7 +299,8 @@ module {
   aie.device(npu2_1col) {
     %t = aie.tile(0, 0)
     %core = aie.tile(0, 2)
-    %lock = aie.lock(%core, 0) {init = 0 : i32}
+    aie.lock @lock(%core, 0) {init = 0 : i32}
+    %lock = aie.get_lock @lock
     aie.shim_dma_allocation @a (%t, MM2S, 0)
     aie.shim_dma_allocation @c (%t, S2MM, 0)
     aie.runtime_sequence @past_lock_set(%in: memref<32768xi32>, %out: memref<32768xi32>) {

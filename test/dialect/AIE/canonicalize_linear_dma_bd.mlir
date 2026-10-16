@@ -33,7 +33,8 @@
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
-    %buf = aie.external_buffer { sym_name = "buf0" } : memref<1024xi32>
+    aie.external_buffer @buf0  : memref<1024xi32>
+    %buf = aie.get_external_buffer @buf0 : memref<1024xi32>
     aie.shim_dma(%tile_0_0) {
       %c0_i32 = arith.constant 0 : i32
       %c1024_i32 = arith.constant 1024 : i32
@@ -61,7 +62,8 @@ module {
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
-    %buf = aie.external_buffer { sym_name = "buf1" } : memref<1024xi32>
+    aie.external_buffer @buf1  : memref<1024xi32>
+    %buf = aie.get_external_buffer @buf1 : memref<1024xi32>
     aie.shim_dma(%tile_0_0) {
       %c0_i32 = arith.constant 0 : i32
       %c1024_i32 = arith.constant 1024 : i32
@@ -89,7 +91,8 @@ module {
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
-    %buf = aie.external_buffer { sym_name = "buf2" } : memref<4096xi32>
+    aie.external_buffer @buf2  : memref<4096xi32>
+    %buf = aie.get_external_buffer @buf2 : memref<4096xi32>
     aie.shim_dma(%tile_0_0) {
       %c0_i32 = arith.constant 0 : i32
       aie.dma_start(MM2S, 0, ^bd0, ^end)
@@ -120,7 +123,8 @@ module {
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
-    %buf = aie.external_buffer { sym_name = "buf_pkt" } : memref<1024xi32>
+    aie.external_buffer @buf_pkt  : memref<1024xi32>
+    %buf = aie.get_external_buffer @buf_pkt : memref<1024xi32>
     aie.shim_dma(%tile_0_0) {
       %c0_i32 = arith.constant 0 : i32
       %c1024_i32 = arith.constant 1024 : i32
@@ -148,7 +152,8 @@ module {
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
-    %buf = aie.external_buffer { sym_name = "buf3" } : memref<1200xi32>
+    aie.external_buffer @buf3  : memref<1200xi32>
+    %buf = aie.get_external_buffer @buf3 : memref<1200xi32>
     aie.shim_dma(%tile_0_0) {
       %c0_i32 = arith.constant 0 : i32
       %c1024_i32 = arith.constant 1024 : i32
@@ -183,7 +188,8 @@ module {
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
-    %buf = aie.external_buffer { sym_name = "buf4" } : memref<2073600xi32>
+    aie.external_buffer @buf4  : memref<2073600xi32>
+    %buf = aie.get_external_buffer @buf4 : memref<2073600xi32>
     aie.shim_dma(%tile_0_0) {
       %c0_i32 = arith.constant 0 : i32
       aie.dma_start(MM2S, 0, ^bd0, ^end)
@@ -216,7 +222,8 @@ module {
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
-    %buf = aie.external_buffer { sym_name = "buf_burst" } : memref<1024xi32>
+    aie.external_buffer @buf_burst  : memref<1024xi32>
+    %buf = aie.get_external_buffer @buf_burst : memref<1024xi32>
     aie.shim_dma(%tile_0_0) {
       %c0_i32 = arith.constant 0 : i32
       %c1024_i32 = arith.constant 1024 : i32
@@ -246,7 +253,8 @@ module {
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
-    %buf = aie.external_buffer { sym_name = "buf_bdid" } : memref<1024xi32>
+    aie.external_buffer @buf_bdid  : memref<1024xi32>
+    %buf = aie.get_external_buffer @buf_bdid : memref<1024xi32>
     aie.shim_dma(%tile_0_0) {
       %c0_i32 = arith.constant 0 : i32
       %c1024_i32 = arith.constant 1024 : i32

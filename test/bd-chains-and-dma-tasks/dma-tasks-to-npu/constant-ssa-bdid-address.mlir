@@ -10,8 +10,10 @@ module {
     %mem = aie.tile(0, 1)
     %core = aie.tile(0, 2)
     %shim = aie.tile(0, 0)
-    %mem_buf = aie.buffer(%mem) {address = 4096 : i32} : memref<256xi32>
-    %core_buf = aie.buffer(%core) {address = 4096 : i32} : memref<256xi32>
+    aie.buffer @mem_buf(%mem) {address = 4096 : i32} : memref<256xi32>
+    %mem_buf = aie.get_buffer @mem_buf : memref<256xi32>
+    aie.buffer @core_buf(%core) {address = 4096 : i32} : memref<256xi32>
+    %core_buf = aie.get_buffer @core_buf : memref<256xi32>
 
     // CHECK-LABEL: @mem_id
     // CHECK-DAG: %[[MEM_BASE:.*]] = arith.constant 1704032 : i32

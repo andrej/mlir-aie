@@ -5,7 +5,7 @@
 
 // RUN: aie-opt --verify-diagnostics --aie-dma-tasks-to-npu %s
 
-// This test ensures the proper error is emitted if a user attempts to configure a task 
+// This test ensures the proper error is emitted if a user attempts to configure a task
 // that accesses a buffer that is inaccessible from the tile it is configured to run on.
 
 module {
@@ -14,7 +14,8 @@ module {
     %tile_0_1 = aie.tile(0, 1)
     %tile_0_2 = aie.tile(0, 2)
     // expected-error@+1 {{accessed from an unreachable tile}}
-    %buf = aie.buffer(%tile_0_2) {addr = 0xBEEF : i32} : memref<32xi8> 
+    aie.buffer @buf(%tile_0_2) {addr = 0xBEEF : i32} : memref<32xi8>
+    %buf = aie.get_buffer @buf : memref<32xi8>
 
     aie.runtime_sequence(%arg0: memref<32xi8>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {

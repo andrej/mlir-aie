@@ -105,18 +105,16 @@ static void materializeCoreDataBuffers(DeviceOp device) {
     }
     builder.setInsertionPoint(core);
     auto type = MemRefType::get({size}, builder.getI8Type());
-    auto buffer =
-        BufferOp::create(builder, core.getLoc(), type, tile.getResult(),
-                         /*sym_name=*/nullptr, /*address=*/nullptr,
-                         /*initial_value=*/nullptr,
-                         /*mem_bank=*/nullptr,
-                         /*core_data=*/builder.getUnitAttr(),
-                         /*bank_reserved=*/nullptr,
-                         /*aligned=*/nullptr);
-    buffer->setAttr(SymbolTable::getSymbolAttrName(),
-                    builder.getStringAttr("core_data_" +
-                                          std::to_string(tile.getCol()) + "_" +
-                                          std::to_string(tile.getRow())));
+    BufferOp::create(builder, core.getLoc(),
+             builder.getStringAttr("core_data_" +
+                         std::to_string(tile.getCol()) + "_" +
+                         std::to_string(tile.getRow())),
+             tile.getResult(), TypeAttr::get(type),
+             /*address=*/nullptr, /*initial_value=*/nullptr,
+             /*mem_bank=*/nullptr,
+             /*core_data=*/builder.getUnitAttr(),
+             /*bank_reserved=*/nullptr,
+             /*aligned=*/nullptr);
   }
 }
 
@@ -150,16 +148,13 @@ static void materializeBankReservations(DeviceOp device) {
       }
       builder.setInsertionPoint(core);
       auto type = MemRefType::get({size}, builder.getI8Type());
-      auto buffer =
-          BufferOp::create(builder, core.getLoc(), type, tile.getResult(),
-                           /*sym_name=*/nullptr, /*address=*/nullptr,
-                           /*initial_value=*/nullptr,
-                           /*mem_bank=*/builder.getI32IntegerAttr(bank),
-                           /*core_data=*/nullptr,
-                           /*bank_reserved=*/builder.getUnitAttr(),
-                           /*aligned=*/nullptr);
-      buffer->setAttr(SymbolTable::getSymbolAttrName(),
-                      builder.getStringAttr(name));
+        BufferOp::create(builder, core.getLoc(), builder.getStringAttr(name),
+                 tile.getResult(), TypeAttr::get(type),
+                 /*address=*/nullptr, /*initial_value=*/nullptr,
+                 /*mem_bank=*/builder.getI32IntegerAttr(bank),
+                 /*core_data=*/nullptr,
+                 /*bank_reserved=*/builder.getUnitAttr(),
+                 /*aligned=*/nullptr);
     }
   }
 }
@@ -198,17 +193,14 @@ static void materializePrebakedRanges(DeviceOp device) {
       }
       builder.setInsertionPoint(core);
       auto type = MemRefType::get({size}, builder.getI8Type());
-      auto buffer =
-          BufferOp::create(builder, core.getLoc(), type, tile.getResult(),
-                           /*sym_name=*/nullptr,
-                           /*address=*/builder.getI32IntegerAttr(address),
-                           /*initial_value=*/nullptr,
-                           /*mem_bank=*/nullptr,
-                           /*core_data=*/nullptr,
-                           /*bank_reserved=*/builder.getUnitAttr(),
-                           /*aligned=*/builder.getBoolAttr(false));
-      buffer->setAttr(SymbolTable::getSymbolAttrName(),
-                      builder.getStringAttr(name));
+        BufferOp::create(builder, core.getLoc(), builder.getStringAttr(name),
+                 tile.getResult(), TypeAttr::get(type),
+                 /*address=*/builder.getI32IntegerAttr(address),
+                 /*initial_value=*/nullptr,
+                 /*mem_bank=*/nullptr,
+                 /*core_data=*/nullptr,
+                 /*bank_reserved=*/builder.getUnitAttr(),
+                 /*aligned=*/builder.getBoolAttr(false));
     }
   }
 }
@@ -1653,18 +1645,6 @@ struct AIEPrepareBuffersPass
 
   void runOnOperation() override {
     DeviceOp device = getOperation();
-    // A buffer's name becomes a symbol in its core's object, so every buffer
-    // needs a name before the cores are lowered. Naming runs first, because a
-    // diagnostic below names the buffer it rejects.
-    OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
-    unsigned counter = 0;
-    device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
-      if (!buffer.hasName()) {
-        buffer->setAttr(SymbolTable::getSymbolAttrName(),
-                        builder.getStringAttr(generateUniqueSymbolName(
-                            device, "_anonymous", counter)));
-      }
-    });
     device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
       if (failed(checkBufferScope(buffer, device))) {
         return signalPassFailure();

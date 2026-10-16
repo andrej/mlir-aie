@@ -15,7 +15,8 @@
 // CHECK-LABEL: aie.device(npu2)
 aie.device(npu2) {
   %tile = aie.tile(0, 2)
-  %buf = aie.buffer(%tile) : memref<1024xi32>
+  aie.buffer @buf(%tile) : memref<1024xi32>
+  %buf = aie.get_buffer @buf : memref<1024xi32>
 
   // CHECK: func.func @helper(%[[M:.*]]: memref<1024xi32>)
   // CHECK: scf.for %[[I:.*]] = %{{.*}} to %{{.*}} step %{{.*}} : i32 {
@@ -80,7 +81,8 @@ aie.device(npu2) {
   // Index arithmetic and comparisons on the induction variable are narrowed
   // when their results fit in i32, and stay `index` when they might not.
   %tile2 = aie.tile(0, 3)
-  %idx = aie.buffer(%tile2) : memref<32xindex>
+  aie.buffer @idx(%tile2) : memref<32xindex>
+  %idx = aie.get_buffer @idx : memref<32xindex>
   // CHECK: aie.core
   // CHECK:   %[[CBIG:.*]] = arith.constant 1099511627776 : index
   // CHECK:   scf.for %[[K:.*]] = %{{.*}} to %{{.*}} step %{{.*}} : i32 {

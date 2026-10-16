@@ -950,8 +950,8 @@ static std::optional<uint32_t> getAbsoluteAddress(T *op,
   // If blockwrite references a buffer, the given address is understood to be
   // relative to the buffer's start address.
   if (auto bufferSym = op->getBuffer()) {
-    AIE::BufferOp buffer =
-        AIE::lookupNamedOpIn<AIE::BufferOp>(device, *bufferSym);
+    auto buffer = dyn_cast_or_null<AIE::BufferOp>(
+      SymbolTable::lookupSymbolIn(device, *bufferSym));
     if (!buffer) {
       op->emitError() << "buffer '" << *bufferSym << "' not found in device";
       return std::nullopt;

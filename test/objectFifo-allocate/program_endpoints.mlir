@@ -40,7 +40,8 @@ module @parity {
     aie.route from @light_src to [@light_in]
     aie.route from @light_out to [@light_dst]
 
-    %b = aie.buffer(%mt) {sym_name = "b"} : memref<64xi32>
+    aie.buffer @b(%mt)  : memref<64xi32>
+    %b = aie.get_buffer @b : memref<64xi32>
     aie.route_endpoint @b_out(%mt) DMA
     aie.route_endpoint @b_dst(%shim) DMA {fifoName = "b"}
     aie.route from @b_out to [@b_dst]
@@ -112,8 +113,10 @@ module @programs_and_tasks {
     aie.route from @light_shim to [@light_in]
     aie.route from @light_out to [@light_sink]
 
-    %b = aie.buffer(%mt) {sym_name = "b"} : memref<64xi32>
-    %b_l1 = aie.buffer(%core) {sym_name = "b_l1"} : memref<32xi32>
+    aie.buffer @b(%mt)  : memref<64xi32>
+    %b = aie.get_buffer @b : memref<64xi32>
+    aie.buffer @b_l1(%core)  : memref<32xi32>
+    %b_l1 = aie.get_buffer @b_l1 : memref<32xi32>
     aie.route_endpoint @b_shim(%shim) DMA {fifoName = "b"}
     aie.route_endpoint @b_in(%mt) DMA
     aie.route_endpoint @b_out(%mt) DMA
@@ -169,7 +172,8 @@ module @pinned_task_demand {
   aie.device(npu2) {
     %shim = aie.tile(0, 0)
     %mt = aie.tile(0, 1)
-    %buf = aie.buffer(%mt) {sym_name = "buf"} : memref<64xi32>
+    aie.buffer @buf(%mt)  : memref<64xi32>
+    %buf = aie.get_buffer @buf : memref<64xi32>
     aie.route_endpoint @src(%shim) DMA {fifoName = "src"}
     aie.route_endpoint @prog(%mt) DMA
     aie.route from @src to [@prog]
@@ -212,8 +216,10 @@ module @shim_and_packet {
     %shim = aie.tile(0, 0)
     %mt = aie.tile(0, 1)
     %core = aie.tile(0, 2)
-    %buf = aie.buffer(%mt) {sym_name = "buf"} : memref<64xi32>
-    %l1 = aie.buffer(%core) {sym_name = "l1"} : memref<64xi32>
+    aie.buffer @buf(%mt)  : memref<64xi32>
+    %buf = aie.get_buffer @buf : memref<64xi32>
+    aie.buffer @l1(%core)  : memref<64xi32>
+    %l1 = aie.get_buffer @l1 : memref<64xi32>
     aie.route_endpoint @host(%shim) DMA
     aie.route_endpoint @landing(%mt) DMA
     aie.route from @host to [@landing]
@@ -257,8 +263,10 @@ module @adjacent_program {
     %shim = aie.tile(1, 0)
     %west = aie.tile(0, 1)
     %mt = aie.tile(1, 1)
-    %far = aie.buffer(%west) {sym_name = "far"} : memref<64xi32>
-    %near = aie.buffer(%mt) {sym_name = "near"} : memref<64xi32>
+    aie.buffer @far(%west)  : memref<64xi32>
+    %far = aie.get_buffer @far : memref<64xi32>
+    aie.buffer @near(%mt)  : memref<64xi32>
+    %near = aie.get_buffer @near : memref<64xi32>
     aie.objectfifo.pool @heavy(%mt) {depth = 10 : i32} : memref<16xi32> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
     }

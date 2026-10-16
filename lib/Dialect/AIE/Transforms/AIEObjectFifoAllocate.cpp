@@ -369,9 +369,10 @@ struct AIEObjectFifoAllocatePass
       Value placement = bufferPlacements[pool][i];
       setInsertionPointOn(placement);
       lastPlaced[placement] = BufferOp::create(
-          builder, pool.getLoc(), pool.getElemType(), placement,
-          builder.getStringAttr(name), /*address=*/nullptr, init,
-          /*mem_bank=*/nullptr, /*core_data=*/nullptr);
+          builder, pool.getLoc(), builder.getStringAttr(name), placement,
+          TypeAttr::get(pool.getElemType()), /*address=*/nullptr, init,
+          /*mem_bank=*/nullptr, /*core_data=*/nullptr,
+          /*bank_reserved=*/nullptr, /*aligned=*/nullptr);
       names.push_back(FlatSymbolRefAttr::get(builder.getContext(), name));
     }
     pool.setBuffersAttr(builder.getArrayAttr(names));
@@ -380,10 +381,11 @@ struct AIEObjectFifoAllocatePass
   LockOp createLock(ObjectFifoPoolOp pool, Value tile, StringRef name,
                     int value) {
     setInsertionPointOn(tile);
-    auto lock = LockOp::create(builder, pool.getLoc(), tile, value);
+                    auto lock = LockOp::create(builder, pool.getLoc(),
+                                   builder.getStringAttr(name), tile,
+                                   /*lockID=*/nullptr,
+                                   builder.getI32IntegerAttr(value));
     lastPlaced[tile] = lock;
-    lock->setAttr(SymbolTable::getSymbolAttrName(),
-                  builder.getStringAttr(name));
     return lock;
   }
 
@@ -574,7 +576,8 @@ struct AIEObjectFifoAllocatePass
       for (auto name :
            {segment.getProduceLockAttr(), segment.getConsumeLockAttr()})
         if (name)
-          if (auto lock = lookupNamedOp<LockOp>(device, name.getAttr()))
+          if (auto lock = dyn_cast_or_null<LockOp>(
+                  SymbolTable::lookupSymbolIn(device, name.getAttr())))
             tiles.push_back(lock.getTile());
     }
     return tiles;
@@ -658,11 +661,13 @@ struct AIEObjectFifoAllocatePass
     auto remote = [&](Operation *op) {
       Value tile;
       if (auto bd = dyn_cast<DMABDOp>(op)) {
-        if (auto buffer =
-                dyn_cast_or_null<BufferOp>(bd.getBuffer().getDefiningOp()))
-          tile = buffer.getTile();
+        if (auto getBuffer =
+                dyn_cast_or_null<GetBufferOp>(bd.getBuffer().getDefiningOp()))
+          if (auto buffer = SymbolTable::lookupNearestSymbolFrom<BufferOp>(
+                  getBuffer, getBuffer.getBufferAttr()))
+            tile = buffer.getTile();
       } else if (auto use = dyn_cast<UseLockOp>(op)) {
-        if (auto lock = dyn_cast_or_null<LockOp>(use.getLock().getDefiningOp()))
+        if (auto lock = use.getLockOp())
           tile = lock.getTile();
       }
       return tile && !sameTile(tile, endpoint.getTile());
@@ -1188,7 +1193,8 @@ struct AIEObjectFifoAllocatePass
           continue;
         }
         for (LockOp lock : pool.getLockOps()) {
-          lockValues.push_back(lock.getResult());
+          lockValues.push_back(
+              GetLockOp::create(builder, lock.getLoc(), lock.getSymNameAttr()));
           lockInits.push_back(lock.getInit().value_or(0));
         }
       }
@@ -1203,7 +1209,7 @@ struct AIEObjectFifoAllocatePass
       }
 
       std::string name = (fifoName + "_rearm").str();
-      for (unsigned suffix = 0; lookupNamedOpIn(device, StringRef(name));
+      for (unsigned suffix = 0; SymbolTable::lookupSymbolIn(device, name);
            suffix++) {
         name = (fifoName + "_rearm_" + std::to_string(suffix)).str();
       }

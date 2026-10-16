@@ -18,7 +18,8 @@ module {
   aie.device(npu2) {
     %shim = aie.tile(0, 0)
     %mem = aie.tile(0, 1)
-    %buf = aie.buffer(%mem) : memref<1024xi32>
+    aie.buffer @buf(%mem) : memref<1024xi32>
+    %buf = aie.get_buffer @buf : memref<1024xi32>
 
     // CHECK-LABEL: @mem_repeat
     // CHECK: cf.assert %{{.*}}, "a runtime DMA repeat count exceeds the task queue's [0:255] range (at most 256 executions)"

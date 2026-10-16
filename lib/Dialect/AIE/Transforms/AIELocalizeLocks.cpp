@@ -41,50 +41,22 @@ struct AIELocalizeLocksPass
       int col = thisTile.colIndex();
       int row = thisTile.rowIndex();
 
-      // Find the neighboring tiles
-      SmallVector<TileOp, 4> accessibleTiles;
-      for (auto tile : deviceOp.getOps<TileOp>())
-        if (int dstRow = tile.rowIndex();
-            targetModel.isLegalMemAffinity(col, row, tile.colIndex(), dstRow))
-          accessibleTiles.push_back(tile);
-
-      for (auto tile : accessibleTiles) {
+      coreOp.walk([&](UseLockOp useLock) {
+        LockOp lock = useLock.getLockOp();
+        if (!lock)
+          return;
+        TileOp tile = lock.getTileOp();
         int dstCol = tile.colIndex();
         int dstRow = tile.rowIndex();
-
-        const auto &targetModel = getTargetModel(tile);
-        for (auto *user : tile.getResult().getUsers())
-          if (auto lock = dyn_cast<LockOp>(user)) {
-            // At this point, we are iterating over all locks that are
-            // accessible from within the current core coreOp. We only need to
-            // localize the current lock if it is used within the core. Note
-            // that this pass is to be applied after the scf-to-cf lowering, so
-            // it suffices to check if the parent of a UseLockOp is coreOp.
-            if (llvm::none_of(lock.getResult().getUsers(),
-                              [&](Operation *user) {
-                                return user->getParentOp() == coreOp;
-                              }))
-              continue;
-
-            auto lockIndexOffset =
-                targetModel.getLockLocalBaseIndex(col, row, dstCol, dstRow);
-            if (!lockIndexOffset)
-              llvm_unreachable("Found illegal lock user!");
-
-            int localLockIndex =
-                lockIndexOffset.value() + lock.getLockIDValue();
-
-            OpBuilder builder =
-                OpBuilder::atBlockBegin(&coreOp.getBody().front());
-
-            Value coreLockIDValue = arith::ConstantIndexOp::create(
-                builder, lock.getLoc(), localLockIndex);
-            lock.getResult().replaceUsesWithIf(
-                coreLockIDValue, [&](OpOperand &opOperand) {
-                  return opOperand.getOwner()->getParentOp() == coreOp;
-                });
-          }
-      }
+        auto lockIndexOffset =
+            targetModel.getLockLocalBaseIndex(col, row, dstCol, dstRow);
+        if (!lockIndexOffset)
+          llvm_unreachable("Found illegal lock user!");
+        int localLockIndex = *lockIndexOffset + lock.getLockIDValue();
+        useLock->setAttr("local_lock_id",
+                         IntegerAttr::get(IntegerType::get(&getContext(), 32),
+                                          localLockIndex));
+      });
     }
   }
 };

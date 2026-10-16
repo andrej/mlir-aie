@@ -25,8 +25,10 @@ aie.device(xcvc1902) {
 
   %tile32 = aie.tile(1, 3)
 
-  %buf_a = aie.buffer(%tile32) {sym_name = "a"} : memref<16xi32>
-  %buf_b = aie.buffer(%tile32) {sym_name = "b"} : memref<i32>
+  aie.buffer @a(%tile32)  : memref<16xi32>
+  %buf_a = aie.get_buffer @a : memref<16xi32>
+  aie.buffer @b(%tile32)  : memref<i32>
+  %buf_b = aie.get_buffer @b : memref<i32>
 
   %core32 = aie.core(%tile32)  {
     %val0 = affine.load %buf_b[] : memref<i32>

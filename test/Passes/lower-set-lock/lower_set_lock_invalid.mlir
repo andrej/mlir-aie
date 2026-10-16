@@ -10,8 +10,10 @@
 module @test_invalid_lock_value {
   aie.device(npu2) {
     %tile22 = aie.tile(2, 2)
-    %lock22_0 = aie.lock(%tile22, 0)  {init = 1 : i32}
-    %lock22_15 = aie.lock(%tile22, 15)  {init = 0 : i32}
+    aie.lock @lock22_0(%tile22, 0)  {init = 1 : i32}
+    %lock22_0 = aie.get_lock @lock22_0
+    aie.lock @lock22_15(%tile22, 15)  {init = 0 : i32}
+    %lock22_15 = aie.get_lock @lock22_15
 
     aie.runtime_sequence(%arg0: memref<1024xi32>, %arg1: memref<1024xi32>) {
         // Set some runtime parameters before starting execution
@@ -28,8 +30,10 @@ module @test_invalid_lock_value {
 module @test_invalid_lock_value {
   aie.device(xcvc1902) {
     %tile22 = aie.tile(2, 2)
-    %lock22_0 = aie.lock(%tile22, 0)  {init = 1 : i32}
-    %lock22_15 = aie.lock(%tile22, 15)  {init = 0 : i32}
+    aie.lock @lock22_0(%tile22, 0)  {init = 1 : i32}
+    %lock22_0 = aie.get_lock @lock22_0
+    aie.lock @lock22_15(%tile22, 15)  {init = 0 : i32}
+    %lock22_15 = aie.get_lock @lock22_15
 
     aie.runtime_sequence(%arg0: memref<1024xi32>, %arg1: memref<1024xi32>) {
         // Set some runtime parameters before starting execution

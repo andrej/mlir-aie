@@ -59,8 +59,10 @@ module {
   aie.device(npu2) {
     %tile_0_1 = aie.tile(0, 1)
     %tile_0_2 = aie.tile(0, 2)
-    %mem_buf = aie.buffer(%tile_0_1) {address = 4096 : i32} : memref<4096xi32>
-    %core_buf = aie.buffer(%tile_0_2) {address = 4096 : i32} : memref<1024xi32>
+    aie.buffer @mem_buf(%tile_0_1) {address = 4096 : i32} : memref<4096xi32>
+    %mem_buf = aie.get_buffer @mem_buf : memref<4096xi32>
+    aie.buffer @core_buf(%tile_0_2) {address = 4096 : i32} : memref<1024xi32>
+    %core_buf = aie.get_buffer @core_buf : memref<1024xi32>
 
     aie.runtime_sequence @mem_size_static() {
       %t = aiex.dma_configure_task(%tile_0_1, MM2S, 1) {

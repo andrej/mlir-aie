@@ -13,7 +13,8 @@
 module {
   aie.device(npu1_1col) {
     %tile_0_1 = aie.tile(0, 1)
-    %buf = aie.buffer(%tile_0_1) : memref<256xi32>
+    aie.buffer @buf(%tile_0_1) : memref<256xi32>
+    %buf = aie.get_buffer @buf : memref<256xi32>
     aie.runtime_sequence(%arg0: memref<256xi32>) {
       %t = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
         // expected-error @+1 {{Cannot give more than 3 dimensions for step sizes and wraps alongside the iteration attribute on this tile (got 4 dimensions).}}

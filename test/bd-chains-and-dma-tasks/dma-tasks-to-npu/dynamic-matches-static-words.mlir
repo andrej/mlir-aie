@@ -37,7 +37,8 @@
 
 aie.device(npu2) {
   %tile_0_1 = aie.tile(0, 1)
-  %buf = aie.buffer(%tile_0_1) {address = 4096 : i32} : memref<4096xi32>
+  aie.buffer @buf(%tile_0_1) {address = 4096 : i32} : memref<4096xi32>
+  %buf = aie.get_buffer @buf : memref<4096xi32>
   aie.runtime_sequence @memtile_words() {
     // MM2S channel 0 is even, so both BD ids must stay below 24.
     %static = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
@@ -66,7 +67,8 @@ aie.device(npu2) {
 
 aie.device(npu2) {
   %tile_0_2 = aie.tile(0, 2)
-  %buf = aie.buffer(%tile_0_2) {address = 4096 : i32} : memref<1024xi32>
+  aie.buffer @buf(%tile_0_2) {address = 4096 : i32} : memref<1024xi32>
+  %buf = aie.get_buffer @buf : memref<1024xi32>
   aie.runtime_sequence @coretile_words() {
     %static = aiex.dma_configure_task(%tile_0_2, MM2S, 0) {
       aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 512 sizes = [1, 8, 8, 8] strides = [1024, 64, 8, 1]) {bd_id = 0 : i32}
@@ -127,16 +129,19 @@ aie.device(npu2) {
 
 aie.device(npu2) {
   %tile_0_1 = aie.tile(0, 1)
-  %buf = aie.buffer(%tile_0_1) {address = 4096 : i32} : memref<4096xi32>
-  %prod = aie.lock(%tile_0_1, 0) {init = 0 : i32}
-  %cons = aie.lock(%tile_0_1, 1) {init = 0 : i32}
+  aie.buffer @buf(%tile_0_1) {address = 4096 : i32} : memref<4096xi32>
+  %buf = aie.get_buffer @buf : memref<4096xi32>
+  aie.lock @prod(%tile_0_1, 0) {init = 0 : i32}
+  %prod = aie.get_lock @prod
+  aie.lock @cons(%tile_0_1, 1) {init = 0 : i32}
+  %cons = aie.get_lock @cons
   aie.runtime_sequence @memtile_lock_words() {
     %static = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
       %c2_acq = arith.constant 2 : i32
-      aie.use_lock(%cons, AcquireGreaterEqual, %c2_acq)
+      aie.use_lock(@cons, AcquireGreaterEqual, %c2_acq)
       aie.dma_bd(%buf : memref<4096xi32> offset = 0 len = 4096) {bd_id = 0 : i32}
       %c3_rel = arith.constant 3 : i32
-      aie.use_lock(%prod, Release, %c3_rel)
+      aie.use_lock(@prod, Release, %c3_rel)
       aie.end
     }
     %c1 = arith.constant 1 : i32
@@ -144,9 +149,9 @@ aie.device(npu2) {
     %c2 = arith.constant 2 : i32
     %rel = arith.addi %c1, %c2 : i32
     %dynamic = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
-      aie.use_lock(%cons, AcquireGreaterEqual, %acq)
+      aie.use_lock(@cons, AcquireGreaterEqual, %acq)
       aie.dma_bd(%buf : memref<4096xi32> offset = 0 len = 4096) {bd_id = 1 : i32}
-      aie.use_lock(%prod, Release, %rel)
+      aie.use_lock(@prod, Release, %rel)
       aie.end
     }
   }

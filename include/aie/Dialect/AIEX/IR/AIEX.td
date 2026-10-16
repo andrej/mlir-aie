@@ -1655,7 +1655,8 @@ def AIEX_SetLockOp : AIEX_Op<"set_lock", [HasAncestor<"AIE::RuntimeSequenceOp">,
     Example:
     ```
       %tile22 = aie.tile(2, 2)
-      %lock22_0 = aie.lock(%tile22, 0)
+      aie.lock @lock22_0(%tile22, 0)
+      %lock22_0 = aie.get_lock @lock22_0
       ...
       %c5 = arith.constant 5 : i32
       aiex.set_lock(%lock22_0, %c5)
@@ -1670,7 +1671,11 @@ def AIEX_SetLockOp : AIEX_Op<"set_lock", [HasAncestor<"AIE::RuntimeSequenceOp">,
   }];
 
   let extraClassDefinition = [{
-    AIE::LockOp SetLockOp::getLockOp() { return cast<AIE::LockOp>(getLock().getDefiningOp()); }
+    AIE::LockOp SetLockOp::getLockOp() {
+      auto accessor = cast<AIE::GetLockOp>(getLock().getDefiningOp());
+      return SymbolTable::lookupNearestSymbolFrom<AIE::LockOp>(
+          accessor, accessor.getLockAttr());
+    }
   }];
 }
 

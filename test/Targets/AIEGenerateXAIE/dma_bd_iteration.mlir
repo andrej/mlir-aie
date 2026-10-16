@@ -12,7 +12,8 @@
 module @aie_module {
   aie.device(xcve2302) {
     %t01 = aie.tile(2, 1)
-    %buf = aie.buffer(%t01) { address = 8192 : i32, sym_name = "in" } : memref<256xi32>
+    aie.buffer @in(%t01) { address = 8192 : i32 } : memref<256xi32>
+    %buf = aie.get_buffer @in : memref<256xi32>
     %m01 = aie.memtile_dma(%t01) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
@@ -31,7 +32,8 @@ module @aie_module {
 module @aie_module {
   aie.device(xcve2302) {
     %t01 = aie.tile(2, 1)
-    %buf = aie.buffer(%t01) { address = 8192 : i32, sym_name = "in" } : memref<256xi32>
+    aie.buffer @in(%t01) { address = 8192 : i32 } : memref<256xi32>
+    %buf = aie.get_buffer @in : memref<256xi32>
     %m01 = aie.memtile_dma(%t01) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
@@ -50,7 +52,8 @@ module @aie_module {
 module @aie_module {
   aie.device(xcve2302) {
     %t01 = aie.tile(2, 1)
-    %buf = aie.buffer(%t01) { address = 8192 : i32, sym_name = "in" } : memref<256xi64>
+    aie.buffer @in(%t01) { address = 8192 : i32 } : memref<256xi64>
+    %buf = aie.get_buffer @in : memref<256xi64>
     %m01 = aie.memtile_dma(%t01) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
@@ -69,7 +72,8 @@ module @aie_module {
 module @aie_module {
   aie.device(xcve2302) {
     %t22 = aie.tile(2, 2)
-    %buf = aie.buffer(%t22) { address = 1024 : i32, sym_name = "in" } : memref<256xi32>
+    aie.buffer @in(%t22) { address = 1024 : i32 } : memref<256xi32>
+    %buf = aie.get_buffer @in : memref<256xi32>
     %m22 = aie.mem(%t22) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
@@ -88,7 +92,8 @@ module @aie_module {
 module @aie_module {
   aie.device(xcve2302) {
     %t01 = aie.tile(2, 1)
-    %buf = aie.buffer(%t01) { address = 8192 : i32, sym_name = "in" } : memref<256xi32>
+    aie.buffer @in(%t01) { address = 8192 : i32 } : memref<256xi32>
+    %buf = aie.get_buffer @in : memref<256xi32>
     %m01 = aie.memtile_dma(%t01) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:

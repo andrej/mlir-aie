@@ -26,8 +26,10 @@
 module {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
-    %buf_in  = aie.buffer(%tile_0_2) {sym_name = "in"}  : memref<256xf32>
-    %buf_out = aie.buffer(%tile_0_2) {sym_name = "out"} : memref<256xf32>
+    aie.buffer @in(%tile_0_2)   : memref<256xf32>
+    %buf_in = aie.get_buffer @in : memref<256xf32>
+    aie.buffer @out(%tile_0_2)  : memref<256xf32>
+    %buf_out = aie.get_buffer @out : memref<256xf32>
 
     %core_0_2 = aie.core(%tile_0_2) {
       %c0   = arith.constant 0 : index

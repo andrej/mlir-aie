@@ -21,9 +21,12 @@ module {
 
     // CHECK: %[[TILE:.*]] = aie.tile(0, 2)
     // Locks are cloned in reverse order due to processing, but that's okay
-    // CHECK-DAG: %[[LOCK2:.*]] = aie.lock(%[[TILE]], 2) {init = 0 : i32, sym_name = "lock_2"}
-    // CHECK-DAG: %[[LOCK1:.*]] = aie.lock(%[[TILE]], 1) {init = 1 : i32, sym_name = "lock_1"}
-    // CHECK-DAG: %[[LOCK0:.*]] = aie.lock(%[[TILE]], 0) {init = 0 : i32, sym_name = "lock_0"}
+    // CHECK-DAG: aie.lock @lock_2(%[[TILE]], 2) {init = 0 : i32}
+    // CHECK-DAG: %[[LOCK2:.*]] = aie.get_lock @lock_2
+    // CHECK-DAG: aie.lock @lock_1(%[[TILE]], 1) {init = 1 : i32}
+    // CHECK-DAG: %[[LOCK1:.*]] = aie.get_lock @lock_1
+    // CHECK-DAG: aie.lock @lock_0(%[[TILE]], 0) {init = 0 : i32}
+    // CHECK-DAG: %[[LOCK0:.*]] = aie.get_lock @lock_0
 
     // CHECK: aie.runtime_sequence
     aie.runtime_sequence(%arg0: memref<64xi32>, %arg1: memref<64xi32>) {
@@ -46,14 +49,17 @@ module {
   aie.device(npu2) @callee_device {
     // The original definitions should remain in the callee device
     // CHECK: aie.tile(0, 2)
-    // CHECK-DAG: aie.lock({{.*}}, 0)
-    // CHECK-DAG: aie.lock({{.*}}, 1)
-    // CHECK-DAG: aie.lock({{.*}}, 2)
+    // CHECK-DAG: aie.lock @{{.*}}({{.*}}, 0)
+    // CHECK-DAG: aie.lock @{{.*}}({{.*}}, 1)
+    // CHECK-DAG: aie.lock @{{.*}}({{.*}}, 2)
     %tile_0_2 = aie.tile(0, 2)
 
-    %lock_0 = aie.lock(%tile_0_2, 0) {init = 0 : i32, sym_name = "lock_0"}
-    %lock_1 = aie.lock(%tile_0_2, 1) {init = 1 : i32, sym_name = "lock_1"}
-    %lock_2 = aie.lock(%tile_0_2, 2) {init = 0 : i32, sym_name = "lock_2"}
+    aie.lock @lock_0(%tile_0_2, 0) {init = 0 : i32 }
+    %lock_0 = aie.get_lock @lock_0
+    aie.lock @lock_1(%tile_0_2, 1) {init = 1 : i32 }
+    %lock_1 = aie.get_lock @lock_1
+    aie.lock @lock_2(%tile_0_2, 2) {init = 0 : i32 }
+    %lock_2 = aie.get_lock @lock_2
 
     aie.runtime_sequence (%arg0: memref<64xi32>, %arg1: memref<64xi32>) {
       // Multiple set_lock operations with different locks and the same lock used multiple times
@@ -79,8 +85,10 @@ module {
   aie.device(npu2) {
     // CHECK: %[[TILE02:.*]] = aie.tile(0, 2)
     // CHECK: %[[TILE12:.*]] = aie.tile(1, 2)
-    // CHECK-DAG: %[[LOCK12:.*]] = aie.lock(%[[TILE12]], 0)
-    // CHECK-DAG: %[[LOCK02:.*]] = aie.lock(%[[TILE02]], 0)
+    // CHECK-DAG: aie.lock @lock_1_2(%[[TILE12]], 0)
+    // CHECK-DAG: %[[LOCK12:.*]] = aie.get_lock @lock_1_2
+    // CHECK-DAG: aie.lock @lock_0_2(%[[TILE02]], 0)
+    // CHECK-DAG: %[[LOCK02:.*]] = aie.get_lock @lock_0_2
 
     // CHECK: aie.runtime_sequence
     aie.runtime_sequence(%arg0: memref<64xi32>) {
@@ -99,8 +107,10 @@ module {
     %tile_0_2 = aie.tile(0, 2)
     %tile_1_2 = aie.tile(1, 2)
 
-    %lock_0_2 = aie.lock(%tile_0_2, 0) {init = 0 : i32}
-    %lock_1_2 = aie.lock(%tile_1_2, 0) {init = 0 : i32}
+    aie.lock @lock_0_2(%tile_0_2, 0) {init = 0 : i32}
+    %lock_0_2 = aie.get_lock @lock_0_2
+    aie.lock @lock_1_2(%tile_1_2, 0) {init = 0 : i32}
+    %lock_1_2 = aie.get_lock @lock_1_2
 
     aie.runtime_sequence (%arg0: memref<64xi32>) {
       %lock_0_2_v1 = arith.constant 1 : i32

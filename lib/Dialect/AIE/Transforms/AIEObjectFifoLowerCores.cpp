@@ -122,7 +122,8 @@ struct LoweringContext {
   }
 
   LockOp lockOf(FlatSymbolRefAttr name) {
-    return lookupNamedOp<LockOp>(device, name.getAttr());
+    return dyn_cast_or_null<LockOp>(
+        SymbolTable::lookupSymbolIn(device, name.getAttr()));
   }
 };
 
@@ -144,13 +145,27 @@ void emitBinaryUseLocks(OpBuilder &builder, Location loc,
       memref::LoadOp::create(builder, loc, counterSlot, ValueRange{});
   Value index =
       arith::IndexCastOp::create(builder, loc, builder.getIndexType(), counter);
-  Type lockTy = locks[0].getType();
   for (int i = 0; i < count; i++) {
-    Value lock =
-        buildRotatingSwitch(builder, loc, index, lockTy, depth, [&](int c) {
-          return locks[(i + c) % depth].getResult();
-        });
-    UseLockOp::create(builder, loc, lock, action, full ? 1 : 0);
+    SmallVector<int64_t, 4> caseValues;
+    for (int c = 0; c < depth; ++c)
+      caseValues.push_back(c);
+    auto cases = DenseI64ArrayAttr::get(builder.getContext(), caseValues);
+    auto switchOp = scf::IndexSwitchOp::create(builder, loc, TypeRange{}, index,
+                                               cases, depth);
+    auto emitUse = [&](Block *block, LockOp lock) {
+      builder.setInsertionPointToStart(block);
+      UseLockOp::create(builder, loc,
+                        FlatSymbolRefAttr::get(lock.getSymNameAttr()), action,
+                        full ? 1 : 0);
+      scf::YieldOp::create(builder, loc);
+    };
+    builder.createBlock(&switchOp.getDefaultRegion());
+    emitUse(&switchOp.getDefaultBlock(), locks[i % depth]);
+    for (int c = 0; c < depth; ++c) {
+      builder.createBlock(&switchOp.getCaseRegions()[c]);
+      emitUse(&switchOp.getCaseBlock(c), locks[(i + c) % depth]);
+    }
+    builder.setInsertionPointAfter(switchOp);
   }
 }
 
@@ -192,8 +207,7 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
           rewriter, loc, rewriter.getI32IntegerAttr(count));
       for (FlatSymbolRefAttr name :
            segmentLocksFor(endpoint, LockAction::Release)) {
-        UseLockOp::create(rewriter, loc, ctx.lockOf(name), LockAction::Release,
-                          amount);
+        UseLockOp::create(rewriter, loc, name, LockAction::Release, amount);
       }
 
       memref::AllocaOp held = ctx.heldCount.lookup(key);
@@ -266,8 +280,8 @@ struct LowerAcquire : OpRewritePattern<ObjectFifoAcquireOp> {
     }
     for (FlatSymbolRefAttr name :
          segmentLocksFor(endpoint, LockAction::AcquireGreaterEqual)) {
-      UseLockOp::create(rewriter, loc, ctx.lockOf(name),
-                        LockAction::AcquireGreaterEqual, delta);
+      UseLockOp::create(rewriter, loc, name, LockAction::AcquireGreaterEqual,
+                        delta);
     }
 
     Value next = arith::AddIOp::create(rewriter, loc, current, delta);
@@ -284,7 +298,16 @@ struct LowerAcquire : OpRewritePattern<ObjectFifoAcquireOp> {
     ObjectFifoPoolOp pool = endpoint.getPoolOp();
     SmallVector<Value> buffers;
     for (BufferLike buffer : pool.getBufferOps()) {
-      buffers.push_back(buffer.getBuffer());
+      if (auto local = dyn_cast<BufferOp>(buffer.getOperation())) {
+        buffers.push_back(GetBufferOp::create(
+            rewriter, acquireOp.getLoc(), local.getType(),
+            FlatSymbolRefAttr::get(local.getSymNameAttr())));
+      } else {
+        auto external = cast<ExternalBufferOp>(buffer.getOperation());
+        buffers.push_back(GetExternalBufferOp::create(
+            rewriter, acquireOp.getLoc(), external.getType(),
+            FlatSymbolRefAttr::get(external.getSymNameAttr())));
+      }
     }
     if (buffers.empty()) {
       return success();

@@ -9,8 +9,10 @@
 
 module {
     %t21 = aie.tile(2, 2)
-    %buf21_0 = aie.buffer(%t21) { sym_name = "buf21_0" } : memref<7168xi32>
-    %l21_0 = aie.lock(%t21, 0)
+    aie.buffer @buf21_0(%t21)  : memref<7168xi32>
+    %buf21_0 = aie.get_buffer @buf21_0 : memref<7168xi32>
+    aie.lock @l21_0(%t21, 0)
+    %l21_0 = aie.get_lock @l21_0
     %m21 = aie.mem(%t21) {
       %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
         ^bd0:

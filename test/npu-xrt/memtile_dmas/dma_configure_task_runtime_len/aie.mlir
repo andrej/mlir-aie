@@ -21,7 +21,8 @@ module {
     %tile_0_0 = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
     %tile_0_1 = aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
 
-    %buf = aie.buffer(%tile_0_1) {sym_name = "buf"} : memref<4096xi32>
+    aie.buffer @buf(%tile_0_1)  : memref<4096xi32>
+    %buf = aie.get_buffer @buf : memref<4096xi32>
 
     aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
     aie.flow(%tile_0_1, DMA : 0, %tile_0_0, DMA : 0)

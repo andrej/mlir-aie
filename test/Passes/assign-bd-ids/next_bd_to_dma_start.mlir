@@ -13,8 +13,10 @@
 module {
   aie.device(npu1) {
     %tile_0_1 = aie.tile(0, 1)
-    %buf0 = aie.buffer(%tile_0_1) : memref<16xi32>
-    %buf1 = aie.buffer(%tile_0_1) : memref<16xi32>
+    aie.buffer @buf0(%tile_0_1) : memref<16xi32>
+    %buf0 = aie.get_buffer @buf0 : memref<16xi32>
+    aie.buffer @buf1(%tile_0_1) : memref<16xi32>
+    %buf1 = aie.get_buffer @buf1 : memref<16xi32>
     %mem = aie.memtile_dma(%tile_0_1) {
       %0 = aie.dma_start(S2MM, 0, ^bd0, ^out)
     ^bd0:

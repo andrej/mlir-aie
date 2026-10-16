@@ -92,10 +92,21 @@ struct AIEObjectFifoLowerDMAsPass
   }
 
   /// Objects the endpoint moves.
-  SmallVector<Value> buffersOf(ObjectFifoPoolOp pool) {
+  SmallVector<Value> buffersOf(ObjectFifoPoolOp pool, DmaBody program) {
+    OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPoint(program);
     SmallVector<Value> buffers;
     for (BufferLike buffer : pool.getBufferOps()) {
-      buffers.push_back(buffer.getBuffer());
+      if (auto local = dyn_cast<BufferOp>(buffer.getOperation())) {
+        buffers.push_back(GetBufferOp::create(
+            builder, pool.getLoc(), local.getType(),
+            FlatSymbolRefAttr::get(local.getSymNameAttr())));
+      } else {
+        auto external = cast<ExternalBufferOp>(buffer.getOperation());
+        buffers.push_back(GetExternalBufferOp::create(
+            builder, pool.getLoc(), external.getType(),
+            FlatSymbolRefAttr::get(external.getSymNameAttr())));
+      }
     }
     return buffers;
   }
@@ -152,14 +163,16 @@ struct AIEObjectFifoLowerDMAsPass
         action = LockAction::Acquire;
       }
     } else if (descriptor.acquireLock) {
-      acquireLock =
-          lookupNamedOp<LockOp>(device, descriptor.acquireLock.getAttr());
-      releaseLock =
-          lookupNamedOp<LockOp>(device, descriptor.releaseLock.getAttr());
+      acquireLock = dyn_cast_or_null<LockOp>(SymbolTable::lookupSymbolIn(
+          device, descriptor.acquireLock.getAttr()));
+      releaseLock = dyn_cast_or_null<LockOp>(SymbolTable::lookupSymbolIn(
+          device, descriptor.releaseLock.getAttr()));
     }
 
     if (acquireLock) {
-      UseLockOp::create(builder, loc, acquireLock, action, acquireValue);
+      UseLockOp::create(builder, loc,
+                        FlatSymbolRefAttr::get(acquireLock.getSymNameAttr()),
+                        action, acquireValue);
     }
     if (auto packet = endpoint.getPacket()) {
       DMABDPACKETOp::create(builder, loc, packet->getPktType(),
@@ -180,8 +193,9 @@ struct AIEObjectFifoLowerDMAsPass
     }
 
     if (releaseLock) {
-      UseLockOp::create(builder, loc, releaseLock, LockAction::Release,
-                        releaseValue);
+      UseLockOp::create(builder, loc,
+                        FlatSymbolRefAttr::get(releaseLock.getSymNameAttr()),
+                        LockAction::Release, releaseValue);
     }
     NextBDOp::create(builder, loc, successor);
   }
@@ -189,7 +203,8 @@ struct AIEObjectFifoLowerDMAsPass
   LogicalResult lowerEndpoint(ObjectFifoDmaEndpointOp endpoint, int channel) {
     bool drains = endpoint.drains();
     ObjectFifoPoolOp pool = endpoint.getPoolOp();
-    SmallVector<Value> buffers = buffersOf(pool);
+    DmaBody program = dmaProgramFor(endpoint.getTileLike(), endpoint.getLoc());
+    SmallVector<Value> buffers = buffersOf(pool, program);
     if (buffers.empty()) {
       return success();
     }
@@ -217,7 +232,6 @@ struct AIEObjectFifoLowerDMAsPass
         iterCount ? *iterCount - 1 : (repeatInHardware ? repeat - 1 : 0);
     int64_t copies = repeatInHardware ? 1 : repeat;
 
-    DmaBody program = dmaProgramFor(endpoint.getTileLike(), loc);
     Block *endBlock = findEndOpBlock(program.getDmaBody());
     Block *lastDmaBlock = endBlock->getSinglePredecessor();
     Block *dmaBlock = builder.createBlock(endBlock);

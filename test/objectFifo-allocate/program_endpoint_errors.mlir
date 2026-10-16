@@ -9,7 +9,8 @@ module @direction_mismatch {
   aie.device(npu2) {
     %shim = aie.tile(0, 0)
     %mt = aie.tile(0, 1)
-    %b = aie.buffer(%mt) {sym_name = "b"} : memref<64xi32>
+    aie.buffer @b(%mt)  : memref<64xi32>
+    %b = aie.get_buffer @b : memref<64xi32>
     aie.route_endpoint @b_out(%mt) DMA
     aie.route_endpoint @b_dst(%shim) DMA {fifoName = "b"}
     aie.route from @b_out to [@b_dst]
@@ -32,7 +33,8 @@ module @packet_source_program {
   aie.device(npu2) {
     %mt = aie.tile(0, 1)
     %core = aie.tile(0, 2)
-    %b = aie.buffer(%mt) {sym_name = "b"} : memref<64xi32>
+    aie.buffer @b(%mt)  : memref<64xi32>
+    %b = aie.get_buffer @b : memref<64xi32>
     aie.route_endpoint @spray(%mt) DMA
     aie.route_endpoint @catch(%core) DMA
     aie.route from @spray to [@catch] {packet}
@@ -56,7 +58,8 @@ module @pinned_clash {
   aie.device(npu2) {
     %shim = aie.tile(0, 0)
     %mt = aie.tile(0, 1)
-    %b = aie.buffer(%mt) {sym_name = "b"} : memref<64xi32>
+    aie.buffer @b(%mt)  : memref<64xi32>
+    %b = aie.get_buffer @b : memref<64xi32>
     // expected-error @+1 {{pinned MM2S DMA channel 0 is out of range or already in use on this tile}}
     aie.route_endpoint @b_out(%mt) DMA {channelIndex = 0 : i32}
     aie.route_endpoint @b_dst(%shim) DMA {fifoName = "b"}
@@ -108,8 +111,10 @@ module @adjacent_exhausted {
     %west = aie.tile(0, 1)
     // expected-error @+1 {{number of output DMA channel exceeded! requires at least 5 MM2S channels, but capacity is 4 for adjacent MemTile access}}
     %mt = aie.tile(1, 1)
-    %far = aie.buffer(%west) {sym_name = "far"} : memref<64xi32>
-    %near = aie.buffer(%mt) {sym_name = "near"} : memref<64xi32>
+    aie.buffer @far(%west)  : memref<64xi32>
+    %far = aie.get_buffer @far : memref<64xi32>
+    aie.buffer @near(%mt)  : memref<64xi32>
+    %near = aie.get_buffer @near : memref<64xi32>
     // expected-note @+1 {{DMA endpoint @reach requires adjacent MemTile access}}
     aie.route_endpoint @reach(%mt) DMA
     aie.route_endpoint @reach_dst(%shim) DMA {fifoName = "reach"}
@@ -165,7 +170,8 @@ module @bds_overcommitted {
     aie.objectfifo.core_endpoint @reader(%core) drains @p
     aie.route_endpoint @src(%shim) DMA {fifoName = "p"}
     aie.route from @src to [@fill]
-    %b = aie.buffer(%core) {sym_name = "b"} : memref<48xi32>
+    aie.buffer @b(%core)  : memref<48xi32>
+    %b = aie.get_buffer @b : memref<48xi32>
     // expected-warning @+1 {{channel 0 can use 16 BDs, but it and the channels sharing them need 17 at once; BD id assignment fails unless tasks free their BDs before others start}}
     aie.route_endpoint @out(%core) DMA
     aie.route_endpoint @dst(%shim) DMA {fifoName = "b"}

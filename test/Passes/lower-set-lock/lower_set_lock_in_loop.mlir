@@ -22,7 +22,8 @@
 module @lock_in_runtime_bound_loop {
   aie.device(npu2) {
     %tile22 = aie.tile(2, 2)
-    %lock22_0 = aie.lock(%tile22, 0) {init = 0 : i32}
+    aie.lock @lock22_0(%tile22, 0) {init = 0 : i32}
+    %lock22_0 = aie.get_lock @lock22_0
     aie.runtime_sequence(%n: index) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
@@ -49,7 +50,8 @@ module @lock_in_runtime_bound_loop {
 module @lock_in_select_arm {
   aie.device(npu2) {
     %memtile11 = aie.tile(1, 1)
-    %lock11_3 = aie.lock(%memtile11, 3) {init = 0 : i32}
+    aie.lock @lock11_3(%memtile11, 3) {init = 0 : i32}
+    %lock11_3 = aie.get_lock @lock11_3
     aie.runtime_sequence(%n: index, %sel: index) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
