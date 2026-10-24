@@ -3268,6 +3268,9 @@ static uint32_t channelsOfOwnTile(CoreOp core, DMAChannelDir direction,
 }
 
 LogicalResult DmaPushQueueOp::verify() {
+  if (getBdId().has_value() == getBdTag().has_value())
+    return emitOpError("names the descriptor it pushes either by bd_id or, "
+                       "before aie-assign-bd-ids runs, by bd_tag");
   auto core = (*this)->getParentOfType<CoreOp>();
   TileOp tile = core.getTileOp();
   const AIETargetModel &targetModel = getTargetModel(*this);

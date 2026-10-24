@@ -803,6 +803,11 @@ class object_fifo(ObjectFifoCreateOp):
     def set_cons_dma_channels(self, channels):
         self.attributes["cons_dma_channels"] = DenseI32ArrayAttr.get(list(channels))
 
+    def set_release_strategy(self, strategy):
+        self.attributes["release_strategy"] = Attribute.parse(
+            f"#aie.release_strategy<{strategy}>"
+        )
+
 
 # Create an aie objectFifo_link between input and output objectFifos.
 class object_fifo_link(ObjectFifoLinkOp):

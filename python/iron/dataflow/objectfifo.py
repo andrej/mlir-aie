@@ -124,6 +124,7 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
         packet: bool = False,
         packet_id: int | None = None,
         out_of_order: bool = False,
+        release_strategy: str | None = None,
     ):
         """Construct an ObjectFifo.
 
@@ -189,6 +190,11 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                 designs that route on the id (e.g. a MemTile dispatching to one of several
                 cores). Requires ``packet``; when absent, allocation picks an id no other
                 flow is using. Defaults to None.
+            release_strategy (str | None, optional): What a release on the producer
+                handle starts. ``"cycle_buffers"``, the default, leaves the sending
+                DMA to walk the pool's buffers on its own. ``"push_queue"`` has the
+                core push the descriptor of each buffer it releases, which is what
+                lets two ObjectFifos share a sending channel. Defaults to None.
             out_of_order (bool, optional): Receive each object into the buffer its sender
                 names in the packet header's ``out_of_order_id`` field, rather than walking
                 the pool in a fixed BD chain. The consumer's channel then carries no order
@@ -236,6 +242,7 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
         self._packet: bool = packet
         self._packet_id: int | None = packet_id
         self._out_of_order: bool = out_of_order
+        self._release_strategy: str | None = release_strategy
 
     @property
     def depth(self) -> int | None:
@@ -550,6 +557,9 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
             # Pin DMA channels requested on the handles. The producer channel
             # and one channel per consumer (-1 = auto-assign that consumer) are
             # stamped onto the op for the stateful-transform pass to honor.
+            if self._release_strategy is not None:
+                op.set_release_strategy(self._release_strategy)
+
             if self._prod is not None and self._prod.channel is not None:
                 op.set_prod_dma_channel(self._prod.channel)
             cons_channels = [con.channel for con in self._cons]
