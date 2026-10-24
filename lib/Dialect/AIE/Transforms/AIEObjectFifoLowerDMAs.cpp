@@ -58,6 +58,7 @@ struct AIEObjectFifoLowerDMAsPass
           AIEObjectFifoLowerDMAsPass> {
 
   DeviceOp device;
+  int32_t nextSendTag = 0;
   OpBuilder builder{static_cast<MLIRContext *>(nullptr)};
 
   /// The DMA program of `tile`, created empty if the tile has none yet.
@@ -227,12 +228,9 @@ struct AIEObjectFifoLowerDMAsPass
       bd = DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
                            descriptor.size);
     }
-    // The receiving channel walks no chain of its own, so the sender says
-    // which buffer each object lands in. The receiver's descriptor for that
-    // buffer carries the matching bd_id.
-    // The receiving end takes its bd ids from aie-assign-bd-ids like any other
-    // chain, and names each descriptor so the sender can refer to it. The
-    // sender carries that name until the same pass turns it into the id.
+    // The receiving end takes its bd ids from aie-assign-bd-ids like any
+    // other chain, and names each descriptor so the sender can refer to it.
+    // The sender carries that name until the same pass turns it into the id.
     if (endpoint.getOutOfOrder()) {
       if (auto tags = pool.getOutOfOrderTags()) {
         assert(descriptor.object < static_cast<int64_t>(tags->size()) &&
@@ -246,6 +244,12 @@ struct AIEObjectFifoLowerDMAsPass
     }
     if (descriptor.iteration && descriptor.iteration.getSize() > 1)
       bd.setIterationAttr(descriptor.iteration);
+    // A core pushing this descriptor names it the same way.
+    if (auto tags = pool.getSendTags(); tags && endpoint.drains()) {
+      assert(descriptor.object < static_cast<int64_t>(tags->size()) &&
+             "a send tag names every buffer of a core-pushed pool");
+      bd.setBdTag((*tags)[descriptor.object]);
+    }
 
     if (releaseLock) {
       UseLockOp::create(builder, loc, releaseLock, LockAction::Release,
@@ -257,7 +261,7 @@ struct AIEObjectFifoLowerDMAsPass
   /// A `dma_start` of `channel` on the endpoint's tile, chained after the
   /// tile's others; returns the first BD's block and the program's end block.
   std::pair<Block *, Block *> startChain(ObjectFifoDmaEndpointOp endpoint,
-                                         int channel, int taskCount) {
+                                         int channel, int taskCount, bool corePushes = false) {
     Location loc = endpoint.getLoc();
     DmaBody program = dmaProgramFor(endpoint.getTileLike(), loc);
     Block *endBlock = findEndOpBlock(program.getDmaBody());
@@ -270,7 +274,7 @@ struct AIEObjectFifoLowerDMAsPass
                        taskCount, endpoint.getPadValue(),
                        endpoint.getOutOfOrder() &&
                            endpoint.getRouteDirection() == DMAChannelDir::S2MM,
-                       bdBlock, endBlock);
+                       corePushes, bdBlock, endBlock);
     if (lastDmaBlock) {
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
     }
@@ -379,6 +383,27 @@ struct AIEObjectFifoLowerDMAsPass
       }
     }
 
+    // With push_queue the configuration pushes nothing: the core pushes
+    // the descriptor of each object it releases. Each descriptor then runs
+    // on its own, so a pool whose buffers do not map one-to-one onto them
+    // leaves the core no descriptor to name.
+    bool corePushes =
+        drains && endpoint.getReleaseStrategy() ==
+                      ObjectFifoRelease::PushQueue;
+    if (corePushes) {
+      if (static_cast<int64_t>(descriptors.size()) != pool.getDepth())
+        return endpoint.emitOpError("sends ")
+               << descriptors.size() << " descriptors for a pool of "
+               << pool.getDepth()
+               << " objects, so a release names no one of them; push_queue "
+               << "needs one descriptor per object";
+      SmallVector<int32_t> tags;
+      for (size_t slot = 0; slot < descriptors.size(); ++slot)
+        tags.push_back(nextSendTag++);
+      pool.setSendTagsAttr(DenseI32ArrayAttr::get(pool.getContext(), tags));
+      pool.setSendChannel(channel);
+    }
+
     SmallVector<PacketInfoAttr> turns;
     if (std::optional<ArrayAttr> headers = endpoint.getDispatchPackets()) {
       llvm::append_range(turns, headers->getAsRange<PacketInfoAttr>());
@@ -393,7 +418,7 @@ struct AIEObjectFifoLowerDMAsPass
           "dispatches from a contiguous pool, which has no per-object BDs");
     int64_t depth = pool.getDepth();
 
-    auto [bdBlock, endBlock] = startChain(endpoint, channel, taskCount);
+    auto [bdBlock, endBlock] = startChain(endpoint, channel, taskCount, corePushes);
     bool binaryLocks = !device.getTargetModel().hasProperty(
         AIETargetModel::UsesSemaphoreLocks);
     size_t total = descriptors.size() * copies * passes;
@@ -430,6 +455,13 @@ struct AIEObjectFifoLowerDMAsPass
   void runOnOperation() override {
     device = getOperation();
     builder = OpBuilder(device.getContext());
+
+    // Send tags share a space with the tags the allocation already handed
+    // out, so that one tag names one descriptor across the device.
+    for (auto pool : device.getOps<ObjectFifoPoolOp>())
+      if (auto tags = pool.getOutOfOrderTags())
+        for (int32_t tag : *tags)
+          nextSendTag = std::max(nextSendTag, tag + 1);
 
     SmallVector<ObjectFifoDmaEndpointOp> endpoints(
         device.getOps<ObjectFifoDmaEndpointOp>());
