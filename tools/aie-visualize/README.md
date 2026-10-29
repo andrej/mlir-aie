@@ -30,6 +30,11 @@ share a line.
   in which half of a ping-pong pair they are merge first. Points where streams
   split (broadcasts), join or end stay.
 
+In the viewer, hover over or click on any element to highlight what feeds it
+(upstream) and where its data goes (downstream), and to see the source lines
+behind it. These include the DMA programs and switchbox configuration in the
+IR the visualizer read, not only the lines in your design.
+
 ## Routing
 
 `--routing` sets how an edge that stands for contracted nodes runs:
@@ -42,15 +47,24 @@ share a line.
 - `free`: any path from source to target, with the fewest crossings and
   bends.
 
+## Layout
+
+`--layout` sets where nodes go:
+
+- `physical` (default): every switchbox port, DMA channel and wire of the
+  device in a place of its own.
+- `compact`: only the nodes the view draws. A tile lists them in columns as
+  wide as their labels. A switchbox spaces its ports along the sides they
+  face. A tile or switchbox grows until each line routed through it has a
+  row and a column of its own there. Tiles with nothing to draw and no line
+  through them take no room. Compact needs `must-hit` (default) or `free`
+  routing. It suits contracted views best: the fewer nodes a view draws,
+  the smaller the figure.
+
 `must-hit` and `free` route with [libavoid](https://github.com/mjwybrow/adaptagrams)
 (LGPL-2.1), an optional dependency. Configure with
 `-DAIE_VISUALIZE_LIBAVOID=<prefix>`, where `<prefix>` holds
 `include/libavoid/*.h` and `lib/libavoid.so`.
-
-In the viewer, hover over or click on any element to highlight what feeds it
-(upstream) and where its data goes (downstream), and to see the source lines
-behind it. These include the DMA programs and switchbox configuration in the
-IR the visualizer read, not only the lines in your design.
 
 ## The design graph
 

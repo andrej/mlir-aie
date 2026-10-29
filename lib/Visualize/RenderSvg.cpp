@@ -34,6 +34,7 @@
 #include <deque>
 #include <functional>
 #include <map>
+#include <numeric>
 #include <set>
 
 using namespace llvm;
@@ -242,6 +243,19 @@ private:
   Stroke strokeFor(const std::string &from, const std::string &to);
   void computeColors();
   Error routeEdges();
+  /// A switchbox (true) or a tile's contents (false), by tile.
+  using Place = std::tuple<bool, int, int>;
+  struct Plan {
+    std::string id, source, target;
+    /// Where the edge's line must pass, in order.
+    std::vector<Place> places;
+  };
+  void planRoutes();
+  Box boxOfPlace(const Place &place) const;
+  void layoutCompact();
+  bool compact() const {
+    return options.layout == RenderOptions::Layout::Compact;
+  }
   /// The box a node is drawn as: its own, or the one around a merged group.
   Box drawnBoxOf(const Node &node) const;
 
@@ -271,6 +285,9 @@ private:
   std::map<std::string, Box> boxes;
   /// Routes of edges that do not follow their physical path, by edge ID.
   std::map<std::string, std::vector<Point>> routes;
+  std::vector<Plan> plans;
+  /// Where the compact layout puts each port it draws.
+  std::map<std::string, Point> placedPorts;
   std::map<std::string, double> boxHeight;
   /// Slot of each local port and DMA channel on its switchbox's right side.
   std::map<std::string, size_t> slotOf;
@@ -677,6 +694,8 @@ void Renderer::placeArguments() {
 }
 
 Point Renderer::portPoint(const Node &port) const {
+  if (auto placed = placedPorts.find(port.id); placed != placedPorts.end())
+    return placed->second;
   const Cell &cell = cells.at(tileOf(port));
   const Box &box = cell.switchbox;
   bool in = port.direction == "in";
@@ -1136,7 +1155,15 @@ void Renderer::assignTracks() {
 
 Expected<std::string> Renderer::render() {
   index();
-  layout();
+  if (compact() && options.routing == RenderOptions::Routing::Physical)
+    return createStringError(inconvertibleErrorCode(),
+                             "the compact layout has no physical paths to "
+                             "draw; route with must-hit or free");
+  planRoutes();
+  if (compact())
+    layoutCompact();
+  else
+    layout();
   // The gutters hold every neighbor link a tile has, and the rooms between
   // columns hold those links' lanes and every track of their busiest tile.
   unsigned neededLanes = 1;
@@ -1148,8 +1175,8 @@ Expected<std::string> Renderer::render() {
       std::max(kColumnGap, trackMargin() + dmaTracks * kTrackPitch + 10);
   double neededCallGap =
       std::max(kColumnGap, trackMargin() + callTracks * kTrackPitch + 10);
-  if (neededDMAGap != dmaGap || neededCallGap != callGap ||
-      neededLanes != lanesBefore) {
+  if (!compact() && (neededDMAGap != dmaGap || neededCallGap != callGap ||
+                     neededLanes != lanesBefore)) {
     dmaGap = neededDMAGap;
     callGap = neededCallGap;
     layout();
@@ -1158,7 +1185,9 @@ Expected<std::string> Renderer::render() {
   if (options.routing != RenderOptions::Routing::Physical)
     if (Error error = routeEdges())
       return std::move(error);
-  width = 2 * kMargin + (maxCol - minCol + 1) * cellWidth;
+  width = 0;
+  for (const auto &[coordinates, cell] : cells)
+    width = std::max(width, cell.cell.right() + kMargin);
   for (const auto &[id, box] : boxes)
     width = std::max(width, box.right() + kMargin);
 
@@ -1244,9 +1273,16 @@ Expected<std::string> Renderer::render() {
     // Lines routed through contracted switchboxes show where they are.
     bool ghost =
         !switchboxesShown && options.routing == RenderOptions::Routing::MustHit;
-    if (!switchboxesShown && !ghost)
-      continue;
     const Box &box = cell.switchbox;
+    if (compact()) {
+      ghost = llvm::none_of(placedPorts, [&](const auto &entry) {
+        return tileOf(*nodes.at(entry.first)) == coordinates;
+      });
+      if (box.w == 0)
+        continue;
+    } else if (!switchboxesShown && !ghost) {
+      continue;
+    }
     os << "<rect class=\"switchbox" << (ghost ? " ghost" : "") << "\" x=\""
        << num(box.x) << "\" y=\"" << num(box.y) << "\" width=\"" << num(box.w)
        << "\" height=\"" << num(box.h) << "\" rx=\"2\"><title>(" << tile.col
@@ -1549,62 +1585,269 @@ Box Renderer::drawnBoxOf(const Node &node) const {
   return box;
 }
 
-Error Renderer::routeEdges() {
-  // Every box still drawn is an obstacle that lines end on.
-  std::vector<routing::Rect> obstacles;
-  std::map<std::string, int> obstacleOf;
-  for (const Node &node : graph.nodes) {
-    if (node.hidden || node.kind == kind::Port || !boxes.count(node.id))
-      continue;
-    Box box = drawnBoxOf(node);
-    obstacleOf[node.id] = obstacles.size();
-    obstacles.push_back({box.x, box.y, box.w, box.h});
+/// Places every drawn node of the view in the smallest tile and switchbox
+/// that holds it. A tile lists its DMA channels, buffers and kernel calls in
+/// columns, each as wide as its own labels; a switchbox spaces its ports
+/// along the sides they face. A place grows until each line routed through
+/// it can pass a row and a column of its own. Tiles keep their places in the
+/// grid of the device, and the grid's channels leave room for the lines.
+void Renderer::layoutCompact() {
+  // A port is an obstacle the router keeps its clearance from, so ports sit
+  // far enough apart for lines to pass between them.
+  constexpr double kPortPitch = 16;
+  constexpr double kPassPitch = 10;
+  constexpr double kPad = 6;
+  constexpr double kTitle = 16;
+  constexpr double kColumnSpace = 26;
+  constexpr double kChannel = 30;
+
+  cells.clear();
+  boxes.clear();
+  placedPorts.clear();
+  minCol = std::numeric_limits<int>::max();
+  maxCol = maxRow = 0;
+  for (const TileInfo &tile : graph.tiles) {
+    minCol = std::min(minCol, tile.col);
+    maxCol = std::max(maxCol, tile.col);
+    maxRow = std::max(maxRow, tile.row);
+    cells[{tile.col, tile.row}].tile = &tile;
   }
-  auto positionOf = [&](const Node &node) {
-    if (node.kind == kind::Port)
-      return portPoint(node);
-    return drawnBoxOf(node).center();
+  if (cells.empty())
+    minCol = 0;
+
+  std::map<Place, unsigned> passes;
+  for (const Plan &plan : plans)
+    for (const Place &place : plan.places)
+      ++passes[place];
+
+  struct Contents {
+    std::vector<const Node *> columns[3];
+    std::vector<const Node *> ports[4];
+    double columnWidth[3] = {0, 0, 0};
+    double contentWidth = 0, contentHeight = 0;
+    double switchWidth = 0, switchHeight = 0;
   };
-  auto endOf = [&](const std::string &id) {
-    const Node &node = *nodes.at(id);
-    routing::End end;
-    if (auto found = obstacleOf.find(id); found != obstacleOf.end()) {
-      end.obstacle = found->second;
-      end.sides = node.kind == kind::Argument
-                      ? unsigned(routing::Top)
-                      : unsigned(routing::Left | routing::Right);
-    } else {
-      Point point = positionOf(node);
-      end.point = {point.x, point.y};
+  std::map<std::pair<int, int>, Contents> contents;
+  for (const Node &node : graph.nodes) {
+    if (node.hidden || !node.hasTile() || !cells.count(tileOf(node)))
+      continue;
+    Contents &tile = contents[tileOf(node)];
+    if (node.kind == kind::Port) {
+      tile.ports[static_cast<int>(portSide(node))].push_back(&node);
+      continue;
     }
-    return end;
+    int column = node.kind == kind::DMA ? 0 : node.kind == kind::Buffer ? 1 : 2;
+    tile.columns[column].push_back(&node);
+  }
+  auto heightOf = [](const Node &node) {
+    return node.kind == kind::DMA      ? kDMAHeight
+           : node.kind == kind::Buffer ? kBufferHeight
+                                       : kCallHeight;
   };
 
+  // Columns in the order data runs: a call reads what a buffer holds, which
+  // a DMA channel filled. Each column follows the order of the one it feeds.
+  std::map<std::string, std::vector<std::string>> neighbors;
+  for (const Edge &edge : graph.edges) {
+    neighbors[edge.source].push_back(edge.target);
+    neighbors[edge.target].push_back(edge.source);
+  }
+  for (auto &[coordinates, tile] : contents) {
+    std::map<std::string, double> rank;
+    for (int column = 2; column >= 0; --column) {
+      auto key = [&](const Node *node) {
+        double sum = 0;
+        unsigned count = 0;
+        for (const std::string &other : neighbors[node->id])
+          if (auto found = rank.find(other); found != rank.end()) {
+            sum += found->second;
+            ++count;
+          }
+        return count ? sum / count : 1e9;
+      };
+      llvm::stable_sort(tile.columns[column], [&](const Node *a,
+                                                  const Node *b) {
+        return std::make_pair(key(a), a->id) < std::make_pair(key(b), b->id);
+      });
+      for (auto [index, node] : enumerate(tile.columns[column]))
+        rank[node->id] = index;
+    }
+  }
+
+  for (auto &[coordinates, cell] : cells) {
+    Contents &tile = contents[coordinates];
+    const TileInfo &info = *cell.tile;
+    std::string title = formatv("({0},{1}) {2}", info.col, info.row,
+                                info.type == "core" ? "compute" : info.type);
+    double width = 0, height = 0;
+    for (int column = 0; column < 3; ++column) {
+      if (tile.columns[column].empty())
+        continue;
+      double columnHeight = 0;
+      for (const Node *node : tile.columns[column]) {
+        tile.columnWidth[column] =
+            std::max(tile.columnWidth[column],
+                     std::min(170.0, node->label.size() * kCharWidth + 12));
+        columnHeight += heightOf(*node) + 6;
+      }
+      width += (width ? kColumnSpace : 0) + tile.columnWidth[column];
+      height = std::max(height, columnHeight);
+    }
+    unsigned through = passes[{false, info.col, info.row}];
+    tile.contentWidth =
+        std::max({width + 2 * kPad, title.size() * 5.0 + 2 * kPad,
+                  2 * kPad + through * kPassPitch});
+    tile.contentHeight =
+        std::max(kTitle + height + kPad, 2 * kPad + through * kPassPitch);
+
+    unsigned crossing = passes[{true, info.col, info.row}];
+    size_t across = std::max(tile.ports[2].size(), tile.ports[3].size());
+    size_t along = std::max(tile.ports[0].size(), tile.ports[1].size());
+    if (across || along || crossing) {
+      tile.switchWidth = std::max(
+          {14.0, (across + 1) * kPortPitch, 8 + crossing * kPassPitch});
+      tile.switchHeight =
+          std::max({14.0, (along + 1) * kPortPitch, 8 + crossing * kPassPitch});
+    }
+  }
+
+  // A tile with nothing to draw and no line through it takes no room.
+  auto passesThrough = [&](const Place &place) {
+    auto found = passes.find(place);
+    return found != passes.end() && found->second > 0;
+  };
+  for (auto it = cells.begin(); it != cells.end();) {
+    const Contents &tile = contents[it->first];
+    auto [col, row] = it->first;
+    bool empty =
+        llvm::all_of(tile.columns, [](const auto &c) { return c.empty(); }) &&
+        llvm::all_of(tile.ports, [](const auto &p) { return p.empty(); }) &&
+        !passesThrough({false, col, row}) && !passesThrough({true, col, row});
+    it = empty ? cells.erase(it) : std::next(it);
+  }
+
+  std::map<int, double> columnWidth, rowHeight;
+  for (auto &[coordinates, cell] : cells) {
+    const Contents &tile = contents[coordinates];
+    double width =
+        tile.switchWidth + (tile.switchWidth ? 10 : 0) + tile.contentWidth;
+    double height = std::max(tile.switchHeight, tile.contentHeight);
+    columnWidth[coordinates.first] =
+        std::max(columnWidth[coordinates.first], width);
+    rowHeight[coordinates.second] =
+        std::max(rowHeight[coordinates.second], height);
+  }
+  std::map<int, double> columnX, rowY;
+  double x = kMargin;
+  for (int col = minCol; col <= maxCol; ++col) {
+    columnX[col] = x;
+    if (columnWidth.count(col))
+      x += columnWidth[col] + kChannel;
+  }
+  double y = kMargin + 28;
+  for (int row = maxRow; row >= 0; --row) {
+    rowY[row] = y;
+    if (rowHeight.count(row))
+      y += rowHeight[row] + kChannel;
+  }
+  arrayBottom = y - kChannel;
+
+  for (auto &[coordinates, cell] : cells) {
+    const Contents &tile = contents[coordinates];
+    auto [col, row] = coordinates;
+    double top = rowY[row];
+    cell.cell = {columnX[col], top, columnWidth[col], rowHeight[row]};
+    cell.switchbox = {columnX[col], top + rowHeight[row] - tile.switchHeight,
+                      tile.switchWidth, tile.switchHeight};
+    double left = columnX[col] + tile.switchWidth + (tile.switchWidth ? 10 : 0);
+    cell.content = {left, top, tile.contentWidth, tile.contentHeight};
+
+    double columnLeft = left + kPad;
+    for (int column = 0; column < 3; ++column) {
+      if (tile.columns[column].empty())
+        continue;
+      double nodeY = top + kTitle;
+      for (const Node *node : tile.columns[column]) {
+        double h = heightOf(*node);
+        boxes[node->id] = {columnLeft, nodeY, tile.columnWidth[column], h};
+        nodeY += h + 6;
+      }
+      columnLeft += tile.columnWidth[column] + kColumnSpace;
+    }
+
+    const Box &box = cell.switchbox;
+    for (int side = 0; side < 4; ++side) {
+      const std::vector<const Node *> &ports = tile.ports[side];
+      for (auto [index, port] : enumerate(ports)) {
+        double t = (index + 1.0) / (ports.size() + 1.0);
+        Side which = static_cast<Side>(side);
+        placedPorts[port->id] =
+            which == Side::Left    ? Point{box.x, box.y + t * box.h}
+            : which == Side::Right ? Point{box.right(), box.y + t * box.h}
+            : which == Side::Top   ? Point{box.x + t * box.w, box.y}
+                                   : Point{box.x + t * box.w, box.bottom()};
+      }
+    }
+  }
+
+  // Runtime arguments sit in a row below the array, each under the middle
+  // of the tiles it feeds or drains.
+  std::vector<std::pair<double, const Node *>> arguments;
+  for (const Node &node : graph.nodes) {
+    if (node.kind != kind::Argument || node.hidden)
+      continue;
+    std::vector<double> xs;
+    for (const Plan &plan : plans) {
+      if (plan.source != node.id && plan.target != node.id)
+        continue;
+      const Node &other =
+          *nodes.at(plan.source == node.id ? plan.target : plan.source);
+      std::optional<std::pair<int, int>> tile;
+      if (!plan.places.empty()) {
+        const Place &place =
+            plan.source == node.id ? plan.places.front() : plan.places.back();
+        tile = std::make_pair(std::get<1>(place), std::get<2>(place));
+      } else if (other.hasTile()) {
+        tile = tileOf(other);
+      }
+      if (tile && cells.count(*tile))
+        xs.push_back(cells.at(*tile).cell.center().x);
+    }
+    double center =
+        xs.empty() ? kMargin
+                   : std::accumulate(xs.begin(), xs.end(), 0.0) / xs.size();
+    arguments.emplace_back(center, &node);
+  }
+  llvm::stable_sort(arguments, [](const auto &a, const auto &b) {
+    return a.first < b.first;
+  });
+  double nextFree = kMargin;
+  double argumentTop = arrayBottom + 40;
+  for (auto &[center, argument] : arguments) {
+    double w = std::max(60.0, argument->label.size() * kCharWidth + 18);
+    double left = std::max(center - w / 2, nextFree);
+    boxes[argument->id] = {left, argumentTop, w, 20};
+    nextFree = left + w + 16;
+  }
+  height = (arguments.empty() ? arrayBottom : argumentTop + 20) + kMargin + 30;
+}
+
+void Renderer::planRoutes() {
   // The places a line must pass through: the switchbox of each contracted
   // port and the tile of each contracted DMA channel or buffer, in the order
   // its path meets them, each once in a row.
-  using Place = std::tuple<bool, int, int>;
+  std::set<std::pair<int, int>> tiles;
+  for (const TileInfo &tile : graph.tiles)
+    tiles.insert({tile.col, tile.row});
   auto placeOf = [&](const Node &node) -> std::optional<Place> {
-    if (!node.hasTile() || !cells.count(tileOf(node)))
+    if (!node.hasTile() || !tiles.count(tileOf(node)))
       return std::nullopt;
     return Place{node.kind == kind::Port, node.col, node.row};
   };
-  auto boxOfPlace = [&](const Place &place) {
-    const Cell &cell = cells.at({std::get<1>(place), std::get<2>(place)});
-    return std::get<0>(place) ? cell.switchbox : cell.content;
-  };
-  std::vector<routing::Request> requests;
-  std::vector<std::vector<Place>> places;
-  std::vector<std::string> ids;
-  std::vector<std::string> sources, targets;
   for (const Edge &edge : graph.edges) {
     if (!nodes.count(edge.source) || !nodes.count(edge.target))
       continue;
-    ids.push_back(edge.id());
-    sources.push_back(edge.source);
-    targets.push_back(edge.target);
-    requests.push_back({endOf(edge.source), endOf(edge.target), {}});
-    std::vector<Place> sequence;
+    Plan plan{edge.id(), edge.source, edge.target, {}};
     if (options.routing == RenderOptions::Routing::MustHit) {
       std::map<std::string, std::vector<std::string>> next;
       for (const auto &[from, to] : edge.segments)
@@ -1628,16 +1871,114 @@ Error Renderer::routeEdges() {
       std::optional<Place> last = placeOf(*nodes.at(edge.target));
       for (const std::string &id : path) {
         std::optional<Place> place = placeOf(*nodes.at(id));
-        if (!place || (!sequence.empty() && sequence.back() == *place) ||
-            (sequence.empty() && first == place))
+        if (!place || (!plan.places.empty() && plan.places.back() == *place) ||
+            (plan.places.empty() && first == place))
           continue;
-        sequence.push_back(*place);
+        plan.places.push_back(*place);
       }
-      while (!sequence.empty() && sequence.back() == last)
-        sequence.pop_back();
+      while (!plan.places.empty() && plan.places.back() == last)
+        plan.places.pop_back();
     }
-    places.push_back(std::move(sequence));
+    plans.push_back(std::move(plan));
   }
+}
+
+Box Renderer::boxOfPlace(const Place &place) const {
+  const Cell &cell = cells.at({std::get<1>(place), std::get<2>(place)});
+  return std::get<0>(place) ? cell.switchbox : cell.content;
+}
+
+Error Renderer::routeEdges() {
+  // Every box still drawn is an obstacle that lines end on.
+  std::vector<routing::Rect> obstacles;
+  std::map<std::string, int> obstacleOf;
+  for (const Node &node : graph.nodes) {
+    if (node.hidden || node.kind == kind::Port || !boxes.count(node.id))
+      continue;
+    Box box = drawnBoxOf(node);
+    obstacleOf[node.id] = obstacles.size();
+    obstacles.push_back({box.x, box.y, box.w, box.h});
+  }
+  // Lines keep off tile titles, and a fence around the drawing keeps them
+  // from detouring around all of it.
+  double left = std::numeric_limits<double>::max(), top = left;
+  double right = 0, bottom = 0;
+  for (const auto &[coordinates, cell] : cells) {
+    const TileInfo &tile = *cell.tile;
+    std::string title = formatv("({0},{1}) {2}", tile.col, tile.row,
+                                tile.type == "core" ? "compute" : tile.type);
+    obstacles.push_back({cell.content.x + 4, cell.content.y + 3,
+                         title.size() * kCharWidth * 1.05, 13});
+    left = std::min(left, cell.cell.x);
+    top = std::min(top, cell.cell.y);
+    right = std::max(right, cell.cell.right());
+    bottom = std::max(bottom, cell.cell.bottom());
+  }
+  for (const auto &[id, box] : boxes) {
+    left = std::min(left, box.x);
+    right = std::max(right, box.right());
+    bottom = std::max(bottom, box.bottom());
+  }
+  constexpr double kFence = 24, kThick = 10;
+  left -= kFence, top -= kFence, right += kFence, bottom += kFence;
+  obstacles.push_back(
+      {left - kThick, top - kThick, right - left + 2 * kThick, kThick});
+  obstacles.push_back(
+      {left - kThick, bottom, right - left + 2 * kThick, kThick});
+  obstacles.push_back({left - kThick, top, kThick, bottom - top});
+  obstacles.push_back({right, top, kThick, bottom - top});
+  auto positionOf = [&](const Node &node) {
+    if (node.kind == kind::Port)
+      return portPoint(node);
+    return drawnBoxOf(node).center();
+  };
+  // A port still drawn is where streams branch or join. Lines arrive at it
+  // from the side of the switchbox it faces and leave by the other sides, so
+  // that none runs back along the way another came.
+  for (const Node &node : graph.nodes) {
+    if (node.hidden || node.kind != kind::Port || !cells.count(tileOf(node)))
+      continue;
+    Point point = portPoint(node);
+    obstacleOf[node.id] = obstacles.size();
+    obstacles.push_back({point.x - 2, point.y - 2, 4, 4});
+  }
+  auto facing = [&](const Node &port) {
+    switch (portSide(port)) {
+    case Side::Left:
+      return unsigned(routing::Left);
+    case Side::Right:
+      return unsigned(routing::Right);
+    case Side::Top:
+      return unsigned(routing::Top);
+    case Side::Bottom:
+      return unsigned(routing::Bottom);
+    }
+    return 0u;
+  };
+  constexpr unsigned kAllSides =
+      routing::Left | routing::Right | routing::Top | routing::Bottom;
+  auto endOf = [&](const std::string &id, bool arriving) {
+    const Node &node = *nodes.at(id);
+    routing::End end;
+    if (auto found = obstacleOf.find(id); found != obstacleOf.end()) {
+      end.obstacle = found->second;
+      if (node.kind == kind::Port)
+        end.sides = arriving ? facing(node) : kAllSides & ~facing(node);
+      else if (node.kind == kind::Argument)
+        end.sides = routing::Top;
+      else
+        end.sides = routing::Left | routing::Right;
+    } else {
+      Point point = positionOf(node);
+      end.point = {point.x, point.y};
+    }
+    return end;
+  };
+
+  std::vector<routing::Request> requests;
+  for (const Plan &plan : plans)
+    requests.push_back(
+        {endOf(plan.source, false), endOf(plan.target, true), {}});
 
   // Each line passes a place where the straight way from its previous stop
   // to its next one comes closest, moved as little as it takes to share
@@ -1646,9 +1987,10 @@ Error Renderer::routeEdges() {
   // of the boxes drawn there.
   std::map<Place, std::vector<std::tuple<double, size_t, size_t, Point>>>
       passing;
-  for (auto [index, sequence] : enumerate(places)) {
-    Point target = positionOf(*nodes.at(targets[index]));
-    Point previous = positionOf(*nodes.at(sources[index]));
+  for (auto [index, plan] : enumerate(plans)) {
+    const std::vector<Place> &sequence = plan.places;
+    Point target = positionOf(*nodes.at(plan.target));
+    Point previous = positionOf(*nodes.at(plan.source));
     for (auto [step, place] : enumerate(sequence)) {
       Box box = boxOfPlace(place);
       Point next = step + 1 < sequence.size()
@@ -1661,9 +2003,9 @@ Error Renderer::routeEdges() {
       previous = ideal;
     }
   }
-  std::vector<std::vector<routing::Point>> checkpoints(places.size());
-  for (auto [index, sequence] : enumerate(places))
-    checkpoints[index].resize(sequence.size());
+  std::vector<std::vector<routing::Point>> checkpoints(plans.size());
+  for (auto [index, plan] : enumerate(plans))
+    checkpoints[index].resize(plan.places.size());
   for (auto &[place, list] : passing) {
     llvm::sort(list, [](const auto &a, const auto &b) {
       return std::tie(std::get<0>(a), std::get<1>(a)) <
@@ -1679,8 +2021,8 @@ Error Renderer::routeEdges() {
             candidate.y < obstacle.y + obstacle.h + 6)
           return false;
       return llvm::none_of(taken, [&](Point other) {
-        return std::abs(other.x - candidate.x) < 5 ||
-               std::abs(other.y - candidate.y) < 5;
+        return std::abs(other.x - candidate.x) < 8 ||
+               std::abs(other.y - candidate.y) < 8;
       });
     };
     for (const auto &[unused, index, step, ideal] : list) {
@@ -1705,10 +2047,14 @@ Error Renderer::routeEdges() {
       routing::routeOrthogonal(obstacles, requests);
   if (!routed)
     return routed.takeError();
-  for (auto [id, route] : zip_equal(ids, *routed)) {
-    std::vector<Point> &points = routes[id];
+  for (auto [plan, route, request] : zip_equal(plans, *routed, requests)) {
+    std::vector<Point> &points = routes[plan.id];
     for (const routing::Point &point : route)
       points.push_back({point.x, point.y});
+    // Where the router finds no way, a straight line still joins the ends.
+    if (points.size() < 2)
+      points = {positionOf(*nodes.at(plan.source)),
+                positionOf(*nodes.at(plan.target))};
   }
   return Error::success();
 }

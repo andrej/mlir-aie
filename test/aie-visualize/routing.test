@@ -18,6 +18,15 @@
 // RUN: aie-visualize %t/graph.json --view=buffers --routing=must-hit -o %t/buffers.svg
 // RUN: %PYTHON %S/Inputs/check-drawing.py %t/buffers.svg %t/buffers.json | FileCheck %s
 
+// The compact layout draws only what the view shows, in tiles and
+// switchboxes no larger than it needs.
+// RUN: aie-visualize %t/graph.json --view=topology --layout=compact -o %t/compact.svg
+// RUN: %PYTHON %S/Inputs/check-drawing.py %t/compact.svg %t/topology.json | FileCheck %s
+// RUN: aie-visualize %t/graph.json --view=topology --layout=compact --routing=free -o %t/compact-free.svg
+// RUN: %PYTHON %S/Inputs/check-drawing.py %t/compact-free.svg %t/topology.json | FileCheck %s
+// RUN: not aie-visualize %t/graph.json --view=topology --layout=compact --routing=physical -o %t/no.svg 2>&1 | FileCheck %s --check-prefix=NOPATH
+// NOPATH: the compact layout has no physical paths to draw
+
 // A must-hit route shows the contracted switchboxes it passes through.
 // RUN: FileCheck %s --input-file=%t/must-hit.svg --check-prefix=GHOST
 // GHOST: class="switchbox ghost"

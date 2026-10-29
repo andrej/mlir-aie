@@ -74,6 +74,13 @@ static cl::opt<std::string> routing(
              "(their exact path), must-hit (through each switchbox and tile "
              "on that path) or free"),
     cl::init("physical"));
+static cl::opt<std::string>
+    layout("layout",
+           cl::desc("For .svg: physical (every resource of the device in a "
+                    "place of its own) or compact (only what the view draws, "
+                    "in tiles and switchboxes no larger than it needs; routes "
+                    "must-hit unless --routing says otherwise)"),
+           cl::init("physical"));
 static cl::opt<bool> weighEdges("weigh-edges",
                                 cl::desc("Scale line width by bytes moved"));
 static cl::opt<bool> noSources("no-sources",
@@ -134,6 +141,14 @@ static int emitGraph(const AIE::viz::Graph &graph) {
     AIE::viz::RenderOptions options;
     options.weighEdges = weighEdges;
     options.title = title;
+    if (layout == "compact") {
+      options.layout = AIE::viz::RenderOptions::Layout::Compact;
+      if (routing.getNumOccurrences() == 0)
+        routing = "must-hit";
+    } else if (layout != "physical") {
+      errs() << "aie-visualize: unknown layout '" << layout << "'\n";
+      return 1;
+    }
     if (routing == "must-hit")
       options.routing = AIE::viz::RenderOptions::Routing::MustHit;
     else if (routing == "free")

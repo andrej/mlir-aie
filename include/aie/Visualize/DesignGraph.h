@@ -149,6 +149,15 @@ struct RenderOptions {
     Free,
   };
   Routing routing = Routing::Physical;
+  enum class Layout {
+    /// Every resource of the device in a place of its own.
+    Physical,
+    /// Only what the view draws, each tile and switchbox as small as its
+    /// contents and the lines through it allow. Needs must-hit or free
+    /// routing.
+    Compact,
+  };
+  Layout layout = Layout::Physical;
   /// Scale line width by bytes moved instead of drawing every line alike.
   bool weighEdges = false;
   std::string title;
