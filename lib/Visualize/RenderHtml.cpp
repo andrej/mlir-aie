@@ -49,7 +49,8 @@ xilinx::AIE::viz::renderHtml(ArrayRef<std::pair<std::string, Graph>> views,
         json::Object{{"name", name}, {"graph", toJSON(withoutFiles)}});
     RenderOptions options;
     options.title = (title + " — " + name).str();
-    svgs += "<div class=\"view\">" + renderSvg(graph, options) + "</div>\n";
+    svgs += "<div class=\"view\">" + cantFail(renderSvg(graph, options)) +
+            "</div>\n";
   }
   json::Object root{{"title", title.str()},
                     {"files", std::move(files)},

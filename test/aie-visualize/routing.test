@@ -1,0 +1,26 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// Edges through contracted nodes can leave their physical path: through the
+// switchbox and tile of each contracted node (must-hit), or anywhere (free).
+// Either way, each view stays readable.
+
+// REQUIRES: aie-visualize, libavoid
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: aiecc --no-progress --get=input_physical.mlir --output-dir=%t %S/Inputs/broadcast.mlir
+// RUN: aie-visualize %t/input_physical.mlir -o %t/graph.json
+// RUN: aie-visualize %t/graph.json --view=topology -o %t/topology.json
+// RUN: aie-visualize %t/graph.json --view=topology --routing=must-hit -o %t/must-hit.svg
+// RUN: %PYTHON %S/Inputs/check-drawing.py %t/must-hit.svg %t/topology.json | FileCheck %s
+// RUN: aie-visualize %t/graph.json --view=topology --routing=free -o %t/free.svg
+// RUN: %PYTHON %S/Inputs/check-drawing.py %t/free.svg %t/topology.json | FileCheck %s
+// RUN: aie-visualize %t/graph.json --view=buffers -o %t/buffers.json
+// RUN: aie-visualize %t/graph.json --view=buffers --routing=must-hit -o %t/buffers.svg
+// RUN: %PYTHON %S/Inputs/check-drawing.py %t/buffers.svg %t/buffers.json | FileCheck %s
+
+// A must-hit route shows the contracted switchboxes it passes through.
+// RUN: FileCheck %s --input-file=%t/must-hit.svg --check-prefix=GHOST
+// GHOST: class="switchbox ghost"
+
+// CHECK: problems: 0
+// CHECK-NOT: {{.}}

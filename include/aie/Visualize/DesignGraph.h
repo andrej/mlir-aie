@@ -137,6 +137,18 @@ llvm::Expected<Graph> graphFromJSON(const llvm::json::Value &value);
 Graph contract(const Graph &graph, llvm::ArrayRef<std::string> kinds);
 
 struct RenderOptions {
+  /// How an edge that stands for contracted nodes gets from its source to
+  /// its target.
+  enum class Routing {
+    /// Along the physical path of every segment it stands for.
+    Physical,
+    /// Through each switchbox and tile its contracted nodes belong to, in
+    /// order, by whatever path crosses the fewest other lines.
+    MustHit,
+    /// By whatever path crosses the fewest other lines.
+    Free,
+  };
+  Routing routing = Routing::Physical;
   /// Scale line width by bytes moved instead of drawing every line alike.
   bool weighEdges = false;
   std::string title;
@@ -146,7 +158,8 @@ struct RenderOptions {
 /// DMA channel and inter-tile wire has its own place, so lines never share
 /// a track. Contracted nodes are not drawn; edges through them still follow
 /// the physical path they stand for.
-std::string renderSvg(const Graph &graph, const RenderOptions &options);
+llvm::Expected<std::string> renderSvg(const Graph &graph,
+                                      const RenderOptions &options);
 
 /// A self-contained HTML viewer over one or more named views of a design.
 std::string renderHtml(llvm::ArrayRef<std::pair<std::string, Graph>> views,

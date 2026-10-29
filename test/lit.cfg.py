@@ -218,6 +218,10 @@ if shutil.which("aie-visualize", path=config.aie_tools_dir):
     config.available_features.add("aie-visualize")
     tools.append("aie-visualize")
 
+# aie-visualize routes with libavoid only where the build found it.
+if getattr(config, "aie_visualize_libavoid", False):
+    config.available_features.add("libavoid")
+
 # Drives the aie-visualize viewer in a headless browser.
 if importlib.util.find_spec("playwright"):
     config.available_features.add("playwright")

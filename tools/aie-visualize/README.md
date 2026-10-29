@@ -30,6 +30,23 @@ share a line.
   in which half of a ping-pong pair they are merge first. Points where streams
   split (broadcasts), join or end stay.
 
+## Routing
+
+`--routing` sets how an edge that stands for contracted nodes runs:
+
+- `physical` (default): along the exact physical path of the nodes it stands
+  for. Views at every level of contraction then match line for line.
+- `must-hit`: through the switchbox of each contracted port and the tile of
+  each contracted DMA channel or buffer, in order. Between those places, the
+  line takes the path with the fewest crossings and bends.
+- `free`: any path from source to target, with the fewest crossings and
+  bends.
+
+`must-hit` and `free` route with [libavoid](https://github.com/mjwybrow/adaptagrams)
+(LGPL-2.1), an optional dependency. Configure with
+`-DAIE_VISUALIZE_LIBAVOID=<prefix>`, where `<prefix>` holds
+`include/libavoid/*.h` and `lib/libavoid.so`.
+
 In the viewer, hover over or click on any element to highlight what feeds it
 (upstream) and where its data goes (downstream), and to see the source lines
 behind it. These include the DMA programs and switchbox configuration in the

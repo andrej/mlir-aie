@@ -54,6 +54,7 @@ config.enable_python_tests = lit.util.pythonize_bool(r"""@ENABLE_PYTHON_TESTS@""
 config.xrt_python_bindings = lit.util.pythonize_bool(r"""@AIE_ENABLE_XRT_PYTHON_BINDINGS@""")
 config.has_mlir_runtime_libraries = lit.util.pythonize_bool(r"""@HAS_MLIR_RUNTIME_LIBRARIES@""")
 config.pytorch = lit.util.pythonize_bool(r"""@AIE_ENABLE_PYTORCH@""")
+config.aie_visualize_libavoid = bool(r"""@AIE_VISUALIZE_LIBAVOID@""")
 
 # pass on vitis settings
 config.vitis_root = r"""@VITIS_ROOT@"""

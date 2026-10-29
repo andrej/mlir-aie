@@ -68,6 +68,12 @@ static cl::opt<std::string>
 static cl::opt<bool>
     controlOverlay("control-overlay",
                    cl::desc("Include control packet overlay routes"));
+static cl::opt<std::string> routing(
+    "routing",
+    cl::desc("For .svg: how edges through contracted nodes run: physical "
+             "(their exact path), must-hit (through each switchbox and tile "
+             "on that path) or free"),
+    cl::init("physical"));
 static cl::opt<bool> weighEdges("weigh-edges",
                                 cl::desc("Scale line width by bytes moved"));
 static cl::opt<bool> noSources("no-sources",
@@ -128,7 +134,20 @@ static int emitGraph(const AIE::viz::Graph &graph) {
     AIE::viz::RenderOptions options;
     options.weighEdges = weighEdges;
     options.title = title;
-    output->os() << AIE::viz::renderSvg(shown, options);
+    if (routing == "must-hit")
+      options.routing = AIE::viz::RenderOptions::Routing::MustHit;
+    else if (routing == "free")
+      options.routing = AIE::viz::RenderOptions::Routing::Free;
+    else if (routing != "physical") {
+      errs() << "aie-visualize: unknown routing '" << routing << "'\n";
+      return 1;
+    }
+    Expected<std::string> svg = AIE::viz::renderSvg(shown, options);
+    if (!svg) {
+      errs() << "aie-visualize: " << toString(svg.takeError()) << "\n";
+      return 1;
+    }
+    output->os() << *svg;
   }
   output->keep();
   return 0;

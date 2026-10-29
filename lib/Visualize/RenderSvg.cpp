@@ -21,6 +21,8 @@
 
 #include "aie/Visualize/DesignGraph.h"
 
+#include "OrthogonalRouter.h"
+
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -29,6 +31,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <deque>
 #include <functional>
 #include <map>
 #include <set>
@@ -210,7 +213,7 @@ public:
   Renderer(const Graph &graph, const RenderOptions &options)
       : graph(graph), options(options) {}
 
-  std::string render();
+  Expected<std::string> render();
 
 private:
   struct Cell {
@@ -238,6 +241,9 @@ private:
   Side sideFacing(const Node &node, const Node &other) const;
   Stroke strokeFor(const std::string &from, const std::string &to);
   void computeColors();
+  Error routeEdges();
+  /// The box a node is drawn as: its own, or the one around a merged group.
+  Box drawnBoxOf(const Node &node) const;
 
   /// Whether a node is drawn, by itself or as part of the group it was
   /// merged into.
@@ -263,6 +269,8 @@ private:
   std::map<std::pair<int, int>, std::vector<std::string>> callsByTile;
   std::map<std::pair<int, int>, std::vector<std::string>> dmasByTile;
   std::map<std::string, Box> boxes;
+  /// Routes of edges that do not follow their physical path, by edge ID.
+  std::map<std::string, std::vector<Point>> routes;
   std::map<std::string, double> boxHeight;
   /// Slot of each local port and DMA channel on its switchbox's right side.
   std::map<std::string, size_t> slotOf;
@@ -1126,7 +1134,7 @@ void Renderer::assignTracks() {
   }
 }
 
-std::string Renderer::render() {
+Expected<std::string> Renderer::render() {
   index();
   layout();
   // The gutters hold every neighbor link a tile has, and the rooms between
@@ -1147,6 +1155,9 @@ std::string Renderer::render() {
     layout();
   }
   computeColors();
+  if (options.routing != RenderOptions::Routing::Physical)
+    if (Error error = routeEdges())
+      return std::move(error);
   width = 2 * kMargin + (maxCol - minCol + 1) * cellWidth;
   for (const auto &[id, box] : boxes)
     width = std::max(width, box.right() + kMargin);
@@ -1190,6 +1201,7 @@ std::string Renderer::render() {
 .aie-view .tile.unused{fill:#fafafa;stroke-dasharray:4 3}
 .aie-view .tile.core{fill:#eef6ee}.aie-view .tile.mem{fill:#fdf5e6}.aie-view .tile.shim{fill:#edf2fa}
 .aie-view .switchbox{fill:#fbfbfb;stroke:#9aa0a6;stroke-width:1}
+.aie-view .switchbox.ghost{fill:none;stroke:#c8ccd2;stroke-dasharray:3 2}
 .aie-view .lane-tick{stroke:#c8ccd2;stroke-width:1}
 .aie-view .edge path.line{fill:none;stroke-linecap:round;stroke-linejoin:round}
 .aie-view .edge path.hit{fill:none;stroke:transparent;stroke-width:9}
@@ -1229,13 +1241,16 @@ std::string Renderer::render() {
        << "\" y=\"" << num(cell.content.y + 13) << "\">(" << tile.col << ","
        << tile.row << ") " << (tile.type == "core" ? "compute" : tile.type)
        << "</text>\n";
-    if (!switchboxesShown)
+    // Lines routed through contracted switchboxes show where they are.
+    bool ghost =
+        !switchboxesShown && options.routing == RenderOptions::Routing::MustHit;
+    if (!switchboxesShown && !ghost)
       continue;
     const Box &box = cell.switchbox;
-    os << "<rect class=\"switchbox\" x=\"" << num(box.x) << "\" y=\""
-       << num(box.y) << "\" width=\"" << num(box.w) << "\" height=\""
-       << num(box.h) << "\" rx=\"2\"><title>(" << tile.col << "," << tile.row
-       << ") switchbox</title></rect>\n";
+    os << "<rect class=\"switchbox" << (ghost ? " ghost" : "") << "\" x=\""
+       << num(box.x) << "\" y=\"" << num(box.y) << "\" width=\"" << num(box.w)
+       << "\" height=\"" << num(box.h) << "\" rx=\"2\"><title>(" << tile.col
+       << "," << tile.row << ") switchbox</title></rect>\n";
   }
   os << "</g>\n";
 
@@ -1281,6 +1296,18 @@ std::string Renderer::render() {
                "\" d=\"" + d + "\"/>\n";
       hits += "<path class=\"hit\" d=\"" + d + "\"/>\n";
     };
+    if (auto routed = routes.find(edge.id()); routed != routes.end()) {
+      const std::vector<Point> &points = routed->second;
+      addPath(rounded(points));
+      if (points.size() > 1 && isVisible(edge.target) &&
+          nodes.at(edge.target)->kind != kind::Port)
+        heads += "<path class=\"head\" stroke=\"none\" d=\"" +
+                 arrowhead(points.back(),
+                           unit(points[points.size() - 2], points.back())) +
+                 "\"/>\n";
+      os << lines << heads << hits << "</g>\n";
+      continue;
+    }
     // A tile's contracted boxes are one region a stream passes through. It
     // crosses the region in one curve, from where it enters (from a
     // switchbox port, a runtime argument or a box still drawn) to where it
@@ -1505,7 +1532,188 @@ std::string Renderer::render() {
 
 } // namespace
 
-std::string xilinx::AIE::viz::renderSvg(const Graph &graph,
-                                        const RenderOptions &options) {
+Box Renderer::drawnBoxOf(const Node &node) const {
+  Box box = boxes.at(node.id);
+  for (const std::string &member : node.members) {
+    auto found = boxes.find(member);
+    if (found == boxes.end())
+      continue;
+    const Box &other = found->second;
+    double right = std::max(box.right(), other.right());
+    double bottom = std::max(box.bottom(), other.bottom());
+    box.x = std::min(box.x, other.x);
+    box.y = std::min(box.y, other.y);
+    box.w = right - box.x;
+    box.h = bottom - box.y;
+  }
+  return box;
+}
+
+Error Renderer::routeEdges() {
+  // Every box still drawn is an obstacle that lines end on.
+  std::vector<routing::Rect> obstacles;
+  std::map<std::string, int> obstacleOf;
+  for (const Node &node : graph.nodes) {
+    if (node.hidden || node.kind == kind::Port || !boxes.count(node.id))
+      continue;
+    Box box = drawnBoxOf(node);
+    obstacleOf[node.id] = obstacles.size();
+    obstacles.push_back({box.x, box.y, box.w, box.h});
+  }
+  auto positionOf = [&](const Node &node) {
+    if (node.kind == kind::Port)
+      return portPoint(node);
+    return drawnBoxOf(node).center();
+  };
+  auto endOf = [&](const std::string &id) {
+    const Node &node = *nodes.at(id);
+    routing::End end;
+    if (auto found = obstacleOf.find(id); found != obstacleOf.end()) {
+      end.obstacle = found->second;
+      end.sides = node.kind == kind::Argument
+                      ? unsigned(routing::Top)
+                      : unsigned(routing::Left | routing::Right);
+    } else {
+      Point point = positionOf(node);
+      end.point = {point.x, point.y};
+    }
+    return end;
+  };
+
+  // The places a line must pass through: the switchbox of each contracted
+  // port and the tile of each contracted DMA channel or buffer, in the order
+  // its path meets them, each once in a row.
+  using Place = std::tuple<bool, int, int>;
+  auto placeOf = [&](const Node &node) -> std::optional<Place> {
+    if (!node.hasTile() || !cells.count(tileOf(node)))
+      return std::nullopt;
+    return Place{node.kind == kind::Port, node.col, node.row};
+  };
+  auto boxOfPlace = [&](const Place &place) {
+    const Cell &cell = cells.at({std::get<1>(place), std::get<2>(place)});
+    return std::get<0>(place) ? cell.switchbox : cell.content;
+  };
+  std::vector<routing::Request> requests;
+  std::vector<std::vector<Place>> places;
+  std::vector<std::string> ids;
+  std::vector<std::string> sources, targets;
+  for (const Edge &edge : graph.edges) {
+    if (!nodes.count(edge.source) || !nodes.count(edge.target))
+      continue;
+    ids.push_back(edge.id());
+    sources.push_back(edge.source);
+    targets.push_back(edge.target);
+    requests.push_back({endOf(edge.source), endOf(edge.target), {}});
+    std::vector<Place> sequence;
+    if (options.routing == RenderOptions::Routing::MustHit) {
+      std::map<std::string, std::vector<std::string>> next;
+      for (const auto &[from, to] : edge.segments)
+        next[from].push_back(to);
+      std::map<std::string, std::string> parent{{edge.source, ""}};
+      std::deque<std::string> queue{edge.source};
+      while (!queue.empty() && !parent.count(edge.target)) {
+        std::string current = queue.front();
+        queue.pop_front();
+        for (const std::string &successor : next[current])
+          if (parent.try_emplace(successor, current).second)
+            queue.push_back(successor);
+      }
+      std::vector<std::string> path;
+      if (parent.count(edge.target))
+        for (std::string node = parent[edge.target];
+             !node.empty() && node != edge.source; node = parent[node])
+          path.push_back(node);
+      std::reverse(path.begin(), path.end());
+      std::optional<Place> first = placeOf(*nodes.at(edge.source));
+      std::optional<Place> last = placeOf(*nodes.at(edge.target));
+      for (const std::string &id : path) {
+        std::optional<Place> place = placeOf(*nodes.at(id));
+        if (!place || (!sequence.empty() && sequence.back() == *place) ||
+            (sequence.empty() && first == place))
+          continue;
+        sequence.push_back(*place);
+      }
+      while (!sequence.empty() && sequence.back() == last)
+        sequence.pop_back();
+    }
+    places.push_back(std::move(sequence));
+  }
+
+  // Each line passes a place where the straight way from its previous stop
+  // to its next one comes closest, moved as little as it takes to share
+  // neither a row nor a column with another line's point there, so that no
+  // two run along each other through it. A point inside a tile keeps clear
+  // of the boxes drawn there.
+  std::map<Place, std::vector<std::tuple<double, size_t, size_t, Point>>>
+      passing;
+  for (auto [index, sequence] : enumerate(places)) {
+    Point target = positionOf(*nodes.at(targets[index]));
+    Point previous = positionOf(*nodes.at(sources[index]));
+    for (auto [step, place] : enumerate(sequence)) {
+      Box box = boxOfPlace(place);
+      Point next = step + 1 < sequence.size()
+                       ? boxOfPlace(sequence[step + 1]).center()
+                       : target;
+      Point ideal{
+          std::clamp((previous.x + next.x) / 2, box.x + 4, box.right() - 4),
+          std::clamp((previous.y + next.y) / 2, box.y + 4, box.bottom() - 4)};
+      passing[place].emplace_back(ideal.x + ideal.y, index, step, ideal);
+      previous = ideal;
+    }
+  }
+  std::vector<std::vector<routing::Point>> checkpoints(places.size());
+  for (auto [index, sequence] : enumerate(places))
+    checkpoints[index].resize(sequence.size());
+  for (auto &[place, list] : passing) {
+    llvm::sort(list, [](const auto &a, const auto &b) {
+      return std::tie(std::get<0>(a), std::get<1>(a)) <
+             std::tie(std::get<0>(b), std::get<1>(b));
+    });
+    Box box = boxOfPlace(place);
+    std::vector<Point> taken;
+    auto clear = [&](Point candidate) {
+      for (const routing::Rect &obstacle : obstacles)
+        if (candidate.x > obstacle.x - 6 &&
+            candidate.x < obstacle.x + obstacle.w + 6 &&
+            candidate.y > obstacle.y - 6 &&
+            candidate.y < obstacle.y + obstacle.h + 6)
+          return false;
+      return llvm::none_of(taken, [&](Point other) {
+        return std::abs(other.x - candidate.x) < 5 ||
+               std::abs(other.y - candidate.y) < 5;
+      });
+    };
+    for (const auto &[unused, index, step, ideal] : list) {
+      Point chosen = ideal;
+      double best = std::numeric_limits<double>::max();
+      for (double y = box.y + 4; y < box.bottom() - 4; y += 3)
+        for (double x = box.x + 4; x < box.right() - 4; x += 3) {
+          double distance = std::hypot(x - ideal.x, y - ideal.y);
+          if (distance < best && clear({x, y})) {
+            best = distance;
+            chosen = {x, y};
+          }
+        }
+      taken.push_back(chosen);
+      checkpoints[index][step] = {chosen.x, chosen.y};
+    }
+  }
+  for (auto [request, points] : zip_equal(requests, checkpoints))
+    request.checkpoints = std::move(points);
+
+  Expected<std::vector<std::vector<routing::Point>>> routed =
+      routing::routeOrthogonal(obstacles, requests);
+  if (!routed)
+    return routed.takeError();
+  for (auto [id, route] : zip_equal(ids, *routed)) {
+    std::vector<Point> &points = routes[id];
+    for (const routing::Point &point : route)
+      points.push_back({point.x, point.y});
+  }
+  return Error::success();
+}
+
+Expected<std::string>
+xilinx::AIE::viz::renderSvg(const Graph &graph, const RenderOptions &options) {
   return Renderer(graph, options).render();
 }
