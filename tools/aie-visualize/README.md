@@ -9,19 +9,33 @@ buffers, to the kernels that read it, and back.
 
 ```bash
 aiecc --get-visualization design.mlir       # writes visualization.html
-aie-visualize input_physical.mlir -o view.html
 aie-visualize input_physical.mlir -o graph.json
 aie-visualize graph.json --view=topology -o topology.svg
+aie-visualize graph.json --view=physical -o physical.svg
+aie-visualize input_physical.mlir -o view.html
 ```
 
-Open the `.html` file in a browser. It needs no server and embeds the source
-files the design's locations name.
+An SVG is a drawing you can read without the viewer. It also carries its
+graph as JSON, with the source files the graph names, in a `<metadata
+class="aie-graph">` element.
+
+`aie-visualize.html`, installed next to the tool, adds interaction to the
+SVGs it opens. Each SVG becomes a tab named after its file:
+
+```text
+aie-visualize.html?svg=topology.svg&svg=physical.svg
+```
+
+Serve the directory over HTTP for that form (`python3 -m http.server`).
+Browsers do not let a page opened as a file load other files; open the
+viewer as a file and use its Open SVG… button or drop the SVGs on it
+instead. `-o view.html` and aiecc write the same viewer with the standard
+views inside it, as one file that needs no server.
 
 ## Views
 
-All views share one fixed layout of the device. Every switchbox port, DMA
-channel and wire between tiles has a place of its own, so two streams never
-share a line.
+`--view` selects which node kinds are contracted, and `--contract` lists
+them directly.
 
 - **Physical**: every switchbox hop, DMA channel, buffer and kernel call.
 - **Buffers**: switchbox ports and DMA channels contracted.

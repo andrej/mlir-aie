@@ -160,10 +160,14 @@ struct RenderOptions {
   Layout layout = Layout::Physical;
   /// Scale line width by bytes moved instead of drawing every line alike.
   bool weighEdges = false;
+  /// Carry the source files the graph names in the drawing's graph.
+  bool embedFiles = true;
   std::string title;
 };
 
-/// Draws the graph on a fixed layout of the device: every switchbox port,
+/// Draws the graph. The drawing carries the graph as JSON in a metadata
+/// element of class aie-graph, which the viewer reads. With the physical
+/// layout, every switchbox port,
 /// DMA channel and inter-tile wire has its own place, so lines never share
 /// a track. Contracted nodes are not drawn; edges through them still follow
 /// the physical path they stand for.

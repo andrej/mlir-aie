@@ -156,6 +156,7 @@ LitConfigHelper.prepend_path(llvm_config, config.llvm_tools_dir)
 LitConfigHelper.prepend_path(llvm_config, peano_tools_dir)
 LitConfigHelper.prepend_path(llvm_config, config.aie_tools_dir)
 config.substitutions.append(("%LLVM_TOOLS_DIR", config.llvm_tools_dir))
+config.substitutions.append(("%aie_tools_dir", config.aie_tools_dir))
 
 tool_dirs = [config.aie_tools_dir]
 if early_peano_config.found:

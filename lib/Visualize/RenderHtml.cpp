@@ -36,25 +36,19 @@ static std::string scriptSafe(StringRef json) {
 std::string
 xilinx::AIE::viz::renderHtml(ArrayRef<std::pair<std::string, Graph>> views,
                              StringRef title) {
-  // Every view reads the same files; embed them once.
+  // Every view reads the same files; the page carries them once.
   json::Object files;
-  json::Array viewData;
   std::string svgs;
   for (const auto &[name, graph] : views) {
     for (const auto &[path, text] : graph.files)
       files[path] = text;
-    Graph withoutFiles = graph;
-    withoutFiles.files.clear();
-    viewData.push_back(
-        json::Object{{"name", name}, {"graph", toJSON(withoutFiles)}});
     RenderOptions options;
     options.title = (title + " — " + name).str();
-    svgs += "<div class=\"view\">" + cantFail(renderSvg(graph, options)) +
-            "</div>\n";
+    options.embedFiles = false;
+    svgs += "<div class=\"view\" data-name=\"" + name + "\">" +
+            cantFail(renderSvg(graph, options)) + "</div>\n";
   }
-  json::Object root{{"title", title.str()},
-                    {"files", std::move(files)},
-                    {"views", std::move(viewData)}};
+  json::Object root{{"title", title.str()}, {"files", std::move(files)}};
   std::string data = formatv("{0}", json::Value(std::move(root)));
 
   std::string html = kTemplate;

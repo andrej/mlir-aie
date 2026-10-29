@@ -140,6 +140,7 @@ static int emitGraph(const AIE::viz::Graph &graph) {
   } else {
     AIE::viz::RenderOptions options;
     options.weighEdges = weighEdges;
+    options.embedFiles = !noSources;
     options.title = title;
     if (layout == "compact") {
       options.layout = AIE::viz::RenderOptions::Layout::Compact;

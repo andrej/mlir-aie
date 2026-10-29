@@ -10,6 +10,18 @@
 // RUN: aie-visualize %t/input_physical.mlir -o %t/view.html
 // RUN: %PYTHON %S/Inputs/check-viewer.py %t/view.html | FileCheck %s
 
+// The standalone viewer shows each SVG it is given as a tab, with the graph
+// each one carries.
+// RUN: aie-visualize %t/input_physical.mlir --view=topology -o %t/Topology.svg
+// RUN: aie-visualize %t/input_physical.mlir --view=physical -o %t/Physical.svg
+// RUN: %PYTHON %S/Inputs/check-viewer.py %aie_tools_dir/aie-visualize.html %t/Topology.svg %t/Physical.svg | FileCheck %s --check-prefix=STANDALONE
+// STANDALONE: views: Topology Physical
+// STANDALONE: upstream of %arg0: edges 0
+// STANDALONE: downstream of %arg0: calls 2
+// STANDALONE: kernel call sources: broadcast.mlir:22
+// STANDALONE: DMA channel program lines: {{[1-9][0-9]*}}
+// STANDALONE: page errors: 0
+
 // CHECK: views: Topology Buffers Physical
 // CHECK: dimmed at rest: false
 // Nothing feeds a runtime input, so tracing upstream finds only itself.

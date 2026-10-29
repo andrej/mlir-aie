@@ -11,10 +11,10 @@
 
 // CHECK: <title>AIE design</title>
 // CHECK-NOT: <!--AIE_VIZ_SVGS-->
-// CHECK: <div class="view"><svg {{.*}}data-view="broadcast.mlir — Topology">
-// CHECK: <div class="view"><svg {{.*}}data-view="broadcast.mlir — Buffers">
-// CHECK: <div class="view"><svg {{.*}}data-view="broadcast.mlir — Physical">
+// CHECK: <div class="view" data-name="Topology"><svg {{.*}}data-view="broadcast.mlir — Topology">
+// CHECK-NEXT: <metadata class="aie-graph"><![CDATA[{
+// CHECK: <div class="view" data-name="Buffers"><svg
+// CHECK: <div class="view" data-name="Physical"><svg
 // CHECK: <script type="application/json" id="aie-data">{
 // CHECK-SAME: "input_physical.mlir":
-// CHECK-SAME: "name":"Topology"
 // CHECK-NOT: /*AIE_VIZ_DATA*/

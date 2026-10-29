@@ -1,7 +1,13 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Drives an aie-visualize viewer in a headless browser and prints what a
-reader would see. Usage: check-viewer.py view.html"""
+reader would see.
+
+Usage: check-viewer.py view.html
+       check-viewer.py aie-visualize.html first.svg second.svg ...
+
+The second form opens aie-visualize.html?svg=first.svg&svg=second.svg, with
+the files served from where they are."""
 
 import pathlib
 import sys
@@ -11,12 +17,26 @@ from playwright.sync_api import sync_playwright
 
 def main():
     html = pathlib.Path(sys.argv[1]).resolve()
+    svgs = [pathlib.Path(path).resolve() for path in sys.argv[2:]]
     errors = []
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport={"width": 1600, "height": 1000})
         page.on("pageerror", lambda e: errors.append(str(e)))
-        page.goto(html.as_uri())
+        if svgs:
+            served = {"/viewer.html": html, **{f"/{svg.name}": svg for svg in svgs}}
+            page.route(
+                "http://viz.test/**",
+                lambda route: route.fulfill(
+                    path=str(
+                        served[route.request.url.split("viz.test")[1].split("?")[0]]
+                    )
+                ),
+            )
+            query = "&".join(f"svg={svg.name}" for svg in svgs)
+            page.goto(f"http://viz.test/viewer.html?{query}")
+        else:
+            page.goto(html.as_uri())
         page.wait_for_timeout(300)
         count = lambda selector: page.locator(selector).count()
         active = ".view.active "

@@ -6,6 +6,10 @@
 
 add_executable(aie-visualize aie-visualize.cpp)
 
+# The viewer opens the drawings aie-visualize writes: aie-visualize.html?svg=...
+configure_file(${PROJECT_SOURCE_DIR}/lib/Visualize/viewer.html
+  ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/aie-visualize.html COPYONLY)
+
 target_include_directories(aie-visualize PUBLIC ${LLVM_INCLUDE_DIRS})
 separate_arguments(LLVM_DEFINITIONS_LIST NATIVE_COMMAND ${LLVM_DEFINITIONS})
 llvm_update_compile_flags(aie-visualize)
@@ -42,4 +46,8 @@ target_link_libraries(aie-visualize
 install(TARGETS aie-visualize
   EXPORT AIE-VISUALIZE
   RUNTIME DESTINATION ${LLVM_TOOLS_INSTALL_DIR}
+  COMPONENT aie-visualize)
+install(FILES ${PROJECT_SOURCE_DIR}/lib/Visualize/viewer.html
+  DESTINATION bin
+  RENAME aie-visualize.html
   COMPONENT aie-visualize)

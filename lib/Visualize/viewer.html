@@ -50,6 +50,10 @@
   #code .line.hit { background: #fff1b8; }
   #code .empty { color: #888; padding: 8px; font-family: system-ui, sans-serif; }
   #toggle-panel { margin-left: auto; }
+  .open input { display: none; }
+  .open { border: 1px solid #bbb; background: #fff; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
+  #canvas .message { padding: 24px; color: #555; max-width: 640px; line-height: 1.5; }
+  #canvas.dropping { outline: 3px dashed #2f6db3; outline-offset: -6px; }
   /* Highlighting. Nothing is dimmed until something is hovered or chosen. */
   svg.focus .edge:not(.hl) { opacity: 0.1; }
   svg.focus .node:not(.hl) { opacity: 0.3; }
@@ -68,6 +72,7 @@
   <label title="Scale line width by bytes moved per run"><input type="checkbox" id="weights"> line weight</label>
   <label title="Show the source lines of everything highlighted, not only of the element itself"><input type="checkbox" id="path-sources"> sources of whole path</label>
   <button id="fit">Fit</button>
+  <label class="open" title="Open aie-visualize SVG files; each becomes a tab"><input type="file" id="open" accept=".svg,image/svg+xml" multiple> Open SVG…</label>
   <button id="toggle-panel">Panel</button>
 </header>
 <main id="main">
@@ -81,18 +86,38 @@
 <script type="application/json" id="aie-data">/*AIE_VIZ_DATA*/</script>
 <script>
 "use strict";
-const data = JSON.parse(document.getElementById("aie-data").textContent);
-document.title = data.title;
-document.getElementById("title").textContent = data.title;
-
+// Each view is an SVG that aie-visualize wrote; its graph travels with it in
+// a metadata element. Views come from the page itself, from ?svg= URLs, or
+// from files the reader opens.
+const pageText = document.getElementById("aie-data").textContent.trim();
+const page = pageText.startsWith("{") ? JSON.parse(pageText) : {};
+const files = Object.assign({}, page.files || {});
 const canvas = document.getElementById("canvas");
-const viewDivs = [...canvas.querySelectorAll(":scope > .view")];
-const views = data.views.map((view, index) => indexView(view, viewDivs[index]));
+const views = [];
 let current = null;
 let pinned = null;
 
-function indexView(view, div) {
-  const graph = view.graph;
+function graphOf(svg) {
+  const metadata = svg.querySelector("metadata.aie-graph");
+  return metadata ? JSON.parse(metadata.textContent) : null;
+}
+
+function addView(svg, name, div) {
+  const graph = graphOf(svg);
+  if (!graph) throw new Error(`${name} carries no aie-visualize graph`);
+  Object.assign(files, graph.files || {});
+  if (!div) {
+    div = document.createElement("div");
+    div.className = "view";
+    div.appendChild(svg);
+    canvas.appendChild(div);
+  }
+  const view = indexView(graph, div, name);
+  views.push(view);
+  return view;
+}
+
+function indexView(graph, div, name) {
   const nodes = new Map(graph.nodes.map(n => [n.id, n]));
   const edges = new Map(graph.edges.map(e => [e.id, e]));
   const out = new Map(), into = new Map();
@@ -105,7 +130,7 @@ function indexView(view, div) {
   const svg = div.querySelector("svg");
   const elements = new Map();
   for (const el of svg.querySelectorAll("[data-id]")) elements.set(el.dataset.id, el);
-  return { name: view.name, graph, nodes, edges, out, into, svg, div, elements };
+  return { name, graph, nodes, edges, out, into, svg, div, elements, viewBox: null };
 }
 
 // --- Tracing --------------------------------------------------------------
@@ -259,7 +284,7 @@ function showSources(view, ids) {
   lastSources = sourcesOf(view, ids);
   const files = document.getElementById("files");
   files.innerHTML = "";
-  const names = [...lastSources.keys()].sort((a, b) => (b in data.files) - (a in data.files));
+  const names = [...lastSources.keys()].sort((a, b) => (b in files) - (a in files));
   if (!names.includes(shownFile)) shownFile = names[0] || null;
   for (const name of names) {
     const button = document.createElement("button");
@@ -276,7 +301,7 @@ function renderCode() {
   const code = document.getElementById("code");
   if (!shownFile) { code.innerHTML = '<div class="empty">No source lines for this element.</div>'; return; }
   const lines = lastSources.get(shownFile);
-  const text = data.files[shownFile];
+  const text = files[shownFile];
   if (text === undefined) {
     code.innerHTML = `<div class="empty">${escapeHTML(shownFile)} was not embedded. Lines: ${[...lines].sort((a, b) => a - b).join(", ")}</div>`;
     return;
@@ -340,11 +365,16 @@ function buildLists() {
 }
 
 // --- Views, pan and zoom ---------------------------------------------------
+// Each view keeps its own zoom; views of the same size share it, since they
+// draw the same layout.
 let viewBox = null;
 
+function sizeOf(view) {
+  return [parseFloat(view.svg.getAttribute("width")), parseFloat(view.svg.getAttribute("height"))];
+}
+
 function fit() {
-  const svg = current.svg;
-  const w = parseFloat(svg.getAttribute("width")), h = parseFloat(svg.getAttribute("height"));
+  const [w, h] = sizeOf(current);
   const box = canvas.getBoundingClientRect();
   const scale = Math.max(w / box.width, h / box.height);
   viewBox = { x: (w - box.width * scale) / 2, y: (h - box.height * scale) / 2, w: box.width * scale, h: box.height * scale };
@@ -352,10 +382,9 @@ function fit() {
 }
 
 function applyViewBox() {
-  for (const view of views) {
-    view.svg.setAttribute("viewBox", `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`);
-    view.svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
-  }
+  current.viewBox = viewBox;
+  current.svg.setAttribute("viewBox", `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`);
+  current.svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
 }
 
 function show(index) {
@@ -364,7 +393,9 @@ function show(index) {
   for (const view of views) view.div.classList.toggle("active", view === current);
   for (const [i, button] of [...document.querySelectorAll("#tabs button")].entries())
     button.classList.toggle("active", i === index);
-  if (!viewBox) fit();
+  const sameLayout = previous && sizeOf(previous).join() === sizeOf(current).join();
+  viewBox = current.viewBox || (sameLayout ? previous.viewBox : null);
+  if (viewBox) applyViewBox(); else fit();
   applyWeights();
   buildLists();
   if (previous) highlight(previous, null);
@@ -374,11 +405,15 @@ function show(index) {
   } else clear();
 }
 
-for (const [index, view] of views.entries()) {
-  const button = document.createElement("button");
-  button.textContent = view.name;
-  button.onclick = () => show(index);
-  document.getElementById("tabs").appendChild(button);
+function buildTabs() {
+  const tabs = document.getElementById("tabs");
+  tabs.innerHTML = "";
+  for (const [index, view] of views.entries()) {
+    const button = document.createElement("button");
+    button.textContent = view.name;
+    button.onclick = () => show(index);
+    tabs.appendChild(button);
+  }
 }
 
 function toSVGPoint(event) {
@@ -457,9 +492,77 @@ document.getElementById("fit").onclick = fit;
 document.getElementById("toggle-panel").onclick = () => {
   document.getElementById("main").classList.toggle("collapsed");
 };
-window.addEventListener("resize", () => applyViewBox());
+window.addEventListener("resize", () => { if (current) applyViewBox(); });
 
-show(0);
+function parseSVG(text, name) {
+  const doc = new DOMParser().parseFromString(text, "image/svg+xml");
+  if (doc.querySelector("parsererror")) throw new Error(`${name} is not an SVG file`);
+  return document.importNode(doc.documentElement, true);
+}
+
+function stem(path) {
+  return decodeURIComponent(path.split(/[\\/]/).pop().split("?")[0]).replace(/\.svg$/i, "");
+}
+
+function showMessage(text) {
+  const message = document.createElement("div");
+  message.className = "message";
+  message.innerHTML = text;
+  canvas.appendChild(message);
+}
+
+function start(index) {
+  for (const message of canvas.querySelectorAll(".message")) message.remove();
+  const first = views[0].graph;
+  const title = page.title || `${first.device} (${first.target})`;
+  document.title = title;
+  document.getElementById("title").textContent = title;
+  buildTabs();
+  show(index);
+}
+
+async function addFiles(list) {
+  const before = views.length;
+  for (const file of list) {
+    try {
+      addView(parseSVG(await file.text(), file.name), stem(file.name));
+    } catch (error) {
+      showMessage(escapeHTML(error.message));
+    }
+  }
+  if (views.length > before) start(before);
+}
+
+document.getElementById("open").addEventListener("change", event => addFiles(event.target.files));
+canvas.addEventListener("dragover", event => { event.preventDefault(); canvas.classList.add("dropping"); });
+canvas.addEventListener("dragleave", () => canvas.classList.remove("dropping"));
+canvas.addEventListener("drop", event => {
+  event.preventDefault();
+  canvas.classList.remove("dropping");
+  addFiles(event.dataTransfer.files);
+});
+
+(async () => {
+  for (const div of [...canvas.querySelectorAll(":scope > .view")]) {
+    const svg = div.querySelector("svg");
+    addView(svg, div.dataset.name || svg.dataset.view, div);
+  }
+  for (const url of new URLSearchParams(location.search).getAll("svg")) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`${url}: ${response.status} ${response.statusText}`);
+      addView(parseSVG(await response.text(), url), stem(url));
+    } catch (error) {
+      showMessage(`Cannot load ${escapeHTML(url)}: ${escapeHTML(error.message)}. ` +
+                  "Browsers do not let a page opened as a file load other files; " +
+                  "serve the directory over HTTP, or use Open SVG… or drop the files here.");
+    }
+  }
+  if (views.length) start(0);
+  else showMessage("Open drawings that aie-visualize wrote: list them in the address as " +
+                   "<code>aie-visualize.html?svg=topology.svg&amp;svg=physical.svg</code>, " +
+                   "use Open SVG…, or drop the files here.");
+})();
 </script>
 </body>
 </html>

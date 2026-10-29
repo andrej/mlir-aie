@@ -1222,6 +1222,26 @@ Expected<std::string> Renderer::render() {
      << "viewBox=\"0 0 " << num(width) << " " << num(height) << "\" width=\""
      << num(width) << "\" height=\"" << num(height) << "\" data-view=\""
      << escape(options.title) << "\">\n";
+  // The graph rides along for the viewer. "]]>" may not appear in CDATA;
+  // it is split across two sections.
+  {
+    Graph carried = graph;
+    if (!options.embedFiles)
+      carried.files.clear();
+    std::string json = formatv("{0}", toJSON(carried));
+    std::string cdata;
+    for (size_t at = 0, next; at < json.size(); at = next) {
+      next = json.find("]]>", at);
+      if (next == std::string::npos) {
+        cdata += json.substr(at);
+        break;
+      }
+      cdata += json.substr(at, next - at) + "]]]]><![CDATA[>";
+      next += 3;
+    }
+    os << "<metadata class=\"aie-graph\"><![CDATA[" << cdata
+       << "]]></metadata>\n";
+  }
   os << R"(<style>
 .aie-view text{font-family:"DejaVu Sans",Verdana,Arial,sans-serif;font-size:9.5px;fill:#222}
 .aie-view .title{font-size:15px;font-weight:bold}
