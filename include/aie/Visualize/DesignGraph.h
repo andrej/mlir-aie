@@ -165,6 +165,10 @@ struct RenderOptions {
   bool weighEdges = false;
   /// Carry the source files the graph names in the drawing's graph.
   bool embedFiles = true;
+  /// How far, in pixels, routed lines keep from boxes and from each other,
+  /// and how far the compact layout keeps boxes from the edges of the tile
+  /// that holds them.
+  double spacing = 6;
   std::string title;
 };
 

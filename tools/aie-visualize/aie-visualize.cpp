@@ -81,6 +81,11 @@ static cl::opt<std::string>
                     "in tiles and switchboxes no larger than it needs; routes "
                     "must-hit unless --routing says otherwise)"),
            cl::init("physical"));
+static cl::opt<double>
+    spacing("spacing",
+            cl::desc("For .svg: pixels routed lines keep from boxes and from "
+                     "each other, and compact tiles keep around their boxes"),
+            cl::init(6));
 static cl::opt<bool> weighEdges("weigh-edges",
                                 cl::desc("Scale line width by bytes moved"));
 static cl::opt<bool> noSources("no-sources",
@@ -141,6 +146,7 @@ static int emitGraph(const AIE::viz::Graph &graph) {
     AIE::viz::RenderOptions options;
     options.weighEdges = weighEdges;
     options.embedFiles = !noSources;
+    options.spacing = spacing;
     options.title = title;
     if (layout == "compact") {
       options.layout = AIE::viz::RenderOptions::Layout::Compact;

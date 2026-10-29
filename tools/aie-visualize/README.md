@@ -75,6 +75,10 @@ IR the visualizer read, not only the lines in your design.
   routing. It suits contracted views best: the fewer nodes a view draws,
   the smaller the figure.
 
+`--spacing` (default 6) sets how many pixels routed lines keep from boxes
+and from each other. The compact layout scales its padding, port spacing and
+channels between tiles with it.
+
 `must-hit` and `free` route with [libavoid](https://github.com/mjwybrow/adaptagrams)
 (LGPL-2.1), an optional dependency. Configure with
 `-DAIE_VISUALIZE_LIBAVOID=<prefix>`, where `<prefix>` holds

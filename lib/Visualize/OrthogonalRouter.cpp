@@ -20,7 +20,8 @@ using namespace xilinx::AIE::viz::routing;
 #ifndef AIE_VISUALIZE_HAS_LIBAVOID
 
 Expected<std::vector<std::vector<Point>>>
-xilinx::AIE::viz::routing::routeOrthogonal(ArrayRef<Rect>, ArrayRef<Request>) {
+xilinx::AIE::viz::routing::routeOrthogonal(ArrayRef<Rect>, ArrayRef<Request>,
+                                           double) {
   return createStringError(
       inconvertibleErrorCode(),
       "aie-visualize was built without libavoid; only the physical routing "
@@ -31,14 +32,15 @@ xilinx::AIE::viz::routing::routeOrthogonal(ArrayRef<Rect>, ArrayRef<Request>) {
 
 Expected<std::vector<std::vector<Point>>>
 xilinx::AIE::viz::routing::routeOrthogonal(ArrayRef<Rect> obstacles,
-                                           ArrayRef<Request> requests) {
+                                           ArrayRef<Request> requests,
+                                           double spacing) {
   Avoid::Router router(Avoid::OrthogonalRouting);
   // Penalties from comparing crossings, bends and length over sample
   // designs: a crossing costs about as much as two bends.
   router.setRoutingParameter(Avoid::segmentPenalty, 150);
   router.setRoutingParameter(Avoid::crossingPenalty, 250);
-  router.setRoutingParameter(Avoid::shapeBufferDistance, 5);
-  router.setRoutingParameter(Avoid::idealNudgingDistance, 5);
+  router.setRoutingParameter(Avoid::shapeBufferDistance, spacing);
+  router.setRoutingParameter(Avoid::idealNudgingDistance, spacing);
   router.setRoutingOption(Avoid::nudgeOrthogonalSegmentsConnectedToShapes,
                           true);
   router.setRoutingOption(Avoid::nudgeOrthogonalTouchingColinearSegments, true);

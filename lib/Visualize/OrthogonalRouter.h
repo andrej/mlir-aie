@@ -45,11 +45,12 @@ struct Request {
 };
 
 /// Routes every request as an orthogonal polyline around the obstacles,
-/// penalizing bends and crossings and keeping parallel runs apart. Fails if
-/// aie-visualize was built without libavoid.
+/// penalizing bends and crossings. Lines keep `spacing` from obstacles and
+/// from each other's parallel runs. Fails if aie-visualize was built without
+/// libavoid.
 llvm::Expected<std::vector<std::vector<Point>>>
 routeOrthogonal(llvm::ArrayRef<Rect> obstacles,
-                llvm::ArrayRef<Request> requests);
+                llvm::ArrayRef<Request> requests, double spacing);
 
 } // namespace xilinx::AIE::viz::routing
 

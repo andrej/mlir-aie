@@ -705,7 +705,7 @@ void Renderer::placeArguments() {
     boxes[argument->id] = {x, boxTop, w, 20};
     argumentStem[{argument->id, true}] = stems(x).first;
     argumentStem[{argument->id, false}] = stems(x).second;
-    nextFree = x + w + 12;
+    nextFree = x + w + std::max(12.0, 8 * options.spacing);
   }
   height = boxTop + 20 + kMargin + 20;
 }
@@ -1645,12 +1645,13 @@ Box Renderer::drawnBoxOf(const Node &node) const {
 void Renderer::layoutCompact() {
   // A port is an obstacle the router keeps its clearance from, so ports sit
   // far enough apart for lines to pass between them.
-  constexpr double kPortPitch = 16;
-  constexpr double kPassPitch = 10;
-  constexpr double kPad = 6;
+  const double spacing = options.spacing;
+  const double kPortPitch = 2 * spacing + 8;
+  const double kPassPitch = spacing + 4;
+  const double kPad = 2 * spacing;
   constexpr double kTitle = 16;
-  constexpr double kColumnSpace = 26;
-  constexpr double kChannel = 30;
+  const double kColumnSpace = std::max(26.0, 4 * spacing);
+  const double kChannel = std::max(30.0, 6 * spacing);
 
   cells.clear();
   boxes.clear();
@@ -1878,7 +1879,8 @@ void Renderer::layoutCompact() {
     double w = std::max(60.0, argument->label.size() * kCharWidth + 18);
     double left = std::max(center - w / 2, nextFree);
     boxes[argument->id] = {left, argumentTop, w, 20};
-    nextFree = left + w + 16;
+    // Lines to the array rise between arguments.
+    nextFree = left + w + std::max(16.0, 8 * options.spacing);
   }
   height = (arguments.empty() ? arrayBottom : argumentTop + 20) + kMargin + 30;
 }
@@ -2006,15 +2008,24 @@ Error Renderer::routeEdges() {
     }
     return 0u;
   };
-  constexpr unsigned kAllSides =
-      routing::Left | routing::Right | routing::Top | routing::Bottom;
+  auto opposite = [](unsigned side) {
+    return side == routing::Left    ? unsigned(routing::Right)
+           : side == routing::Right ? unsigned(routing::Left)
+           : side == routing::Top   ? unsigned(routing::Bottom)
+                                    : unsigned(routing::Top);
+  };
   auto endOf = [&](const std::string &id, bool arriving) {
     const Node &node = *nodes.at(id);
     routing::End end;
     if (auto found = obstacleOf.find(id); found != obstacleOf.end()) {
       end.obstacle = found->second;
       if (node.kind == kind::Port)
-        end.sides = arriving ? facing(node) : kAllSides & ~facing(node);
+        // A switchbox input takes its stream from outside the switchbox and
+        // passes it inward; an output takes it from inside and passes it
+        // outward. Either way, a line runs straight through the port.
+        end.sides = (node.direction == "in") == arriving
+                        ? facing(node)
+                        : opposite(facing(node));
       else if (node.kind == kind::Argument)
         end.sides = routing::Top;
       else
@@ -2054,6 +2065,7 @@ Error Renderer::routeEdges() {
       previous = ideal;
     }
   }
+  std::map<int, std::vector<double>> rowTaken, columnTaken;
   std::vector<std::vector<routing::Point>> checkpoints(plans.size());
   for (auto [index, plan] : enumerate(plans))
     checkpoints[index].resize(plan.places.size());
@@ -2063,18 +2075,24 @@ Error Renderer::routeEdges() {
              std::tie(std::get<0>(b), std::get<1>(b));
     });
     Box box = boxOfPlace(place);
-    std::vector<Point> taken;
+    // Lines pinned at checkpoints cannot be nudged apart, so checkpoints of
+    // places in one row of tiles keep apart in height, and those in one
+    // column keep apart across.
+    auto row = std::get<2>(place), col = std::get<1>(place);
     auto clear = [&](Point candidate) {
       for (const routing::Rect &obstacle : obstacles)
-        if (candidate.x > obstacle.x - 6 &&
-            candidate.x < obstacle.x + obstacle.w + 6 &&
-            candidate.y > obstacle.y - 6 &&
-            candidate.y < obstacle.y + obstacle.h + 6)
+        if (candidate.x > obstacle.x - options.spacing &&
+            candidate.x < obstacle.x + obstacle.w + options.spacing &&
+            candidate.y > obstacle.y - options.spacing &&
+            candidate.y < obstacle.y + obstacle.h + options.spacing)
           return false;
-      return llvm::none_of(taken, [&](Point other) {
-        return std::abs(other.x - candidate.x) < 8 ||
-               std::abs(other.y - candidate.y) < 8;
-      });
+      double gap = options.spacing + 2;
+      return llvm::none_of(
+                 rowTaken[row],
+                 [&](double y) { return std::abs(y - candidate.y) < gap; }) &&
+             llvm::none_of(columnTaken[col], [&](double x) {
+               return std::abs(x - candidate.x) < gap;
+             });
     };
     for (const auto &[unused, index, step, ideal] : list) {
       Point chosen = ideal;
@@ -2087,7 +2105,8 @@ Error Renderer::routeEdges() {
             chosen = {x, y};
           }
         }
-      taken.push_back(chosen);
+      rowTaken[row].push_back(chosen.y);
+      columnTaken[col].push_back(chosen.x);
       checkpoints[index][step] = {chosen.x, chosen.y};
     }
   }
@@ -2095,7 +2114,7 @@ Error Renderer::routeEdges() {
     request.checkpoints = std::move(points);
 
   Expected<std::vector<std::vector<routing::Point>>> routed =
-      routing::routeOrthogonal(obstacles, requests);
+      routing::routeOrthogonal(obstacles, requests, options.spacing);
   if (!routed)
     return routed.takeError();
   for (auto [plan, route, request] : zip_equal(plans, *routed, requests)) {
