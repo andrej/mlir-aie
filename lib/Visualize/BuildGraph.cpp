@@ -611,6 +611,8 @@ void GraphBuilder::collectBuffers() {
     created.detail = formatv("({0},{1}) buffer {2} : {3}", tile->first,
                              tile->second, created.label, type);
     created.bytes = memrefBytes(buffer.getType());
+    // Its data then arrives with the configuration, not at run time.
+    created.initialized = bool(buffer.getInitialValue());
     created.sources = sourcesOf(buffer);
     bufferIDs[buffer] = id;
   }
@@ -985,30 +987,38 @@ void GraphBuilder::collectCalls() {
       continue;
     auto [col, row] = *tile;
 
-    // Which objectFIFOs this core produces into and consumes from, by the
-    // locks it acquires.
-    std::set<std::string> produces, consumes;
-    core.walk([&](AIE::UseLockOp useLock) {
-      if (!useLock.acquire() && !useLock.acquireGE())
+    // A call writes an objectFIFO's buffer if the lock of that FIFO it
+    // acquired last is the producer lock, and reads it if it is the consumer
+    // lock. One core can be both ends of a FIFO, so this is decided per call,
+    // in program order.
+    std::vector<std::tuple<Operation *, std::string, bool>> acquires;
+    std::map<Operation *, size_t> position;
+    core.walk<WalkOrder::PreOrder>([&](Operation *op) {
+      position[op] = position.size();
+      auto useLock = dyn_cast<AIE::UseLockOp>(op);
+      if (!useLock || (!useLock.acquire() && !useLock.acquireGE()))
         return;
       auto lock = useLock.getLock().getDefiningOp<AIE::LockOp>();
       SmallVector<StringRef> match;
-      if (!lock || !lock.hasName() ||
-          !lockRole.match(lock.name().getValue(), &match))
-        return;
-      (match[2] == "prod" ? produces : consumes).insert(match[1].str());
+      if (lock && lock.hasName() &&
+          lockRole.match(lock.name().getValue(), &match))
+        acquires.emplace_back(op, match[1].str(), match[2] == "prod");
     });
-    auto writes = [&](AIE::BufferOp buffer) {
+    auto writes = [&](AIE::BufferOp buffer, Operation *call) {
       if (buffersDrainedByDMA.count(buffer))
         return true;
       if (buffersFilledByDMA.count(buffer))
         return false;
       SmallVector<StringRef> match;
-      if (buffer.hasName() &&
-          bufferStem.match(buffer.name().getValue(), &match))
-        return produces.count(match[1].str()) &&
-               !consumes.count(match[1].str());
-      return false;
+      if (!buffer.hasName() ||
+          !bufferStem.match(buffer.name().getValue(), &match))
+        return false;
+      std::optional<bool> producing;
+      size_t before = position.count(call) ? position[call] : position.size();
+      for (const auto &[op, stem, producer] : acquires)
+        if (stem == match[1] && position[op] < before)
+          producing = producer;
+      return producing.value_or(false);
     };
 
     std::vector<std::pair<Operation *, std::string>> calls;
@@ -1051,8 +1061,8 @@ void GraphBuilder::collectCalls() {
         for (AIE::BufferOp buffer : traceBuffers(operand)) {
           if (!bufferIDs.count(buffer) || !seen.insert(buffer).second)
             continue;
-          Edge &access = writes(buffer) ? edge(id, bufferIDs[buffer])
-                                        : edge(bufferIDs[buffer], id);
+          Edge &access = writes(buffer, op) ? edge(id, bufferIDs[buffer])
+                                            : edge(bufferIDs[buffer], id);
           access.bytes = std::max(access.bytes, memrefBytes(buffer.getType()));
           mergeSources(access.sources, sourcesOf(op));
         }

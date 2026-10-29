@@ -28,6 +28,8 @@ def main():
         if visible_only and node.get("hidden"):
             continue
         line = f"node {node['id']} {node['kind']} \"{node['label']}\""
+        if node.get("initialized"):
+            line += " initialized"
         if node.get("hidden"):
             line += " hidden"
         if node.get("members"):

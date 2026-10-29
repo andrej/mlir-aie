@@ -72,6 +72,9 @@ struct Node {
   std::string direction;
   /// Buffer size, or bytes a DMA channel or argument moves per run.
   uint64_t bytes = 0;
+  /// A buffer the configuration loads with an initial value, such as
+  /// weights.
+  bool initialized = false;
   /// Contracted away in this view. Hidden nodes stay listed so that a
   /// contracted edge can say which ones it passes through.
   bool hidden = false;

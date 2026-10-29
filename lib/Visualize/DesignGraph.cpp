@@ -66,6 +66,8 @@ json::Value xilinx::AIE::viz::toJSON(const Graph &graph) {
       object["direction"] = node.direction;
     if (node.bytes)
       object["bytes"] = static_cast<int64_t>(node.bytes);
+    if (node.initialized)
+      object["initialized"] = true;
     if (node.hidden)
       object["hidden"] = true;
     if (!node.members.empty())
@@ -221,6 +223,7 @@ Expected<Graph> xilinx::AIE::viz::graphFromJSON(const json::Value &value) {
     node.direction = object->getString("direction").value_or("").str();
     node.bytes = object->getInteger("bytes").value_or(0);
     node.hidden = object->getBoolean("hidden").value_or(false);
+    node.initialized = object->getBoolean("initialized").value_or(false);
     if (const json::Array *members = object->getArray("members"))
       for (const json::Value &member : *members)
         if (std::optional<StringRef> id = member.getAsString())

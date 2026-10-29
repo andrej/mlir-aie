@@ -208,6 +208,7 @@ constexpr const char *kPalette[] = {"#2f6db3", "#e0731b", "#2e9a46", "#cf3a3c",
                                     "#7d58b8", "#16969e", "#b8860b", "#d4508e",
                                     "#8a5a3c", "#4d7f16", "#5465d6", "#b03a8a"};
 constexpr const char *kMixed = "#5f6368";
+constexpr const char *kInitializedFill = "#dbe7fb";
 
 class Renderer {
 public:
@@ -550,12 +551,28 @@ void Renderer::place() {
     double top = cell.content.y + kTitleHeight;
     double bottom = cell.laneBandTop;
     double gap = pitch - h;
-    std::vector<std::pair<double, std::string>> ordered;
+    // The members of a merged group sit next to each other, at the mean
+    // height of the group, so that the box drawn around them holds no other.
+    std::map<std::string, std::pair<double, unsigned>> groupTarget;
+    auto groupOf = [&](const std::string &id) {
+      const Node &node = *nodes.at(id);
+      return node.mergedInto.empty() ? id : node.mergedInto;
+    };
     for (const std::string &id : ids) {
       double target = meanY(id);
-      ordered.emplace_back(target < 0 ? top : target - boxHeight[id] / 2, id);
+      auto &[sum, count] = groupTarget[groupOf(id)];
+      sum += target < 0 ? top : target - boxHeight[id] / 2;
+      ++count;
     }
-    llvm::sort(ordered);
+    std::vector<std::tuple<double, std::string, std::string>> keys;
+    for (const std::string &id : ids) {
+      auto [sum, count] = groupTarget[groupOf(id)];
+      keys.emplace_back(sum / count, groupOf(id), id);
+    }
+    llvm::sort(keys);
+    std::vector<std::pair<double, std::string>> ordered;
+    for (const auto &[target, group, id] : keys)
+      ordered.emplace_back(target, id);
     std::vector<double> ys;
     for (auto [index, entry] : enumerate(ordered))
       ys.push_back(std::max(
@@ -1193,23 +1210,32 @@ Expected<std::string> Renderer::render() {
 
   // The legend says what the colors mean, in rows under the drawing.
   std::string legendSvg;
-  if (!legend.empty()) {
+  if (!legend.empty())
     legend.emplace_back(kMixed, "");
+  if (llvm::any_of(graph.nodes, [](const Node &node) {
+        return node.initialized && !node.hidden;
+      }))
+    legend.emplace_back(kInitializedFill, "\x01");
+  if (!legend.empty()) {
     double x = kMargin;
     double y = height - kMargin + 8;
     raw_string_ostream legendOs(legendSvg);
     legendOs << "<g class=\"legend\">\n";
     for (const auto &[color, label] : legend) {
-      std::string text = label.empty() ? "mixed sources" : "from " + label;
+      std::string text = label.empty()     ? "mixed sources"
+                         : label == "\x01" ? "buffer with an initial value"
+                                           : "from " + label;
       double entry = 26 + text.size() * kCharWidth * 1.1;
       if (x + entry > width - kMargin && x > kMargin) {
         x = kMargin;
         y += 16;
       }
-      legendOs << "<rect x=\"" << num(x) << "\" y=\"" << num(y - 6)
-               << "\" width=\"16\" height=\"4\" fill=\"" << color
-               << "\"/><text x=\"" << num(x + 20) << "\" y=\"" << num(y)
-               << "\">" << escape(text) << "</text>\n";
+      bool box = label == "\x01";
+      legendOs << "<rect x=\"" << num(x) << "\" y=\""
+               << num(box ? y - 9 : y - 6) << "\" width=\"16\" height=\""
+               << (box ? 10 : 4) << (box ? "\" stroke=\"#7d848c" : "")
+               << "\" fill=\"" << color << "\"/><text x=\"" << num(x + 20)
+               << "\" y=\"" << num(y) << "\">" << escape(text) << "</text>\n";
       x += entry + 12;
     }
     legendOs << "</g>\n";
@@ -1257,6 +1283,7 @@ Expected<std::string> Renderer::render() {
 .aie-view .node rect{stroke-width:1}
 .aie-view .node.dma rect{fill:#fff;stroke:#7d848c}
 .aie-view .node.buffer rect{fill:#fff;stroke:#7d848c}
+.aie-view .node.buffer.initialized rect{fill:#dbe7fb}
 .aie-view .node.call rect{fill:#fff7d6;stroke:#a08a3c}
 .aie-view .node.arg rect{fill:#fff;stroke:#555;stroke-width:1.3}
 .aie-view .node.unused{opacity:.45}
@@ -1537,6 +1564,10 @@ Expected<std::string> Renderer::render() {
     std::string classes = "node " + node.kind;
     if (!connected.count(node.id))
       classes += " unused";
+    if (node.initialized) {
+      classes += " initialized";
+      tip += "\nholds an initial value that the configuration loads";
+    }
     if (node.kind == kind::Port) {
       if (!cells.count(tileOf(node)))
         continue;
