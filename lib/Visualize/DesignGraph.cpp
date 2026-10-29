@@ -85,6 +85,8 @@ json::Value xilinx::AIE::viz::toJSON(const Graph &graph) {
         {"id", edge.id()}, {"source", edge.source}, {"target", edge.target}};
     if (!edge.flows.empty())
       object["flows"] = toArray(edge.flows);
+    if (edge.kernelAccess)
+      object["kernelAccess"] = true;
     if (!edge.packets.empty())
       object["packets"] = toArray(edge.packets);
     if (edge.bytes)
@@ -241,6 +243,7 @@ Expected<Graph> xilinx::AIE::viz::graphFromJSON(const json::Value &value) {
     edge.target = object->getString("target")->str();
     edge.flows = setFromJSON<unsigned>(*object, "flows");
     edge.packets = setFromJSON<unsigned>(*object, "packets");
+    edge.kernelAccess = object->getBoolean("kernelAccess").value_or(false);
     edge.bytes = object->getInteger("bytes").value_or(0);
     edge.sources = sourcesFromJSON(*object);
     if (const json::Array *segments = object->getArray("segments")) {
@@ -301,6 +304,7 @@ struct EdgeIndex {
     Edge &existing = entry->second;
     existing.flows.insert(edge.flows.begin(), edge.flows.end());
     existing.packets.insert(edge.packets.begin(), edge.packets.end());
+    existing.kernelAccess |= edge.kernelAccess;
     existing.bytes += edge.bytes;
     mergeSources(existing.sources, edge.sources);
     for (auto &segment : edge.segments)
@@ -437,6 +441,7 @@ Graph xilinx::AIE::viz::contract(const Graph &graph,
       spliced.flows.insert(second.flows.begin(), second.flows.end());
       spliced.packets = first.packets;
       spliced.packets.insert(second.packets.begin(), second.packets.end());
+      spliced.kernelAccess = first.kernelAccess || second.kernelAccess;
       // A chain moves no more than its narrowest link; a link that does not
       // say how much it moves does not narrow it.
       spliced.bytes = !first.bytes    ? second.bytes

@@ -95,6 +95,11 @@ struct Edge {
   /// Packet IDs crossing this edge. Empty for circuit-switched streams and
   /// for everything outside the stream network.
   std::set<unsigned> packets;
+  /// The edge runs between a kernel call and a buffer, directly or through
+  /// contracted nodes. A call to an external kernel does not state whether it
+  /// reads or writes a buffer; the direction is inferred from what the
+  /// buffer's DMA channels and locks do.
+  bool kernelAccess = false;
   /// Bytes moved per run of the design, if the IR says.
   uint64_t bytes = 0;
   SourceLines sources;

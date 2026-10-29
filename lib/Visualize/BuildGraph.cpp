@@ -1086,6 +1086,7 @@ void GraphBuilder::collectCalls() {
           Edge &access = writes(buffer, op) ? edge(id, bufferIDs[buffer])
                                             : edge(bufferIDs[buffer], id);
           access.bytes = std::max(access.bytes, memrefBytes(buffer.getType()));
+          access.kernelAccess = true;
           mergeSources(access.sources, sourcesOf(op));
         }
     }

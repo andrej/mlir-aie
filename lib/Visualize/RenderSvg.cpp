@@ -232,6 +232,8 @@ private:
   };
 
   void index();
+  void assignRoles();
+  std::string tileTitle(const TileInfo &tile) const;
   void layout();
   void measure();
   void assignTracks();
@@ -284,6 +286,10 @@ private:
   std::map<std::pair<int, int>, std::vector<std::string>> callsByTile;
   std::map<std::pair<int, int>, std::vector<std::string>> dmasByTile;
   std::map<std::string, Box> boxes;
+  /// Each tile that shares its set of kernels with others: its letter and
+  /// fill.
+  std::map<std::pair<int, int>, std::pair<std::string, std::string>> roles;
+  std::vector<std::pair<std::string, std::string>> roleLegend;
   /// Routes of edges that do not follow their physical path, by edge ID.
   std::map<std::string, std::vector<Point>> routes;
   std::vector<Plan> plans;
@@ -337,6 +343,53 @@ private:
            tileOf(a) != tileOf(b);
   }
 };
+
+std::string Renderer::tileTitle(const TileInfo &tile) const {
+  std::string title = formatv("({0},{1}) {2}", tile.col, tile.row,
+                              tile.type == "core" ? "compute" : tile.type);
+  if (auto role = roles.find({tile.col, tile.row}); role != roles.end())
+    title += " · " + role->second.first;
+  return title;
+}
+
+/// Tiles that run the same set of kernels are likely doing the same job on
+/// different data. Each such set, if more than one tile runs it, gets a
+/// letter and a fill; a tile whose set is its own keeps the plain fill.
+void Renderer::assignRoles() {
+  static constexpr const char *fills[] = {
+      "#cfe3f7", "#ffdfd3", "#d6efd6", "#ebdcf5", "#ffeec2",
+      "#ccebe8", "#f6d9e6", "#e3e6c9", "#dcdcf0", "#f1e3d3"};
+  std::map<std::pair<int, int>, std::set<std::string>> kernels;
+  for (const Node &node : graph.nodes)
+    if (node.kind == kind::Call && node.hasTile())
+      kernels[tileOf(node)].insert(node.label);
+  std::map<std::set<std::string>, std::vector<std::pair<int, int>>> groups;
+  for (const auto &[tile, set] : kernels)
+    groups[set].push_back(tile);
+  std::vector<
+      std::pair<std::set<std::string>, std::vector<std::pair<int, int>>>>
+      ordered(groups.begin(), groups.end());
+  llvm::stable_sort(ordered, [](const auto &a, const auto &b) {
+    return a.second.size() > b.second.size();
+  });
+  unsigned next = 0;
+  for (const auto &[set, tiles] : ordered) {
+    if (tiles.size() < 2)
+      continue;
+    std::string name(1, static_cast<char>('A' + next % 26));
+    if (next >= 26)
+      name += std::to_string(next / 26);
+    std::string fill = fills[next % std::size(fills)];
+    for (const auto &tile : tiles)
+      roles[tile] = {name, fill};
+    std::string list;
+    for (const std::string &kernel : set)
+      list += (list.empty() ? "" : ", ") + kernel;
+    roleLegend.emplace_back(fill,
+                            formatv("{0} ×{1}: {2}", name, tiles.size(), list));
+    ++next;
+  }
+}
 
 void Renderer::index() {
   for (const Node &node : graph.nodes)
@@ -1172,6 +1225,7 @@ void Renderer::assignTracks() {
 
 Expected<std::string> Renderer::render() {
   index();
+  assignRoles();
   if (compact() && options.routing == RenderOptions::Routing::Physical)
     return createStringError(inconvertibleErrorCode(),
                              "the compact layout has no physical paths to "
@@ -1216,21 +1270,33 @@ Expected<std::string> Renderer::render() {
         return node.initialized && !node.hidden;
       }))
     legend.emplace_back(kInitializedFill, "\x01");
+  if (llvm::any_of(graph.edges,
+                   [](const Edge &edge) { return edge.kernelAccess; }))
+    legend.emplace_back(kMixed, "\x02");
+  for (const auto &[fill, text] : roleLegend)
+    legend.emplace_back(fill, "\x03" + text);
   if (!legend.empty()) {
     double x = kMargin;
     double y = height - kMargin + 8;
     raw_string_ostream legendOs(legendSvg);
     legendOs << "<g class=\"legend\">\n";
     for (const auto &[color, label] : legend) {
-      std::string text = label.empty()     ? "mixed sources"
-                         : label == "\x01" ? "buffer with an initial value"
-                                           : "from " + label;
+      std::string text = label.empty()        ? "mixed sources"
+                         : label == "\x01"    ? "buffer with an initial value"
+                         : label[0] == '\x03' ? label.substr(1)
+                         : label == "\x02"
+                             ? "kernel accesses buffer (the IR does not say "
+                               "whether it reads or writes)"
+                             : "from " + label;
       double entry = 26 + text.size() * kCharWidth * 1.1;
       if (x + entry > width - kMargin && x > kMargin) {
         x = kMargin;
         y += 16;
       }
-      bool box = label == "\x01";
+      bool box = label == "\x01" || label[0] == '\x03';
+      if (label == "\x02")
+        legendOs << "<circle cx=\"" << num(x + 14) << "\" cy=\"" << num(y - 4)
+                 << "\" r=\"2.8\" fill=\"" << color << "\"/>";
       legendOs << "<rect x=\"" << num(x) << "\" y=\""
                << num(box ? y - 9 : y - 6) << "\" width=\"16\" height=\""
                << (box ? 10 : 4) << (box ? "\" stroke=\"#7d848c" : "")
@@ -1280,6 +1346,7 @@ Expected<std::string> Renderer::render() {
 .aie-view .lane-tick{stroke:#c8ccd2;stroke-width:1}
 .aie-view .edge path.line{fill:none;stroke-linecap:round;stroke-linejoin:round}
 .aie-view .edge path.hit{fill:none;stroke:transparent;stroke-width:9}
+.aie-view .edge circle.access{stroke:none}
 .aie-view .node rect{stroke-width:1}
 .aie-view .node.dma rect{fill:#fff;stroke:#7d848c}
 .aie-view .node.buffer rect{fill:#fff;stroke:#7d848c}
@@ -1309,13 +1376,16 @@ Expected<std::string> Renderer::render() {
   os << "<g class=\"tiles\">\n";
   for (const auto &[coordinates, cell] : cells) {
     const TileInfo &tile = *cell.tile;
+    auto role = roles.find(coordinates);
     os << "<rect class=\"tile " << tile.type << (tile.used ? "" : " unused")
        << "\" x=\"" << num(cell.content.x) << "\" y=\"" << num(cell.content.y)
        << "\" width=\"" << num(cell.content.w) << "\" height=\""
-       << num(cell.content.h) << "\" rx=\"6\"/>\n";
+       << num(cell.content.h) << "\" rx=\"6\""
+       << (role == roles.end() ? std::string()
+                               : " style=\"fill:" + role->second.second + "\"")
+       << "/>\n";
     os << "<text class=\"tile-title\" x=\"" << num(cell.content.x + 6)
-       << "\" y=\"" << num(cell.content.y + 13) << "\">(" << tile.col << ","
-       << tile.row << ") " << (tile.type == "core" ? "compute" : tile.type)
+       << "\" y=\"" << num(cell.content.y + 13) << "\">" << tileTitle(tile)
        << "</text>\n";
     // Lines routed through contracted switchboxes show where they are.
     bool ghost =
@@ -1379,10 +1449,30 @@ Expected<std::string> Renderer::render() {
                "\" d=\"" + d + "\"/>\n";
       hits += "<path class=\"hit\" d=\"" + d + "\"/>\n";
     };
+    // A kernel's access to a buffer ends in a dot at the kernel: the IR does
+    // not say whether the kernel reads or writes it.
+    auto accessDot = [&](Point point) {
+      heads += "<circle class=\"access\" cx=\"" + num(point.x) + "\" cy=\"" +
+               num(point.y) + "\" r=\"2.8\"/>\n";
+    };
+    auto isCall = [&](const std::string &id) {
+      return nodes.at(id)->kind == kind::Call;
+    };
+    auto isAccess = [&](const std::string &a, const std::string &b) {
+      return (isCall(a) && nodes.at(b)->kind == kind::Buffer) ||
+             (isCall(b) && nodes.at(a)->kind == kind::Buffer);
+    };
     if (auto routed = routes.find(edge.id()); routed != routes.end()) {
       const std::vector<Point> &points = routed->second;
       addPath(rounded(points));
-      if (points.size() > 1 && isVisible(edge.target) &&
+      bool atCall = edge.kernelAccess && isCall(edge.target);
+      bool fromCall = edge.kernelAccess && isCall(edge.source);
+      if (atCall)
+        accessDot(points.back());
+      if (fromCall)
+        accessDot(points.front());
+      if (points.size() > 1 && isVisible(edge.target) && !atCall &&
+          !(fromCall && nodes.at(edge.target)->kind == kind::Buffer) &&
           nodes.at(edge.target)->kind != kind::Port)
         heads += "<path class=\"head\" stroke=\"none\" d=\"" +
                  arrowhead(points.back(),
@@ -1408,6 +1498,10 @@ Expected<std::string> Renderer::render() {
     auto drawSegment = [&](const std::string &from, const std::string &to) {
       Stroke stroke = strokeFor(from, to);
       addPath(stroke.d);
+      if (isAccess(from, to)) {
+        accessDot(isCall(from) ? stroke.start : stroke.end);
+        return stroke;
+      }
       // Port markers and the mid-wire chevrons say which way a stream runs
       // through the switch network; arrowheads mark where it arrives.
       if (isVisible(to) && nodes.at(to)->kind != kind::Port)
@@ -1422,7 +1516,9 @@ Expected<std::string> Renderer::render() {
     using Way = std::pair<Point, Point>;
     struct Region {
       std::vector<Way> entries, exits;
-      std::vector<bool> exitIsDrawn;
+      /// How each exit ends: 0 at a contracted node, 1 with an arrowhead at
+      /// a box, 2 with a dot at a kernel.
+      std::vector<int> exitIsDrawn;
       /// Segments drawn only if the region is crossed on its physical path.
       std::vector<std::pair<std::string, std::string>> held;
     };
@@ -1443,6 +1539,8 @@ Expected<std::string> Renderer::render() {
         region.entries.push_back(
             {anchors.at({index, true}), {-side.x, -side.y}});
         region.held.push_back({from, to});
+        if (isCall(from))
+          accessDot(anchors.at({index, true}));
         continue;
       }
       if (fromHidden && drawnBox(to)) {
@@ -1450,7 +1548,7 @@ Expected<std::string> Renderer::render() {
         region.exits.push_back(
             {anchors.at({index, false}),
              inward(sideFacing(*nodes.at(to), *nodes.at(from)))});
-        region.exitIsDrawn.push_back(true);
+        region.exitIsDrawn.push_back(isCall(to) ? 2 : 1);
         region.held.push_back({from, to});
         continue;
       }
@@ -1461,11 +1559,11 @@ Expected<std::string> Renderer::render() {
       if (fromHidden) {
         Region &region = regions[tileOf(*nodes.at(from))];
         region.exits.push_back({stroke.start, stroke.startHeading});
-        region.exitIsDrawn.push_back(false);
+        region.exitIsDrawn.push_back(0);
       }
     }
     for (auto &[tile, region] : regions) {
-      std::vector<std::tuple<std::array<Point, 4>, bool>> curves;
+      std::vector<std::tuple<std::array<Point, 4>, int>> curves;
       bool clear = true;
       for (auto [out, drawn] : zip_equal(region.exits, region.exitIsDrawn))
         for (const auto &[from, fromHeading] : region.entries) {
@@ -1498,7 +1596,9 @@ Expected<std::string> Renderer::render() {
       if (clear) {
         for (const auto &[curve, drawn] : curves) {
           addPath(cubic(curve[0], curve[1], curve[2], curve[3]));
-          if (drawn)
+          if (drawn == 2)
+            accessDot(curve[3]);
+          else if (drawn == 1)
             heads += "<path class=\"head\" stroke=\"none\" d=\"" +
                      arrowhead(curve[3], unit(curve[2], curve[3])) + "\"/>\n";
         }
@@ -1729,8 +1829,7 @@ void Renderer::layoutCompact() {
   for (auto &[coordinates, cell] : cells) {
     Contents &tile = contents[coordinates];
     const TileInfo &info = *cell.tile;
-    std::string title = formatv("({0},{1}) {2}", info.col, info.row,
-                                info.type == "core" ? "compute" : info.type);
+    std::string title = tileTitle(info);
     double width = 0, height = 0;
     for (int column = 0; column < 3; ++column) {
       if (tile.columns[column].empty())
@@ -1958,8 +2057,7 @@ Error Renderer::routeEdges() {
   double right = 0, bottom = 0;
   for (const auto &[coordinates, cell] : cells) {
     const TileInfo &tile = *cell.tile;
-    std::string title = formatv("({0},{1}) {2}", tile.col, tile.row,
-                                tile.type == "core" ? "compute" : tile.type);
+    std::string title = tileTitle(tile);
     obstacles.push_back({cell.content.x + 4, cell.content.y + 3,
                          title.size() * kCharWidth * 1.05, 13});
     left = std::min(left, cell.cell.x);
