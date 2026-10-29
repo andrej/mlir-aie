@@ -872,6 +872,28 @@ LogicalResult GraphBuilder::collectStreams() {
     Edge &wire = edge(from, to);
     wire.packets.insert(portPackets[from].begin(), portPackets[from].end());
   }
+
+  // A switchbox's DMA ports and the channels behind them are joined whatever
+  // reaches them. A packet rule can route a stream's last hop, and no flow
+  // then states the step into the channel.
+  std::vector<const Node *> dmaPorts;
+  for (const Node &candidate : graph.nodes)
+    if (candidate.kind == kind::Port && candidate.bundle == "DMA")
+      dmaPorts.push_back(&candidate);
+  std::vector<std::tuple<std::string, std::string, std::string>> joins;
+  for (const Node *port : dmaPorts) {
+    bool out = port->direction == "out";
+    std::string channel =
+        dmaID(port->col, port->row,
+              out ? AIE::DMAChannelDir::S2MM : AIE::DMAChannelDir::MM2S,
+              port->channel);
+    if (nodeIndex.count(channel))
+      joins.emplace_back(out ? port->id : channel, out ? channel : port->id,
+                         port->id);
+  }
+  for (const auto &[from, to, port] : joins)
+    edge(from, to).packets.insert(portPackets[port].begin(),
+                                  portPackets[port].end());
   return success();
 }
 
