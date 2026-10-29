@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
+import importlib.util
 import os
 import shutil
 import sys
@@ -55,6 +56,7 @@ llvm_config.with_system_environment(
         "ROCM_PATH",
         "IRON_HSA_DEVICE",
         "IRON_HSA_TIMEOUT",
+        "PLAYWRIGHT_BROWSERS_PATH",
     ]
 )
 
@@ -210,6 +212,15 @@ tools = [
 
 if os.name != "nt":
     tools.extend(["txn2mlir.py"])
+
+# Built only when AIE_BUILD_VISUALIZE is on.
+if shutil.which("aie-visualize", path=config.aie_tools_dir):
+    config.available_features.add("aie-visualize")
+    tools.append("aie-visualize")
+
+# Drives the aie-visualize viewer in a headless browser.
+if importlib.util.find_spec("playwright"):
+    config.available_features.add("playwright")
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
 

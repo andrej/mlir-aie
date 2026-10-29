@@ -1,0 +1,34 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// REQUIRES: aie-visualize
+// RUN: aie-visualize %S/Inputs/contraction.json --contract=port,dma,buffer -o %t.json
+// RUN: %PYTHON %S/Inputs/summarize-graph.py %t.json --sources | FileCheck %s
+
+// Interchangeable buffers (a ping-pong pair: same tile, same neighbors) merge
+// into one node, which then only passes the stream through and is spliced out
+// with the DMA channel feeding it. The broadcast stays where it splits. A
+// buffer the kernel reads back what it wrote stays, since splicing it would
+// leave the kernel feeding itself. An unused channel is hidden.
+
+// CHECK:      node acc buffer "acc"{{$}}
+// CHECK-NEXT: node arg:0 arg "%in"
+// CHECK-NEXT: node arg:1 arg "%out"
+// CHECK-NEXT: node dma:0,0:MM2S0 dma "MM2S0" hidden
+// CHECK-NEXT: node dma:0,2:MM2S0 dma "MM2S0" hidden
+// CHECK-NEXT: node dma:0,2:MM2S1 dma "MM2S1" hidden
+// CHECK-NEXT: node dma:0,2:S2MM0 dma "S2MM0" hidden
+// CHECK-NEXT: node dma:0,3:S2MM0 dma "S2MM0" hidden
+// CHECK-NEXT: node kernel call "kernel"
+// CHECK-NEXT: node other call "other"
+// CHECK-NEXT: node ping_0 buffer "ping_{0,1}" hidden members=ping_0,ping_1 sources=design.mlir:10,11
+// CHECK-NEXT: node ping_1 buffer "ping_1" hidden
+// CHECK-NEXT: node result buffer "result" hidden
+// CHECK-NEXT: node split port "S1"
+// CHECK-NEXT: edge acc->kernel bytes=16{{$}}
+// CHECK-NEXT: edge arg:0->split bytes=64 segments=2
+// CHECK-NEXT: edge kernel->acc bytes=16{{$}}
+// CHECK-NEXT: edge kernel->arg:1 bytes=64 segments=3{{$}}
+// CHECK-NEXT: edge split->kernel bytes=64 segments=5 sources=design.mlir:10,11
+// CHECK-NEXT: edge split->other bytes=64 segments=2
+// CHECK-NOT:  {{.}}

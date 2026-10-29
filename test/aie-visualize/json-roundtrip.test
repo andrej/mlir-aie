@@ -1,0 +1,16 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// The JSON graph is the whole interface between reading a design and drawing
+// it: reading it back and writing it again changes nothing, and drawing from
+// it draws what drawing from the design does.
+
+// REQUIRES: aie-visualize
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: aiecc --no-progress --get=input_physical.mlir --output-dir=%t %S/Inputs/broadcast.mlir
+// RUN: aie-visualize %t/input_physical.mlir -o %t/graph.json
+// RUN: aie-visualize %t/graph.json -o %t/again.json
+// RUN: diff %t/graph.json %t/again.json
+// RUN: aie-visualize %t/input_physical.mlir --view=topology -o %t/direct.svg
+// RUN: aie-visualize %t/graph.json --view=topology -o %t/from-json.svg
+// RUN: diff %t/direct.svg %t/from-json.svg

@@ -32,6 +32,7 @@ target_link_libraries(aie-visualize
   AIE
   AIETransforms
   AIETargets
+  AIEVisualize
   AIEX
   AIEXTransforms
   MLIRAIEVecDialect

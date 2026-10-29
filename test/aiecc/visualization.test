@@ -1,0 +1,20 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// aiecc draws the routed design into one self-contained viewer, before any
+// core is compiled.
+
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: aiecc --no-progress --get-visualization --output-dir=%t %S/../aie-visualize/Inputs/broadcast.mlir
+// RUN: FileCheck %s --input-file=%t/visualization.html
+// RUN: not ls %t/*.elf
+
+// CHECK: <title>AIE design</title>
+// CHECK-NOT: <!--AIE_VIZ_SVGS-->
+// CHECK: <div class="view"><svg {{.*}}data-view="broadcast.mlir — Topology">
+// CHECK: <div class="view"><svg {{.*}}data-view="broadcast.mlir — Buffers">
+// CHECK: <div class="view"><svg {{.*}}data-view="broadcast.mlir — Physical">
+// CHECK: <script type="application/json" id="aie-data">{
+// CHECK-SAME: "input_physical.mlir":
+// CHECK-SAME: "name":"Topology"
+// CHECK-NOT: /*AIE_VIZ_DATA*/

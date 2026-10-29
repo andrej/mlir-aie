@@ -1,0 +1,43 @@
+{
+  "format": "aie-design-graph",
+  "version": 1,
+  "device": "rules",
+  "target": "npu1_1col",
+  "tiles": [],
+  "nodes": [
+    {"id": "arg:0", "kind": "arg", "label": "%in"},
+    {"id": "arg:1", "kind": "arg", "label": "%out"},
+    {"id": "dma:0,0:MM2S0", "kind": "dma", "label": "MM2S0", "tile": [0, 0]},
+    {"id": "split", "kind": "port", "label": "S1", "tile": [0, 2]},
+    {"id": "dma:0,2:S2MM0", "kind": "dma", "label": "S2MM0", "tile": [0, 2]},
+    {"id": "ping_0", "kind": "buffer", "label": "ping_0", "tile": [0, 2],
+     "sources": [{"file": "design.mlir", "lines": [10]}]},
+    {"id": "ping_1", "kind": "buffer", "label": "ping_1", "tile": [0, 2],
+     "sources": [{"file": "design.mlir", "lines": [11]}]},
+    {"id": "acc", "kind": "buffer", "label": "acc", "tile": [0, 2]},
+    {"id": "kernel", "kind": "call", "label": "kernel", "tile": [0, 2]},
+    {"id": "result", "kind": "buffer", "label": "result", "tile": [0, 2]},
+    {"id": "dma:0,2:MM2S0", "kind": "dma", "label": "MM2S0", "tile": [0, 2]},
+    {"id": "dma:0,2:MM2S1", "kind": "dma", "label": "MM2S1", "tile": [0, 2]},
+    {"id": "dma:0,3:S2MM0", "kind": "dma", "label": "S2MM0", "tile": [0, 3]},
+    {"id": "other", "kind": "call", "label": "other", "tile": [0, 3]}
+  ],
+  "edges": [
+    {"source": "arg:0", "target": "dma:0,0:MM2S0", "bytes": 64},
+    {"source": "dma:0,0:MM2S0", "target": "split", "bytes": 64},
+    {"source": "split", "target": "dma:0,2:S2MM0", "bytes": 64},
+    {"source": "split", "target": "dma:0,3:S2MM0", "bytes": 64},
+    {"source": "dma:0,3:S2MM0", "target": "other", "bytes": 64},
+    {"source": "dma:0,2:S2MM0", "target": "ping_0", "bytes": 32},
+    {"source": "dma:0,2:S2MM0", "target": "ping_1", "bytes": 32},
+    {"source": "ping_0", "target": "kernel", "bytes": 32},
+    {"source": "ping_1", "target": "kernel", "bytes": 32},
+    {"source": "kernel", "target": "acc", "bytes": 16},
+    {"source": "acc", "target": "kernel", "bytes": 16},
+    {"source": "kernel", "target": "result", "bytes": 64},
+    {"source": "result", "target": "dma:0,2:MM2S0", "bytes": 64},
+    {"source": "dma:0,2:MM2S0", "target": "arg:1", "bytes": 64}
+  ],
+  "flows": [],
+  "files": {}
+}

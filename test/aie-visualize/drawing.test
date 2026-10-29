@@ -1,0 +1,24 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// Every view can be read: each edge is one connected line from its source to
+// its target with an arrowhead where it arrives, runs along no other edge,
+// and crosses no box it does not connect.
+
+// REQUIRES: aie-visualize
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: aiecc --no-progress --get=input_physical.mlir --output-dir=%t %S/Inputs/broadcast.mlir
+// RUN: aie-visualize %t/input_physical.mlir -o %t/graph.json
+// RUN: aie-visualize %t/graph.json --view=topology -o %t/topology.svg
+// RUN: aie-visualize %t/graph.json --view=topology -o %t/topology.json
+// RUN: %PYTHON %S/Inputs/check-drawing.py %t/topology.svg %t/topology.json | FileCheck %s
+// RUN: aie-visualize %t/graph.json --view=buffers -o %t/buffers.svg
+// RUN: aie-visualize %t/graph.json --view=buffers -o %t/buffers.json
+// RUN: %PYTHON %S/Inputs/check-drawing.py %t/buffers.svg %t/buffers.json | FileCheck %s
+// RUN: aie-visualize %t/graph.json --view=physical -o %t/physical.svg
+// RUN: %PYTHON %S/Inputs/check-drawing.py %t/physical.svg %t/graph.json | FileCheck %s
+// RUN: aie-visualize %t/graph.json --view=physical --weigh-edges -o %t/weighted.svg
+// RUN: %PYTHON %S/Inputs/check-drawing.py %t/weighted.svg %t/graph.json | FileCheck %s
+
+// CHECK: problems: 0
+// CHECK-NOT: {{.}}

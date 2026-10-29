@@ -1,0 +1,47 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// REQUIRES: aie-visualize
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: aiecc --no-progress --get=input_physical.mlir --output-dir=%t %S/Inputs/broadcast.mlir
+// RUN: aie-visualize %t/input_physical.mlir -o %t/graph.json
+// RUN: %PYTHON %S/Inputs/summarize-graph.py %t/graph.json --sources | FileCheck %s --check-prefix=FULL
+// RUN: aie-visualize %t/graph.json --view=topology -o %t/topology.json
+// RUN: %PYTHON %S/Inputs/summarize-graph.py %t/topology.json --visible | FileCheck %s --check-prefix=TOPO
+
+// The full graph: every element points at the line of the design it comes
+// from, and at the ops that implement it in the IR the tool read.
+
+// FULL-DAG: node arg:0 arg "%arg0" sources=broadcast.mlir:41;input_physical.mlir (as read):{{[0-9]+}}
+// FULL-DAG: node call:0,2#0 call "scale" sources=broadcast.mlir:22;input_physical.mlir (as read):{{[0-9]+$}}
+// FULL-DAG: node call:0,3#0 call "scale" sources=broadcast.mlir:35;
+// A DMA channel stands for its whole program: start, locks and descriptors.
+// FULL-DAG: node dma:0,2:S2MM0 dma "S2MM0" sources=broadcast.mlir:11;input_physical.mlir (as read):{{([0-9]+,){8}[0-9]+$}}
+// FULL-DAG: node dma:0,2:S2MM1 dma "S2MM1"{{$}}
+// Kernels read and write both objects of each objectFIFO.
+// FULL-DAG: edge buffer:in_l1_0_cons_buff_0->call:0,2#0 bytes=64
+// FULL-DAG: edge buffer:in_l1_0_cons_buff_1->call:0,2#0 bytes=64
+// FULL-DAG: edge call:0,2#0->buffer:out_a_buff_0 bytes=64
+// FULL-DAG: edge call:0,2#0->buffer:out_a_buff_1 bytes=64
+// FULL-DAG: edge arg:0->dma:0,0:MM2S0 bytes=64 sources=broadcast.mlir:42,46;
+// An output transfer points at its task, descriptor, start and await.
+// FULL-DAG: edge dma:0,0:S2MM{{[01]}}->arg:1 bytes=64 sources=broadcast.mlir:47,51,57;
+// FULL-DAG: edge dma:0,0:S2MM{{[01]}}->arg:1 bytes=64 sources=broadcast.mlir:52,56,58;
+// A switchbox connection points at its aie.connect and aie.switchbox.
+// FULL-DAG: edge port:0,2:in:{{[A-Za-z]+[0-9]}}->port:0,2:out:DMA0 bytes=128 sources=broadcast.mlir:{{[0-9,]+}};input_physical.mlir (as read):{{[0-9]+,[0-9]+$}}
+
+// The topology: the input arrives, splits where the switch network
+// broadcasts it, reaches both kernels, and both results return. The memtile,
+// DMA channels and ping-pong buffers pass it through and are contracted.
+
+// TOPO:      node arg:0 arg "%arg0"
+// TOPO-NEXT: node arg:1 arg "%arg1"
+// TOPO-NEXT: node call:0,2#0 call "scale"
+// TOPO-NEXT: node call:0,3#0 call "scale"
+// TOPO-NEXT: node [[SPLIT:port:0,[0-9]:in:[A-Za-z]+[0-9]]] port
+// TOPO-NEXT: edge arg:0->[[SPLIT]] bytes=64 segments=
+// TOPO-NEXT: edge call:0,2#0->arg:1 bytes=64 segments=
+// TOPO-NEXT: edge call:0,3#0->arg:1 bytes=64 segments=
+// TOPO-NEXT: edge [[SPLIT]]->call:0,2#0
+// TOPO-NEXT: edge [[SPLIT]]->call:0,3#0 {{.*$}}
+// TOPO-NOT:  {{.}}

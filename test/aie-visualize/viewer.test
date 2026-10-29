@@ -1,0 +1,22 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// Uses the viewer as a reader would: hovering, choosing, tracing upstream and
+// downstream, finding source lines.
+
+// REQUIRES: aie-visualize, playwright
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: aiecc --no-progress --get=input_physical.mlir --output-dir=%t %S/Inputs/broadcast.mlir
+// RUN: aie-visualize %t/input_physical.mlir -o %t/view.html
+// RUN: %PYTHON %S/Inputs/check-viewer.py %t/view.html | FileCheck %s
+
+// CHECK: views: Topology Buffers Physical
+// CHECK: dimmed at rest: false
+// Nothing feeds a runtime input, so tracing upstream finds only itself.
+// CHECK: upstream of %arg0: edges 0
+// CHECK: downstream of %arg0: calls 2
+// CHECK: upstream of %arg1: calls 2
+// CHECK: kernel call sources: broadcast.mlir:22
+// CHECK: DMA channel program lines: {{[1-9][0-9]*}}
+// CHECK: widths at rest: 1.40
+// CHECK: page errors: 0

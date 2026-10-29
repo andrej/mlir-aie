@@ -49,6 +49,7 @@
 #include "aie/InitialAllDialect.h"
 #include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
 #include "aie/Targets/AIETargetShared.h"
+#include "aie/Visualize/AIEVisualize.h"
 
 #include "mlir/IR/AsmState.h"
 #include "mlir/IR/Diagnostics.h"
@@ -1034,6 +1035,36 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
 
   auto &routed = withSymbols.map<ModRef>(
       "input_physical.mlir", PassPipeline{getRoutingPipeline(&context)});
+
+  // The routed design's dataflow, drawn, in a viewer that needs only a
+  // browser. It reads the design before any core is compiled.
+  auto &visualization = routed.map<std::string>(
+      "visualization.html",
+      [inputFile](const Item<ModRef> &in,
+                  Item<std::string> &out) -> mlir::LogicalResult {
+        mlir::ModuleOp mod = in.get().get();
+        auto devices = llvm::to_vector(mod.getOps<DeviceOp>());
+        std::vector<std::pair<std::string, xilinx::AIE::viz::Graph>> views;
+        for (DeviceOp device : devices) {
+          xilinx::AIE::VisualizeOptions options;
+          options.deviceName = device.getSymName().str();
+          options.sourceDirectory =
+              llvm::sys::path::parent_path(inputFile).str();
+          options.irName = "input_physical.mlir";
+          mlir::FailureOr<xilinx::AIE::viz::Graph> graph =
+              xilinx::AIE::buildDesignGraph(mod, options);
+          if (mlir::failed(graph))
+            return mlir::failure();
+          for (auto &[name, view] : xilinx::AIE::standardViews(*graph))
+            views.emplace_back(devices.size() > 1
+                                   ? device.getSymName().str() + ": " + name
+                                   : name,
+                               std::move(view));
+        }
+        out.value = xilinx::AIE::viz::renderHtml(
+            views, llvm::sys::path::filename(inputFile));
+        return mlir::success();
+      });
 
   // The device cache's key and every compile or link of a core read the files
   // the cores link; all of them are downstream of this view.
@@ -2534,16 +2565,19 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   if (generateScratchpadParams) {
     outputs.push_back(&paramsFile);
   }
+  if (generateVisualization) {
+    outputs.push_back(&visualization);
+  }
 
   // Core-ELF output: emit the per-core ELFs when --get-core-elfs is
   // passed, or as the default when no other artifact was requested (so a bare
   // `aiecc design.mlir` builds every device's cores up front).
   bool anySpecificOutput =
       generateInputWithAddresses || generateInputWithSymbols ||
-      generateScratchpadParams || generateNpuInsts || generateNpuCpp ||
-      keepLoc || generateElf || generateCdo || generatePdi || generateTxn ||
-      generateCtrlpkt || generateXclbin || generateFullElf || wantAiesim ||
-      doCompileHost || !getOutputs.empty() || !cutOutputs.empty();
+      generateScratchpadParams || generateVisualization || generateNpuInsts ||
+      generateNpuCpp || keepLoc || generateElf || generateCdo || generatePdi ||
+      generateTxn || generateCtrlpkt || generateXclbin || generateFullElf ||
+      wantAiesim || doCompileHost || !getOutputs.empty() || !cutOutputs.empty();
   // Every other artifact depends on the post-link checks through
   // physicalWithElfs. A core-ELF build ends before that edge, so run the
   // checks too, without writing the module they check.

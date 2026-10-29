@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<!-- Copyright (C) 2026 Advanced Micro Devices, Inc. -->
+<!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AIE design</title>
+<style>
+  :root { --panel: 380px; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font: 13px system-ui, sans-serif; color: #222; }
+  body { display: grid; grid-template-rows: auto 1fr; }
+  header { display: flex; gap: 14px; align-items: center; padding: 6px 10px;
+           border-bottom: 1px solid #ddd; background: #f7f7f8; flex-wrap: wrap; }
+  header h1 { font-size: 14px; margin: 0 8px 0 0; }
+  .tabs button { border: 1px solid #bbb; background: #fff; padding: 3px 10px; cursor: pointer; }
+  .tabs button:first-child { border-radius: 4px 0 0 4px; }
+  .tabs button:last-child { border-radius: 0 4px 4px 0; }
+  .tabs button + button { border-left: none; }
+  .tabs button.active { background: #2f6db3; color: #fff; border-color: #2f6db3; }
+  header label { white-space: nowrap; }
+  main { display: grid; grid-template-columns: 1fr var(--panel); min-height: 0; }
+  main.collapsed { grid-template-columns: 1fr 0; }
+  #canvas { position: relative; overflow: hidden; background: #fff; cursor: grab; }
+  #canvas.dragging { cursor: grabbing; }
+  #canvas > .view { position: absolute; inset: 0; display: none; }
+  #canvas > .view.active { display: block; }
+  #canvas svg { width: 100%; height: 100%; }
+  aside { border-left: 1px solid #ddd; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  aside section { border-bottom: 1px solid #e3e3e3; padding: 8px 10px; }
+  aside h2 { font-size: 12px; text-transform: uppercase; color: #666; margin: 0 0 6px; }
+  #details { max-height: 32%; overflow: auto; }
+  #details .kind { color: #666; }
+  #details .detail { color: #444; margin: 2px 0 6px; white-space: pre-wrap; }
+  #details ul { margin: 4px 0; padding-left: 18px; }
+  #lists { max-height: 24%; overflow: auto; }
+  #lists details { margin-bottom: 4px; }
+  #lists summary { cursor: pointer; color: #444; }
+  #lists ul { list-style: none; margin: 4px 0; padding: 0; }
+  #lists li { cursor: pointer; padding: 1px 4px; border-radius: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #lists li:hover, #lists li.selected { background: #e6eefa; }
+  #lists .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 5px; border-radius: 2px; vertical-align: -1px; }
+  #source { flex: 1; display: flex; flex-direction: column; min-height: 0; padding-bottom: 0; }
+  #source .files { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 4px; }
+  #source .files button { font-size: 11px; border: 1px solid #ccc; background: #fff; border-radius: 3px; cursor: pointer; }
+  #source .files button.active { background: #2f6db3; color: #fff; border-color: #2f6db3; }
+  #code { flex: 1; overflow: auto; font: 11px ui-monospace, Menlo, Consolas, monospace; background: #fbfbfb; border: 1px solid #eee; }
+  #code .line { white-space: pre; padding-right: 8px; }
+  #code .line .n { display: inline-block; width: 4.5em; color: #aaa; text-align: right; padding-right: 8px; user-select: none; }
+  #code .line.hit { background: #fff1b8; }
+  #code .empty { color: #888; padding: 8px; font-family: system-ui, sans-serif; }
+  #toggle-panel { margin-left: auto; }
+  /* Highlighting. Nothing is dimmed until something is hovered or chosen. */
+  svg.focus .edge:not(.hl) { opacity: 0.1; }
+  svg.focus .node:not(.hl) { opacity: 0.3; }
+  svg.focus .edge.hl path.line { stroke-width: 2.6px; }
+  svg .edge.chosen path.line { stroke-width: 3.2px; }
+  svg .node.chosen rect { stroke: #000; stroke-width: 2px; }
+  svg .edge, svg .node { cursor: pointer; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title"></h1>
+  <div class="tabs" id="tabs"></div>
+  <label title="Highlight what feeds the hovered or chosen element"><input type="checkbox" id="upstream" checked> upstream</label>
+  <label title="Highlight where the hovered or chosen element's data goes"><input type="checkbox" id="downstream" checked> downstream</label>
+  <label title="Scale line width by bytes moved per run"><input type="checkbox" id="weights"> line weight</label>
+  <label title="Show the source lines of everything highlighted, not only of the element itself"><input type="checkbox" id="path-sources"> sources of whole path</label>
+  <button id="fit">Fit</button>
+  <button id="toggle-panel">Panel</button>
+</header>
+<main id="main">
+  <div id="canvas"><!--AIE_VIZ_SVGS--></div>
+  <aside>
+    <section id="details"><h2>Selection</h2><div id="details-body">Hover over or click on anything in the drawing. Click empty space or press Esc to clear.</div></section>
+    <section id="lists"><h2>Find</h2><div id="lists-body"></div></section>
+    <section id="source"><h2>Source</h2><div class="files" id="files"></div><div id="code"><div class="empty">No source lines for this element.</div></div></section>
+  </aside>
+</main>
+<script type="application/json" id="aie-data">/*AIE_VIZ_DATA*/</script>
+<script>
+"use strict";
+const data = JSON.parse(document.getElementById("aie-data").textContent);
+document.title = data.title;
+document.getElementById("title").textContent = data.title;
+
+const canvas = document.getElementById("canvas");
+const viewDivs = [...canvas.querySelectorAll(":scope > .view")];
+const views = data.views.map((view, index) => indexView(view, viewDivs[index]));
+let current = null;
+let pinned = null;
+
+function indexView(view, div) {
+  const graph = view.graph;
+  const nodes = new Map(graph.nodes.map(n => [n.id, n]));
+  const edges = new Map(graph.edges.map(e => [e.id, e]));
+  const out = new Map(), into = new Map();
+  for (const e of graph.edges) {
+    if (!out.has(e.source)) out.set(e.source, []);
+    if (!into.has(e.target)) into.set(e.target, []);
+    out.get(e.source).push(e);
+    into.get(e.target).push(e);
+  }
+  const svg = div.querySelector("svg");
+  const elements = new Map();
+  for (const el of svg.querySelectorAll("[data-id]")) elements.set(el.dataset.id, el);
+  return { name: view.name, graph, nodes, edges, out, into, svg, div, elements };
+}
+
+// --- Tracing --------------------------------------------------------------
+// Data passes through a node to every edge leaving it, except where packet
+// streams share a switchbox port: a packet only continues on edges that carry
+// its ID. Tracing stops at kernel calls and runtime arguments, where data
+// becomes other data.
+function trace(view, startNode, startPackets, forward, marked) {
+  const queue = [[startNode, startPackets]];
+  const seen = new Set();
+  while (queue.length) {
+    const [id, packets] = queue.shift();
+    const key = id + "|" + (packets ? packets.join(",") : "*");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    marked.add(id);
+    for (const e of (forward ? view.out : view.into).get(id) || []) {
+      let next = null;
+      if (e.packets && e.packets.length) {
+        next = packets ? packets.filter(p => e.packets.includes(p)) : e.packets;
+        if (!next.length) continue;
+      }
+      marked.add(e.id);
+      const other = forward ? e.target : e.source;
+      marked.add(other);
+      const kind = view.nodes.get(other).kind;
+      if (kind === "call" || kind === "arg") continue;
+      queue.push([other, next]);
+    }
+  }
+}
+
+function related(view, id) {
+  const marked = new Set([id]);
+  const up = document.getElementById("upstream").checked;
+  const down = document.getElementById("downstream").checked;
+  const edge = view.edges.get(id);
+  if (edge) {
+    const packets = edge.packets && edge.packets.length ? edge.packets : null;
+    marked.add(edge.source); marked.add(edge.target);
+    if (down && !["call", "arg"].includes(view.nodes.get(edge.target).kind) || down && edge.target === edge.source)
+      trace(view, edge.target, packets, true, marked);
+    if (up && !["call", "arg"].includes(view.nodes.get(edge.source).kind))
+      trace(view, edge.source, packets, false, marked);
+  } else if (view.nodes.has(id)) {
+    if (down) trace(view, id, null, true, marked);
+    if (up) trace(view, id, null, false, marked);
+  }
+  return marked;
+}
+
+function highlight(view, ids, chosen) {
+  for (const el of view.svg.querySelectorAll(".hl, .chosen")) el.classList.remove("hl", "chosen");
+  view.svg.classList.toggle("focus", !!ids);
+  if (!ids) return;
+  for (const id of ids) {
+    const el = view.elements.get(id);
+    if (el) el.classList.add("hl");
+  }
+  for (const id of chosen || []) {
+    const el = view.elements.get(id);
+    if (el) el.classList.add("chosen");
+  }
+}
+
+// A selection is a set of graph element IDs: one element, or every edge of a
+// flow.
+function select(ids, label) {
+  const view = current;
+  const marked = new Set();
+  for (const id of ids) for (const m of related(view, id)) marked.add(m);
+  highlight(view, marked, ids);
+  showDetails(view, ids, label);
+  showSources(view, document.getElementById("path-sources").checked ? marked : new Set(ids));
+}
+
+function clear() {
+  pinned = null;
+  highlight(current, null);
+  document.getElementById("details-body").textContent =
+    "Hover over or click on anything in the drawing. Click empty space or press Esc to clear.";
+  showSources(current, new Set());
+  for (const li of document.querySelectorAll("#lists li.selected")) li.classList.remove("selected");
+}
+
+// --- Details --------------------------------------------------------------
+function formatBytes(bytes) {
+  const units = ["B", "KiB", "MiB", "GiB"];
+  let value = bytes, unit = 0;
+  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++; }
+  return (value < 10 && unit ? value.toFixed(1) : value.toFixed(0)) + " " + units[unit];
+}
+
+function describe(view, id) {
+  const node = view.nodes.get(id);
+  if (node) {
+    const lines = [`<b>${escapeHTML(node.label)}</b> <span class="kind">${node.kind}</span>`];
+    if (node.detail) lines.push(`<div class="detail">${escapeHTML(node.detail)}</div>`);
+    if (node.bytes) lines.push(`<div>${formatBytes(node.bytes)}${node.kind === "buffer" ? "" : " per run"}</div>`);
+    return lines.join("");
+  }
+  const edge = view.edges.get(id);
+  if (!edge) return "";
+  const from = view.nodes.get(edge.source), to = view.nodes.get(edge.target);
+  const lines = [`<b>${escapeHTML(from.label)} → ${escapeHTML(to.label)}</b> <span class="kind">edge</span>`,
+                 `<div class="detail">${escapeHTML(from.detail || from.id)}\n→ ${escapeHTML(to.detail || to.id)}</div>`];
+  if (edge.bytes) lines.push(`<div>${formatBytes(edge.bytes)} per run</div>`);
+  if (edge.segments) lines.push(`<div>stands for ${edge.segments.length} physical links</div>`);
+  if (edge.packets) lines.push(`<div>packet IDs ${edge.packets.join(", ")}</div>`);
+  if (edge.flows) {
+    const flows = edge.flows.map(f => view.graph.flows[f]).filter(Boolean);
+    lines.push(`<div>flows:</div><ul>${flows.map(f => `<li>${escapeHTML(f.label)}</li>`).join("")}</ul>`);
+  }
+  return lines.join("");
+}
+
+function showDetails(view, ids, label) {
+  const body = document.getElementById("details-body");
+  body.innerHTML = (label ? `<b>${escapeHTML(label)}</b><br>` : "") +
+    ids.slice(0, 20).map(id => describe(view, id)).join("<hr>") +
+    (ids.length > 20 ? `<div>… and ${ids.length - 20} more</div>` : "");
+}
+
+function escapeHTML(text) {
+  return String(text).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+}
+
+// --- Sources --------------------------------------------------------------
+const fileLines = new Map();
+let shownFile = null;
+let lastSources = new Map();
+
+function sourcesOf(view, ids) {
+  const result = new Map();
+  const add = sources => {
+    for (const s of sources || []) {
+      if (!result.has(s.file)) result.set(s.file, new Set());
+      for (const l of s.lines) result.get(s.file).add(l);
+    }
+  };
+  for (const id of ids) {
+    const element = view.nodes.get(id) || view.edges.get(id);
+    if (element) add(element.sources);
+    if (view.edges.has(id))
+      for (const f of view.edges.get(id).flows || []) if (view.graph.flows[f]) add(view.graph.flows[f].sources);
+  }
+  return result;
+}
+
+function showSources(view, ids) {
+  lastSources = sourcesOf(view, ids);
+  const files = document.getElementById("files");
+  files.innerHTML = "";
+  const names = [...lastSources.keys()].sort((a, b) => (b in data.files) - (a in data.files));
+  if (!names.includes(shownFile)) shownFile = names[0] || null;
+  for (const name of names) {
+    const button = document.createElement("button");
+    button.textContent = `${name.split("/").pop()} (${lastSources.get(name).size})`;
+    button.title = name;
+    button.classList.toggle("active", name === shownFile);
+    button.onclick = () => { shownFile = name; showSources(view, ids); };
+    files.appendChild(button);
+  }
+  renderCode();
+}
+
+function renderCode() {
+  const code = document.getElementById("code");
+  if (!shownFile) { code.innerHTML = '<div class="empty">No source lines for this element.</div>'; return; }
+  const lines = lastSources.get(shownFile);
+  const text = data.files[shownFile];
+  if (text === undefined) {
+    code.innerHTML = `<div class="empty">${escapeHTML(shownFile)} was not embedded. Lines: ${[...lines].sort((a, b) => a - b).join(", ")}</div>`;
+    return;
+  }
+  if (!fileLines.has(shownFile)) {
+    const container = document.createElement("div");
+    text.split("\n").forEach((line, index) => {
+      const div = document.createElement("div");
+      div.className = "line";
+      div.innerHTML = `<span class="n">${index + 1}</span>${escapeHTML(line)}`;
+      container.appendChild(div);
+    });
+    fileLines.set(shownFile, container);
+  }
+  const container = fileLines.get(shownFile);
+  for (const div of container.querySelectorAll(".hit")) div.classList.remove("hit");
+  for (const l of lines) if (container.children[l - 1]) container.children[l - 1].classList.add("hit");
+  if (code.firstChild !== container) { code.innerHTML = ""; code.appendChild(container); }
+  const first = Math.min(...lines);
+  if (container.children[first - 1]) code.scrollTop = container.children[first - 1].offsetTop - code.offsetTop - 40;
+}
+
+// --- Lists ----------------------------------------------------------------
+function buildLists() {
+  const body = document.getElementById("lists-body");
+  body.innerHTML = "";
+  const view = current;
+  const section = (title, items) => {
+    if (!items.length) return;
+    const details = document.createElement("details");
+    details.open = title !== "Flows";
+    details.innerHTML = `<summary>${title} (${items.length})</summary>`;
+    const ul = document.createElement("ul");
+    for (const item of items) {
+      const li = document.createElement("li");
+      li.innerHTML = (item.color ? `<span class="swatch" style="background:${item.color}"></span>` : "") + escapeHTML(item.label);
+      li.title = item.title || item.label;
+      li.onclick = () => {
+        for (const other of body.querySelectorAll("li.selected")) other.classList.remove("selected");
+        li.classList.add("selected");
+        pinned = { ids: item.ids, label: item.label };
+        select(item.ids, item.label);
+      };
+      ul.appendChild(li);
+    }
+    details.appendChild(ul);
+    body.appendChild(details);
+  };
+  const colorOf = id => {
+    const first = (view.out.get(id) || [])[0];
+    const el = first && view.elements.get(first.id);
+    return el ? el.getAttribute("stroke") : null;
+  };
+  section("Runtime arguments", view.graph.nodes.filter(n => n.kind === "arg")
+    .map(n => ({ label: n.label, title: n.detail, ids: [n.id], color: colorOf(n.id) })));
+  section("Kernel calls", view.graph.nodes.filter(n => n.kind === "call")
+    .map(n => ({ label: `${n.label} (${n.tile.join(",")})`, title: n.detail, ids: [n.id], color: colorOf(n.id) })));
+  section("Flows", view.graph.flows.map(f => ({
+    label: f.label, ids: view.graph.edges.filter(e => (e.flows || []).includes(f.id)).map(e => e.id) }))
+    .filter(item => item.ids.length));
+}
+
+// --- Views, pan and zoom ---------------------------------------------------
+let viewBox = null;
+
+function fit() {
+  const svg = current.svg;
+  const w = parseFloat(svg.getAttribute("width")), h = parseFloat(svg.getAttribute("height"));
+  const box = canvas.getBoundingClientRect();
+  const scale = Math.max(w / box.width, h / box.height);
+  viewBox = { x: (w - box.width * scale) / 2, y: (h - box.height * scale) / 2, w: box.width * scale, h: box.height * scale };
+  applyViewBox();
+}
+
+function applyViewBox() {
+  for (const view of views) {
+    view.svg.setAttribute("viewBox", `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`);
+    view.svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+  }
+}
+
+function show(index) {
+  const previous = current;
+  current = views[index];
+  for (const view of views) view.div.classList.toggle("active", view === current);
+  for (const [i, button] of [...document.querySelectorAll("#tabs button")].entries())
+    button.classList.toggle("active", i === index);
+  if (!viewBox) fit();
+  applyWeights();
+  buildLists();
+  if (previous) highlight(previous, null);
+  if (pinned) {
+    const ids = pinned.ids.filter(id => current.nodes.has(id) && !current.nodes.get(id).hidden);
+    if (ids.length) select(ids, pinned.label); else clear();
+  } else clear();
+}
+
+for (const [index, view] of views.entries()) {
+  const button = document.createElement("button");
+  button.textContent = view.name;
+  button.onclick = () => show(index);
+  document.getElementById("tabs").appendChild(button);
+}
+
+function toSVGPoint(event) {
+  const box = canvas.getBoundingClientRect();
+  const scale = Math.max(viewBox.w / box.width, viewBox.h / box.height);
+  const offsetX = (box.width * scale - viewBox.w) / 2, offsetY = (box.height * scale - viewBox.h) / 2;
+  return { x: viewBox.x - offsetX + (event.clientX - box.left) * scale,
+           y: viewBox.y - offsetY + (event.clientY - box.top) * scale, scale };
+}
+
+canvas.addEventListener("wheel", event => {
+  event.preventDefault();
+  const p = toSVGPoint(event);
+  const factor = Math.exp(event.deltaY * 0.0015);
+  viewBox = { x: p.x - (p.x - viewBox.x) * factor, y: p.y - (p.y - viewBox.y) * factor,
+              w: viewBox.w * factor, h: viewBox.h * factor };
+  applyViewBox();
+}, { passive: false });
+
+let drag = null;
+canvas.addEventListener("pointerdown", event => {
+  drag = { x: event.clientX, y: event.clientY, start: { ...viewBox }, moved: false };
+});
+window.addEventListener("pointermove", event => {
+  if (!drag) return;
+  const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+  if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+  drag.moved = true;
+  canvas.classList.add("dragging");
+  const p = toSVGPoint(event);
+  viewBox = { ...drag.start, x: drag.start.x - dx * p.scale, y: drag.start.y - dy * p.scale };
+  applyViewBox();
+});
+window.addEventListener("pointerup", event => {
+  if (drag && !drag.moved) {
+    const target = event.target.closest && event.target.closest("[data-id]");
+    if (target && current.svg.contains(target)) {
+      pinned = { ids: [target.dataset.id] };
+      select(pinned.ids);
+    } else if (canvas.contains(event.target)) {
+      clear();
+    }
+  }
+  drag = null;
+  canvas.classList.remove("dragging");
+});
+
+canvas.addEventListener("mouseover", event => {
+  if (pinned || drag) return;
+  const target = event.target.closest("[data-id]");
+  if (target && current.svg.contains(target)) select([target.dataset.id]);
+});
+canvas.addEventListener("mouseout", event => {
+  if (pinned || drag) return;
+  const target = event.target.closest("[data-id]");
+  const next = event.relatedTarget && event.relatedTarget.closest && event.relatedTarget.closest("[data-id]");
+  if (target && target !== next && !next) clear();
+});
+window.addEventListener("keydown", event => { if (event.key === "Escape") clear(); });
+
+function applyWeights() {
+  const on = document.getElementById("weights").checked;
+  const bytes = current.graph.edges.map(e => e.bytes || 0).filter(b => b > 0);
+  const lo = Math.log2(Math.min(...bytes)), hi = Math.log2(Math.max(...bytes));
+  for (const g of current.svg.querySelectorAll(".edge")) {
+    const b = parseFloat(g.dataset.bytes);
+    const width = on && b > 0 && hi > lo ? 0.8 + 4.2 * (Math.log2(b) - lo) / (hi - lo) : 1.4;
+    for (const path of g.querySelectorAll("path.line")) path.setAttribute("stroke-width", width.toFixed(2));
+  }
+}
+
+for (const id of ["upstream", "downstream", "path-sources"])
+  document.getElementById(id).addEventListener("change", () => { if (pinned) select(pinned.ids, pinned.label); });
+document.getElementById("weights").addEventListener("change", applyWeights);
+document.getElementById("fit").onclick = fit;
+document.getElementById("toggle-panel").onclick = () => {
+  document.getElementById("main").classList.toggle("collapsed");
+};
+window.addEventListener("resize", () => applyViewBox());
+
+show(0);
+</script>
+</body>
+</html>
