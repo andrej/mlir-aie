@@ -193,7 +193,6 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                 core push the descriptor of each buffer it releases, which is what
                 lets two ObjectFifos share a sending channel. Defaults to None.
 
-
         Raises:
             TypeError: If a stream walk is not a ``TensorAccessPattern``.
             ValueError: If ``depth`` is provided and is less than 1, or a stream
