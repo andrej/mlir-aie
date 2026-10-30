@@ -63,7 +63,7 @@ struct AIEObjectFifoInsertCoreQueuePushesPass
   /// times over the descriptor each object names.
   void emitCountAndPush(OpBuilder &builder, Location loc, Value counter,
                         int32_t released, int32_t perPush, int32_t repeat,
-                        int channel) {
+                        int channel, bool assumeQueueSpace) {
     Type i32 = builder.getI32Type();
     Value left = memref::LoadOp::create(builder, loc, counter, ValueRange{});
     Value step = arith::ConstantOp::create(builder, loc, i32,
@@ -81,7 +81,7 @@ struct AIEObjectFifoInsertCoreQueuePushesPass
       builder.setInsertionPointToStart(push.thenBlock());
       // A push onto a full queue is discarded, which strands whoever waits on
       // the objects it would have covered.
-      if (checkQueueSpace)
+      if (checkQueueSpace && !assumeQueueSpace)
         DmaPollForQueueSpaceOp::create(builder, loc, DMAChannelDir::S2MM,
                                        channel);
       // Out-of-order ignores the descriptor a push names.
@@ -150,7 +150,7 @@ struct AIEObjectFifoInsertCoreQueuePushesPass
           OpBuilder builder(release.getContext());
           builder.setInsertionPointAfter(release);
           emitCountAndPush(builder, release.getLoc(), counter, size, perPush,
-                           repeat, channel);
+                           repeat, channel, release.getAssumeQueueSpace());
         }
       }
     }
