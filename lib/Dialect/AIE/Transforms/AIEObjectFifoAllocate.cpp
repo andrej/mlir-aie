@@ -1164,7 +1164,10 @@ struct AIEObjectFifoAllocatePass
            llvm::all_of(device.getOps<ObjectFifoDmaEndpointOp>(),
                         [&](ObjectFifoDmaEndpointOp end) {
                           return end.getPoolOp() != pool ||
-                                 (!end.getOutOfOrder() && !end.getDispatch() &&
+                                 (!end.getOutOfOrder() &&
+                                  end.getReleaseStrategy() !=
+                                      ObjectFifoRelease::PushQueue &&
+                                  !end.getDispatch() &&
                                   (!end.getTurns() ||
                                    llvm::is_contained(regrouped, end)));
                         });
@@ -1253,7 +1256,9 @@ struct AIEObjectFifoAllocatePass
   }
 
   static bool canTakeTurns(ObjectFifoDmaEndpointOp endpoint) {
-    return endpoint && !endpoint.getChannelIndex() && !endpoint.getDispatch() &&
+    return endpoint &&
+           endpoint.getReleaseStrategy() != ObjectFifoRelease::PushQueue &&
+           !endpoint.getChannelIndex() && !endpoint.getDispatch() &&
            !endpoint.getPacketAttr() && !endpoint.getIterCount() &&
            endpoint.getRepeat() == 1 && !endpoint.walksStream();
   }
