@@ -47,10 +47,11 @@ them directly.
 Compute tiles that run the same set of kernels share a fill and a letter
 in their title, with the kernels listed in the legend, so that a core
 stamped out over many tiles stands apart from one-of-a-kind cores. A line
-between a kernel and a buffer ends in a dot at the kernel: a call to an
-external kernel does not say whether it reads or writes the buffer. The
-graph marks such edges `kernelAccess` and gives them the direction the
-buffer's DMA channels and objectFIFO locks suggest.
+between a kernel and a buffer points both ways: a call to an external
+kernel does not say whether it reads or writes the buffer. The graph marks
+such edges `kernelAccess` and gives them the direction the buffer's DMA
+channels and objectFIFO locks suggest, which contraction uses. The viewer
+traces them both ways.
 
 In the viewer, hover over or click on any element to highlight what feeds it
 (upstream) and where its data goes (downstream), and to see the source lines

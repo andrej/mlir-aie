@@ -1270,9 +1270,6 @@ Expected<std::string> Renderer::render() {
         return node.initialized && !node.hidden;
       }))
     legend.emplace_back(kInitializedFill, "\x01");
-  if (llvm::any_of(graph.edges,
-                   [](const Edge &edge) { return edge.kernelAccess; }))
-    legend.emplace_back(kMixed, "\x02");
   for (const auto &[fill, text] : roleLegend)
     legend.emplace_back(fill, "\x03" + text);
   if (!legend.empty()) {
@@ -1284,19 +1281,13 @@ Expected<std::string> Renderer::render() {
       std::string text = label.empty()        ? "mixed sources"
                          : label == "\x01"    ? "buffer with an initial value"
                          : label[0] == '\x03' ? label.substr(1)
-                         : label == "\x02"
-                             ? "kernel accesses buffer (the IR does not say "
-                               "whether it reads or writes)"
-                             : "from " + label;
+                                              : "from " + label;
       double entry = 26 + text.size() * kCharWidth * 1.1;
       if (x + entry > width - kMargin && x > kMargin) {
         x = kMargin;
         y += 16;
       }
       bool box = label == "\x01" || label[0] == '\x03';
-      if (label == "\x02")
-        legendOs << "<circle cx=\"" << num(x + 14) << "\" cy=\"" << num(y - 4)
-                 << "\" r=\"2.8\" fill=\"" << color << "\"/>";
       legendOs << "<rect x=\"" << num(x) << "\" y=\""
                << num(box ? y - 9 : y - 6) << "\" width=\"16\" height=\""
                << (box ? 10 : 4) << (box ? "\" stroke=\"#7d848c" : "")
@@ -1346,7 +1337,6 @@ Expected<std::string> Renderer::render() {
 .aie-view .lane-tick{stroke:#c8ccd2;stroke-width:1}
 .aie-view .edge path.line{fill:none;stroke-linecap:round;stroke-linejoin:round}
 .aie-view .edge path.hit{fill:none;stroke:transparent;stroke-width:9}
-.aie-view .edge circle.access{stroke:none}
 .aie-view .node rect{stroke-width:1}
 .aie-view .node.dma rect{fill:#fff;stroke:#7d848c}
 .aie-view .node.buffer rect{fill:#fff;stroke:#7d848c}
@@ -1449,12 +1439,12 @@ Expected<std::string> Renderer::render() {
                "\" d=\"" + d + "\"/>\n";
       hits += "<path class=\"hit\" d=\"" + d + "\"/>\n";
     };
-    // A kernel's access to a buffer ends in a dot at the kernel: the IR does
-    // not say whether the kernel reads or writes it.
-    auto accessDot = [&](Point point) {
-      heads += "<circle class=\"access\" cx=\"" + num(point.x) + "\" cy=\"" +
-               num(point.y) + "\" r=\"2.8\"/>\n";
+    auto head = [&](Point tip, Point heading) {
+      heads += "<path class=\"head\" stroke=\"none\" d=\"" +
+               arrowhead(tip, heading) + "\"/>\n";
     };
+    // A call to an external kernel does not say whether the kernel reads or
+    // writes a buffer, so a link between them points both ways.
     auto isCall = [&](const std::string &id) {
       return nodes.at(id)->kind == kind::Call;
     };
@@ -1465,19 +1455,12 @@ Expected<std::string> Renderer::render() {
     if (auto routed = routes.find(edge.id()); routed != routes.end()) {
       const std::vector<Point> &points = routed->second;
       addPath(rounded(points));
-      bool atCall = edge.kernelAccess && isCall(edge.target);
-      bool fromCall = edge.kernelAccess && isCall(edge.source);
-      if (atCall)
-        accessDot(points.back());
-      if (fromCall)
-        accessDot(points.front());
-      if (points.size() > 1 && isVisible(edge.target) && !atCall &&
-          !(fromCall && nodes.at(edge.target)->kind == kind::Buffer) &&
+      if (points.size() > 1 && isVisible(edge.target) &&
           nodes.at(edge.target)->kind != kind::Port)
-        heads += "<path class=\"head\" stroke=\"none\" d=\"" +
-                 arrowhead(points.back(),
-                           unit(points[points.size() - 2], points.back())) +
-                 "\"/>\n";
+        head(points.back(), unit(points[points.size() - 2], points.back()));
+      if (points.size() > 1 && edge.kernelAccess &&
+          (isCall(edge.source) || isAccess(edge.source, edge.target)))
+        head(points.front(), unit(points[1], points.front()));
       os << lines << heads << hits << "</g>\n";
       continue;
     }
@@ -1499,7 +1482,8 @@ Expected<std::string> Renderer::render() {
       Stroke stroke = strokeFor(from, to);
       addPath(stroke.d);
       if (isAccess(from, to)) {
-        accessDot(isCall(from) ? stroke.start : stroke.end);
+        head(stroke.end, stroke.heading);
+        head(stroke.start, {-stroke.startHeading.x, -stroke.startHeading.y});
         return stroke;
       }
       // Port markers and the mid-wire chevrons say which way a stream runs
@@ -1516,8 +1500,6 @@ Expected<std::string> Renderer::render() {
     using Way = std::pair<Point, Point>;
     struct Region {
       std::vector<Way> entries, exits;
-      /// How each exit ends: 0 at a contracted node, 1 with an arrowhead at
-      /// a box, 2 with a dot at a kernel.
       std::vector<int> exitIsDrawn;
       /// Segments drawn only if the region is crossed on its physical path.
       std::vector<std::pair<std::string, std::string>> held;
@@ -1540,7 +1522,7 @@ Expected<std::string> Renderer::render() {
             {anchors.at({index, true}), {-side.x, -side.y}});
         region.held.push_back({from, to});
         if (isCall(from))
-          accessDot(anchors.at({index, true}));
+          head(anchors.at({index, true}), side);
         continue;
       }
       if (fromHidden && drawnBox(to)) {
@@ -1548,7 +1530,7 @@ Expected<std::string> Renderer::render() {
         region.exits.push_back(
             {anchors.at({index, false}),
              inward(sideFacing(*nodes.at(to), *nodes.at(from)))});
-        region.exitIsDrawn.push_back(isCall(to) ? 2 : 1);
+        region.exitIsDrawn.push_back(1);
         region.held.push_back({from, to});
         continue;
       }
@@ -1596,11 +1578,8 @@ Expected<std::string> Renderer::render() {
       if (clear) {
         for (const auto &[curve, drawn] : curves) {
           addPath(cubic(curve[0], curve[1], curve[2], curve[3]));
-          if (drawn == 2)
-            accessDot(curve[3]);
-          else if (drawn == 1)
-            heads += "<path class=\"head\" stroke=\"none\" d=\"" +
-                     arrowhead(curve[3], unit(curve[2], curve[3])) + "\"/>\n";
+          if (drawn)
+            head(curve[3], unit(curve[2], curve[3]));
         }
         continue;
       }

@@ -118,9 +118,6 @@ def main():
                 lines.extend(parse_path(path.get("d")))
             elif kind == "head":
                 tips.append(parse_path(path.get("d") + " Z")[0][0])
-        for circle in g.iter(NS + "circle"):
-            if circle.get("class") == "access":
-                tips.append((float(circle.get("cx")), float(circle.get("cy"))))
         drawn[g.get("data-id")] = lines
         heads[g.get("data-id")] = tips
 
@@ -169,28 +166,18 @@ def main():
         }
         if not sources & targets:
             problems.append(f"{edge_id}: line does not join its source and target")
-        # A kernel's access to a buffer ends in a dot at the kernel instead.
-        access = edge.get("kernelAccess")
-        kernel = next(
-            (
-                end
-                for end in (edge["target"], edge["source"])
-                if access and nodes[end]["kind"] == "call"
-            ),
-            None,
-        )
-        marked = box_of(kernel) if kernel else target_box
-        needs_mark = (
-            kernel
-            or nodes[edge["target"]]["kind"] not in ("port", "buffer")
-            or not access
-        )
-        if (
-            needs_mark
-            and nodes[edge["target"]]["kind"] != "port"
-            and not any(touches(marked, tip, 1.0) for tip in heads[edge_id])
+        if nodes[edge["target"]]["kind"] != "port" and not any(
+            touches(target_box, tip, 1.0) for tip in heads[edge_id]
         ):
-            problems.append(f"{edge_id}: no arrowhead or dot where it arrives")
+            problems.append(f"{edge_id}: no arrowhead at the target")
+        # A kernel's access to a buffer points both ways.
+        if (
+            edge.get("kernelAccess")
+            and nodes[edge["source"]]["kind"] in ("call", "buffer")
+            and "call" in (nodes[edge["source"]]["kind"], nodes[edge["target"]]["kind"])
+            and not any(touches(source_box, tip, 1.0) for tip in heads[edge_id])
+        ):
+            problems.append(f"{edge_id}: no arrowhead back into the source")
 
     # Overlap and box crossings, over short pieces hashed into a grid.
     pieces = []

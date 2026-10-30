@@ -147,14 +147,18 @@ function trace(view, startNode, startPackets, forward, marked) {
     if (seen.has(key)) continue;
     seen.add(key);
     marked.add(id);
-    for (const e of (forward ? view.out : view.into).get(id) || []) {
+    // A kernel's access to a buffer may go either way, so tracing crosses it
+    // in both directions.
+    const edges = [...((forward ? view.out : view.into).get(id) || []),
+                   ...((forward ? view.into : view.out).get(id) || []).filter(e => e.kernelAccess)];
+    for (const e of edges) {
       let next = null;
       if (e.packets && e.packets.length) {
         next = packets ? packets.filter(p => e.packets.includes(p)) : e.packets;
         if (!next.length) continue;
       }
       marked.add(e.id);
-      const other = forward ? e.target : e.source;
+      const other = e.source === id ? e.target : e.source;
       marked.add(other);
       const kind = view.nodes.get(other).kind;
       if (kind === "call" || kind === "arg") continue;
