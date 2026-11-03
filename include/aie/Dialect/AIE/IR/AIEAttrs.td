@@ -310,6 +310,33 @@ def InitValuesArrayAttr
 // ObjectFifo pools and endpoints
 //===----------------------------------------------------------------------===//
 
+def ObjectFifoRelease
+    : I32EnumAttr<"ObjectFifoRelease",
+                  "ObjectFifo sending DMA task submission strategy",
+                  [I32EnumAttrCase<"CycleBuffers", 0, "cycle_buffers">,
+                   I32EnumAttrCase<"PushQueue", 1, "push_queue">]> {
+  let cppNamespace = "xilinx::AIE";
+  // The attribute class comes from ObjectFifoReleaseAttr below, which prints
+  // the case by name rather than by number.
+  let genSpecializedAttr = 0;
+}
+
+def ObjectFifoReleaseAttr
+    : EnumAttr<AIE_Dialect, ObjectFifoRelease, "release_strategy"> {
+  let summary = "Select cyclic DMA execution or core-issued send tasks";
+  let description = [{
+    Controls how an ObjectFifo's sending DMA receives work. `cycle_buffers`
+    uses a cyclic BD chain synchronized by buffer locks. `push_queue` has the
+    producer core submit a task for each released object, allowing several
+    FIFOs to share one MM2S channel. Both strategies retain buffer-lock
+    synchronization.
+
+    This attribute can be attached to `aie.objectfifo` or its draining
+    `aie.objectfifo.dma_endpoint`. See those operations for defaults and
+    lowering requirements.
+  }];
+}
+
 def ObjectFifoRole
     : I32EnumAttr<"ObjectFifoRole",
                   "What an objectFifo endpoint does to its pool's buffers",
@@ -370,6 +397,13 @@ def ObjectFifoTransportAttr : AttrDef<AIE_Dialect, "ObjectFifoTransport", []> {
     allocation pick the id, `#aie.packet_info<pkt_id = 3>` pins it. It belongs
     to `auto` and `dma`; on `auto` it only matters when the DMAs are used.
 
+    `out_of_order = true` requires `packet` and selects receiving buffer
+    descriptors through the packet header's `out_of_order_id`. This allows
+    multiple packet FIFOs to share an S2MM channel. It changes descriptor
+    selection, not packet arrival order. Like `packet`, it only applies when
+    `auto` chooses DMA. The default is false; the lowering may still enable
+    it when packet FIFOs are pinned to the same receiving channel.
+
     What drives each end (a DMA channel or a core stream port) is not part of
     the path; see `#aie.end_port`.
 
@@ -377,13 +411,15 @@ def ObjectFifoTransportAttr : AttrDef<AIE_Dialect, "ObjectFifoTransport", []> {
     ```
       transport = #aie.transport<dma>
       transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>>
+      transport = #aie.transport<dma, packet = #aie.packet_info<>, out_of_order = true>
     ```
   }];
 
   let parameters = (ins EnumParameter<ObjectFifoTransportMode>:$mode,
-      PacketInfoField:$packet);
+      PacketInfoField:$packet,
+      DefaultValuedParameter<"bool", "false">:$out_of_order);
 
-  let assemblyFormat = "`<` $mode (`,` struct($packet)^)? `>`";
+  let assemblyFormat = "`<` $mode (`,` struct($packet, $out_of_order)^)? `>`";
 
   let genVerifyDecl = 1;
 }
